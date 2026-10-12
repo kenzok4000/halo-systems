@@ -95,8 +95,12 @@ def build_constraints(p, v, nbr_pos, nbr_vel, nbr_age, active, *, d_safe, a_brak
 
 
 def project(a_nom, g, b, mask, a_max, iterations=12):
-    """Closest acceleration to ``a_nom`` with G a <= b and |a| <= a_max (Dykstra)."""
+    """Closest acceleration to ``a_nom`` with G a <= b and |a| <= a_max (Dykstra).
+
+    Also returns which constraints the nominal command violated (the filter's interventions).
+    """
     n, k, _ = g.shape
+    active_rows = mask & (_rows_dot(g, a_nom[:, None, :]) - b > 1e-6)
     x = a_nom.copy()
     incr = np.zeros((n, k + 1, 3))
     gg = np.maximum(_rows_dot(g, g), 1e-12)
@@ -113,5 +117,4 @@ def project(a_nom, g, b, mask, a_max, iterations=12):
         new = z * np.minimum(1.0, a_max / np.maximum(nz, 1e-12))
         incr[:, k] = z - new
         x = new
-    active_rows = mask & (_rows_dot(g, x[:, None, :]) - b > 1e-3)
     return x, active_rows

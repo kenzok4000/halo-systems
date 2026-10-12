@@ -171,43 +171,49 @@ class World:
             u = np.where(inside_mask[..., None], face, u)
         return dist, u
 
-    def free_width_ahead(self, centre: np.ndarray, heading: np.ndarray, lookahead: float, altitude: float) -> float:
-        """Narrowest free lateral gap along a corridor ahead of ``centre``.
+    def free_width_ahead(self, centre: np.ndarray, heading: np.ndarray, lookahead: float, altitude: float,
+                         behind: float = 0.0, cap: float = 200.0) -> float:
+        """Width of the obstacle-free lane along the path, from ``behind`` metres back to ``lookahead`` ahead.
 
-        Samples stations every 5 m up to ``lookahead`` and, at each, finds the
-        widest obstacle-free interval around the path line at flight altitude.
-        Returns the narrowest of those widths (capped at 200 m).
+        Every obstacle that reaches flight altitude and overlaps that stretch
+        is projected onto the axis across the path; the lane is the free
+        interval around the path line. This is what a formation sweeping down
+        the path has to fit through (a single cross-section would see the gaps
+        between tree trunks, not the lane). Returns 0 if an obstacle sits on
+        the path line, and at most ``cap``.
         """
-        cap = 200.0
-        if not len(self._cyl) and not len(self._box_lo):
-            return cap
-        h = np.asarray(heading, dtype=float)
-        h = h / max(np.linalg.norm(h[:2]), 1e-9)
-        lat = np.array([-h[1], h[0], 0.0])
-        narrowest = cap
-        offsets = np.linspace(-cap / 2, cap / 2, 401)
-        for s in np.arange(0.0, lookahead + 1e-9, 5.0):
-            station = np.array([centre[0] + h[0] * s, centre[1] + h[1] * s, altitude])
-            pts = station[None, :] + offsets[:, None] * lat[None, :]
-            d, _ = self.clearance(pts)
-            free = d > 0.0
-            # Widest run of free samples containing (or nearest to) the path line.
-            mid = len(offsets) // 2
-            if not free[mid]:
-                width = 0.0
-                # Path line blocked: take the widest free run anywhere.
-                runs = _runs(free)
-                width = max((b - a) for a, b in runs) * (offsets[1] - offsets[0]) if runs else 0.0
-            else:
-                a = mid
-                while a > 0 and free[a - 1]:
-                    a -= 1
-                b = mid
-                while b < len(free) - 1 and free[b + 1]:
-                    b += 1
-                width = (b - a) * (offsets[1] - offsets[0])
-            narrowest = min(narrowest, width)
-        return float(narrowest)
+        h = np.asarray(heading, dtype=float)[:2]
+        h = h / max(np.linalg.norm(h), 1e-9)
+        lat = np.array([-h[1], h[0]])
+        c = np.asarray(centre, dtype=float)[:2]
+        lo_list, hi_list = [], []
+        if len(self._cyl):
+            tall = self._cyl[:, 3] > altitude - 1.0
+            xy = self._cyl[tall, :2] - c
+            r = self._cyl[tall, 2]
+            along, across = xy @ h, xy @ lat
+            near = (along + r >= -behind) & (along - r <= lookahead)
+            lo_list.append(across[near] - r[near])
+            hi_list.append(across[near] + r[near])
+        if len(self._box_lo):
+            tall = self._box_hi[:, 2] > altitude - 1.0
+            for lo, hi in zip(self._box_lo[tall], self._box_hi[tall]):
+                corners = np.array([[lo[0], lo[1]], [lo[0], hi[1]], [hi[0], lo[1]], [hi[0], hi[1]]]) - c
+                along, across = corners @ h, corners @ lat
+                if along.max() >= -behind and along.min() <= lookahead:
+                    lo_list.append(np.array([across.min()]))
+                    hi_list.append(np.array([across.max()]))
+        if not lo_list:
+            return float(cap)
+        lo = np.concatenate(lo_list)
+        hi = np.concatenate(hi_list)
+        if len(lo) == 0:
+            return float(cap)
+        if np.any((lo <= 0.0) & (hi >= 0.0)):
+            return 0.0
+        left = lo[lo > 0.0].min() if np.any(lo > 0.0) else cap / 2
+        right = hi[hi < 0.0].max() if np.any(hi < 0.0) else -cap / 2
+        return float(min(cap, min(left, cap / 2) - max(right, -cap / 2)))
 
     def density_ahead(self, centre: np.ndarray, heading: np.ndarray, lookahead: float, half_width: float) -> float:
         """Obstacles per 1,000 m^2 in a rectangle ahead of ``centre``."""
@@ -228,16 +234,3 @@ class World:
         area = lookahead * 2 * half_width
         return float(1000.0 * inside.sum() / max(area, 1e-9))
 
-
-def _runs(mask: np.ndarray):
-    runs = []
-    start = None
-    for i, v in enumerate(mask):
-        if v and start is None:
-            start = i
-        elif not v and start is not None:
-            runs.append((start, i - 1))
-            start = None
-    if start is not None:
-        runs.append((start, len(mask) - 1))
-    return runs

@@ -99,7 +99,7 @@ class SafetyValidator:
         floor = self.spacing_floor(merged["safety_margin_m"])
         if merged["spacing_m"] < floor:
             violations.append(f"spacing {merged['spacing_m']:.2f} m below safe floor {floor:.2f} m; raised")
-            merged["spacing_m"] = round(floor, 2)
+            merged["spacing_m"] = math.ceil(floor * 100.0) / 100.0
             clamped = True
 
         reason = str(data.get("reason", ""))[:300]

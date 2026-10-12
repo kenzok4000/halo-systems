@@ -42,7 +42,8 @@ def formation_offsets(shape: str, n: int, spacing: float) -> np.ndarray:
             k += 1
         xy = np.array(pts)
     elif shape == "ring":
-        radius = max(s, s * n / (2 * math.pi)) if n > 1 else 0.0
+        # Neighbours on the ring are one chord apart: chord = 2 r sin(pi / n) = spacing.
+        radius = s / (2 * math.sin(math.pi / n)) if n > 2 else (s / 2 if n == 2 else 0.0)
         a = 2 * math.pi * np.arange(n) / n
         xy = np.stack([radius * np.cos(a), radius * np.sin(a)], axis=1)
     else:

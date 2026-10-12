@@ -32,6 +32,7 @@ ACTIVE, FAILED, CRASHED, RETIRED, DOWN = 0, 1, 2, 3, 4
 STATUS_NAMES = {ACTIVE: "active", FAILED: "failed", CRASHED: "crashed", RETIRED: "retired", DOWN: "down"}
 NEAR_MISS_EXTRA_M = 0.5
 FAILURE_DETECTION_S = 1.0
+LOOKAHEAD_M = 100.0          # how far ahead of the formation centre the supervisor summary looks
 INTEGRITY_EVERY = 5          # steps between formation-integrity evaluations (10 Hz)
 
 
@@ -70,6 +71,18 @@ class RunResult:
         return out
 
 
+def energy_table(body: DroneBody, headwind: float, speed_limits=(0.5, 12.0)) -> dict:
+    """Energy per drone per ground kilometre at a few cruise speeds, in steady level flight."""
+    out = {}
+    lo, hi = speed_limits
+    for v in (3, 4, 5, 6, 8, 10, 12):
+        if v < lo or v > hi:
+            continue
+        air = max(v + headwind, 0.0)
+        out[str(v)] = round(float(body.level_power_w(air)) / (3.6 * v), 2)
+    return out
+
+
 class Simulation:
     def __init__(self, scenario: Scenario, controller: Controller, supervisor: Supervisor | None = None,
                  seed: int = 0, body: DroneBody | None = None, record_hz: float = 10.0,
@@ -92,6 +105,7 @@ class Simulation:
         self.path = Path(scenario.waypoints, loop=scenario.loop)
         start = self.validator.check(scenario.directive, scenario.directive, -1e9, "mission")
         self.directive: Directive = start.directive
+        self.mission_directive: Directive = start.directive
         self.validator.last_change_t = -math.inf
         self.ctrl.reset(self.path, self.directive, n)
         pos, vel = self.ctrl.plan.slots()
@@ -241,7 +255,8 @@ class Simulation:
             if decision.directive is None:
                 continue
             proposal = decision.directive.to_dict() if isinstance(decision.directive, Directive) else decision.directive
-            self._apply(proposal, self.sup.name, obs, requested_t=t_req)
+            source = "fallback" if decision.meta.get("fallback") else self.sup.name
+            self._apply(proposal, source, obs, requested_t=t_req)
 
     def _apply(self, proposal: dict, source: str, obs: Observation, requested_t: float | None = None) -> None:
         result = self.validator.check(proposal, self.directive, self.t, source)
@@ -422,8 +437,10 @@ class Simulation:
         centre = plan.centre()
         heading = np.array([math.cos(plan.heading), math.sin(plan.heading), 0.0])
         world = self.sc.world
-        lookahead = 60.0
-        width_free = world.free_width_ahead(centre, heading, lookahead, self.directive.altitude_m) if world.obstacle_count else None
+        lookahead = LOOKAHEAD_M
+        # The corridor check covers the whole formation: from its tail to the lookahead point.
+        tail = float(max(0.0, -np.min(plan.target[plan.members, 0]))) if len(plan.members) else 0.0
+        width_free = world.free_width_ahead(centre, heading, lookahead, self.directive.altitude_m, behind=tail) if world.obstacle_count else None
         density = world.density_ahead(centre, heading, lookahead, 40.0) if world.obstacle_count else 0.0
         seps = [s for _, s in self._sep_window if math.isfinite(s)]
         winds = np.array([w for _, w in self._wind_window]) if self._wind_window else np.zeros((1, 3))
@@ -447,12 +464,14 @@ class Simulation:
         out = {
             "time_s": round(self.t, 1),
             "mission": {
+                "brief": self.sc.description,
                 "progress_pct": round(100 * plan.s / plan.path.length, 1) if plan.path.length > 0 and not plan.path.loop else None,
                 "remaining_m": round(remaining, 1) if remaining is not None else None,
                 "leader_speed_mps": round(plan.speed_now, 2),
             },
             "swarm": {"flying": int(act.sum()), "planned": self.n, "lost_drones": lost,
                       "retired_low_battery": int(np.sum(self.status == RETIRED))},
+            "mission_directive": {k: v for k, v in self.mission_directive.to_dict().items() if k not in ("reason", "source")},
             "current_directive": {k: v for k, v in self.directive.to_dict().items() if k not in ("reason", "source")},
             "formation": {
                 "rms_error_m": round(self.ctrl.formation_error_estimate(obs), 2) if obs is not None else None,
@@ -466,9 +485,11 @@ class Simulation:
             "environment": {
                 "wind_mps": round(float(np.linalg.norm(mean_wind[:2])), 1),
                 "wind_from_deg": round(float((math.degrees(math.atan2(-mean_wind[1], -mean_wind[0])) + 360) % 360), 0),
+                "headwind_mps": round(float(-mean_wind[:2] @ heading[:2]), 1),
                 "gust_peak_mps_last_5s": round(gust, 1),
                 "obstacles_per_1000m2_ahead": round(density, 2),
-                "free_corridor_width_ahead_m": round(width_free, 1) if width_free is not None else None,
+                "free_corridor_width_m": round(width_free, 1) if width_free is not None else None,
+                "corridor_checked_from_m": round(-tail, 1),
                 "lookahead_m": lookahead,
             },
             "comms": {"stale_link_fraction": round(stale, 2), "isolated_drones": isolated},
@@ -477,6 +498,11 @@ class Simulation:
                 "battery_min_pct": round(float(np.min(batt)), 1),
                 "endurance_left_min": round(endurance_min, 1),
                 "time_to_finish_min": round(remaining / max(self.directive.speed_mps, 0.1) / 60.0, 1) if remaining is not None else None,
+                "usable_wh_mean": round(float(np.mean(self.battery_wh[act] - self.sc.battery_reserve * self.capacity_wh)), 2) if act.any() else 0.0,
+                "usable_wh_min": round(float(np.min(self.battery_wh[act] - self.sc.battery_reserve * self.capacity_wh)), 2) if act.any() else 0.0,
+                # Energy model applied to the current headwind: what each cruise speed would cost.
+                "wh_per_km_by_speed": energy_table(self.body, float(-mean_wind[:2] @ heading[:2]),
+                                                   self.validator.limits.speed_mps),
             },
             "limits": {
                 "formations": list(SHAPES),

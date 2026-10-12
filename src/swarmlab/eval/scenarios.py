@@ -90,7 +90,7 @@ def forest_trail(seed: int = 0, n: int = 16) -> Scenario:
     return Scenario(
         name="forest_trail",
         title="Forest trail under the canopy",
-        description=f"Search along a {trail:.0f} m wide trail through 140 m of dense forest, below the 25 m canopy ceiling.",
+        description=f"Search along a {trail:.0f} m wide trail through 140 m of dense forest, below the canopy (ceiling 22 m).",
         n=n, duration_s=150.0, waypoints=[(0.0, centre_y), (420.0, centre_y)],
         directive=Directive("grid", 6.0, 5.0, 15.0, 1.0, source="mission"),
         world=World(cylinders=trees),
@@ -160,15 +160,15 @@ def motor_failures(seed: int = 0, n: int = 16) -> Scenario:
 def low_battery(seed: int = 0, n: int = 16) -> Scenario:
     rng = _rng(seed, 7)
     heading = rng.uniform(0, 360)
-    head = rng.uniform(4.0, 7.0)
+    head = rng.uniform(3.0, 5.0)
     return Scenario(
         name="low_battery",
         title="Low battery, into the wind",
-        description="Finish a 1.6 km leg into a headwind with batteries at 25-40%; drones below 15% must leave.",
-        n=n, duration_s=420.0, waypoints=[(0.0, 0.0), (1600.0, 0.0)],
+        description="Finish a 1.2 km leg into a headwind with batteries at about 32%; drones below 15% must leave.",
+        n=n, duration_s=400.0, waypoints=[(0.0, 0.0), (1200.0, 0.0)],
         directive=Directive("grid", 6.0, 5.0, 30.0, 1.0, source="mission"),
         wind=_wind_from(rng, head, sigma=1.0, local=0.3, direction_deg=180.0 + rng.uniform(-20, 20)),
-        battery_fraction=0.32, battery_spread=0.2,
+        battery_fraction=0.32, battery_spread=0.1,
         use_case="agricultural survey return leg", tags=("energy",),
     )
 
