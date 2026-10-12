@@ -63,6 +63,75 @@ def cmd_doctor(args) -> int:
     return run(args.evidence, model=args.model, flight=args.flight, seed=args.seed, scenario=args.scenario)
 
 
+def cmd_mission_eval(args) -> int:
+    """Score the regex baseline and (with a key) Nemotron on the mission prompt sets."""
+    import time as _time
+    from .ai.client import NebiusClient, NebiusError
+    from .ai.mission import compile_with_model, load_eval_set, regex_baseline, score
+    client = None
+    if args.model:
+        client = NebiusClient(timeout_s=60.0, max_retries=3, log_path=args.ai_log)
+        if not client.configured:
+            print("NEBIUS_API_KEY is not set: scoring the baseline only")
+            client = None
+    out = {"sets": {}, "model": args.model if client else None}
+    for name in args.sets.split(","):
+        items = load_eval_set(name)
+        rows = []
+        for it in items:
+            row = {"id": it["id"], "text": it["text"], "gold": it["gold"]}
+            b = regex_baseline(it["text"])
+            row["baseline"] = {"spec": b, **score(b, it["gold"])}
+            if client:
+                t0 = _time.perf_counter()
+                try:
+                    spec, problems, rec = compile_with_model(it["text"], client, args.model)
+                    row["nemotron"] = {"spec": spec, "problems": problems, "record": rec, **score(spec, it["gold"])}
+                except NebiusError as exc:
+                    row["nemotron"] = {"error": exc.reason, "correct": 0, "total": len(it["gold"]), "exact": False}
+                row["nemotron"]["wall_s"] = round(_time.perf_counter() - t0, 2)
+            rows.append(row)
+        summary = {}
+        for who in ("baseline", "nemotron"):
+            got = [r[who] for r in rows if who in r]
+            if got:
+                summary[who] = {"field_accuracy_pct": round(100 * sum(g["correct"] for g in got) / max(1, sum(g["total"] for g in got)), 1),
+                                "exact": sum(1 for g in got if g["exact"]), "prompts": len(got),
+                                "refusals_correct": sum(1 for r in rows if r["gold"].get("refused") and r.get(who, {}).get("fields", {}).get("refused")),
+                                "refusals_total": sum(1 for r in rows if r["gold"].get("refused")),
+                                "errors": sum(1 for g in got if "error" in g)}
+        out["sets"][name] = {"summary": summary, "rows": rows}
+        print(name, json.dumps(summary))
+    if args.out:
+        with open(args.out, "w") as fh:
+            json.dump(out, fh, indent=1)
+    return 0
+
+
+def cmd_compile(args) -> int:
+    from .ai.client import NebiusClient
+    from .ai.mission import compile_with_model, regex_baseline
+    if args.model:
+        spec, problems, rec = compile_with_model(args.text, NebiusClient(log_path=args.ai_log), args.model)
+        print(json.dumps({"spec": spec, "problems": problems, "call": rec}, indent=2))
+    else:
+        print(json.dumps({"spec": regex_baseline(args.text), "note": "regex baseline (pass --model for Nemotron)"}, indent=2))
+    return 0
+
+
+def cmd_report(args) -> int:
+    from .eval.report import build
+    path = build(args.runs, args.out)
+    print(f"wrote {path}")
+    return 0
+
+
+def cmd_serve(args) -> int:
+    from .dashboard.server import serve
+    serve(args.host, args.port, args.results, args.evidence, model=args.model, open_browser=args.open)
+    return 0
+
+
 def main(argv=None) -> int:
     p = argparse.ArgumentParser(prog="swarmlab", description="Supervised drone-swarm formation testbed.")
     sub = p.add_subparsers(dest="cmd", required=True)
@@ -102,6 +171,33 @@ def main(argv=None) -> int:
     s.add_argument("--scenario", default="forest_trail")
     s.add_argument("--seed", type=int, default=0)
     s.set_defaults(fn=cmd_doctor)
+
+    s = sub.add_parser("serve", help="start the live dashboard")
+    s.add_argument("--host", default="127.0.0.1")
+    s.add_argument("--port", type=int, default=8765)
+    s.add_argument("--results", default="results")
+    s.add_argument("--evidence", default="evidence")
+    s.add_argument("--model", default=None, help="Nemotron model id (default SWARMLAB_SUPERVISOR_MODEL)")
+    s.add_argument("--open", action="store_true", help="open a browser")
+    s.set_defaults(fn=cmd_serve)
+
+    s = sub.add_parser("report", help="tables and charts from a benchmark rows file")
+    s.add_argument("runs")
+    s.add_argument("--out", default="results")
+    s.set_defaults(fn=cmd_report)
+
+    s = sub.add_parser("mission-eval", help="score the mission compiler against the regex baseline")
+    s.add_argument("--sets", default="tuning,heldout")
+    s.add_argument("--model", default=None, help="Nemotron model id (needs NEBIUS_API_KEY); omit for baseline only")
+    s.add_argument("--out", default=None)
+    s.add_argument("--ai-log", default=None)
+    s.set_defaults(fn=cmd_mission_eval)
+
+    s = sub.add_parser("compile", help="turn a plain-language mission into a mission plan")
+    s.add_argument("text")
+    s.add_argument("--model", default=None)
+    s.add_argument("--ai-log", default=None)
+    s.set_defaults(fn=cmd_compile)
 
     args = p.parse_args(argv)
     return args.fn(args)

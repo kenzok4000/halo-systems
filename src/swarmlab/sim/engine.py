@@ -429,6 +429,47 @@ class Simulation:
             self.ended = True
 
     # ------------------------------------------------------------------------
+    def inject(self, kind: str, **kw) -> dict:
+        """Add a disturbance or operator command during a live run (used by the dashboard).
+
+        ``motor_failure`` (drone), ``gust`` (velocity_mps, duration_s), ``blackout``
+        (drones, duration_s) or ``directive`` (changes). Unspecified values are
+        drawn at random. Returns what was injected; it is also logged as an event.
+        """
+        from .scenario import MotorFailure, ScriptedDirective
+        from .sensing import Blackout
+        from .wind import GustFront
+        rng = np.random.default_rng()
+        start = round(self.t + self.dt, 10)
+        active = np.nonzero(self.active_mask())[0]
+        if kind == "motor_failure":
+            drone = int(kw["drone"]) if kw.get("drone") is not None else (int(rng.choice(active)) if len(active) else 0)
+            self._failures.insert(0, MotorFailure(start, drone))
+            detail = {"drone": drone}
+        elif kind == "gust":
+            if kw.get("velocity_mps") is not None:
+                vel = tuple(float(x) for x in kw["velocity_mps"])
+            else:
+                heading = self.ctrl.plan.heading + rng.choice([-1, 1]) * math.pi / 2
+                mag = float(rng.uniform(8.0, 11.0))
+                vel = (mag * math.cos(heading), mag * math.sin(heading), -1.0)
+            front = GustFront(start, float(kw.get("duration_s", 5.0)), vel, ramp_s=0.6)
+            self.sc.wind.fronts.append(front)
+            detail = {"velocity_mps": [round(x, 1) for x in vel], "duration_s": front.duration_s}
+        elif kind == "blackout":
+            drones = [int(d) for d in kw["drones"]] if kw.get("drones") else \
+                sorted(int(d) for d in rng.choice(active, size=max(1, len(active) // 3), replace=False)) if len(active) else []
+            self.sc.sensing.blackouts.append(Blackout(start, start + float(kw.get("duration_s", 10.0)), drones))
+            detail = {"drones": drones, "duration_s": float(kw.get("duration_s", 10.0))}
+        elif kind == "directive":
+            changes = dict(kw.get("changes") or {})
+            self._script.insert(0, ScriptedDirective(start, changes))
+            detail = {"changes": changes}
+        else:
+            raise ValueError(f"unknown injection {kind!r}")
+        self.event("injected", detail.get("drone"), what=kind, **{k: v for k, v in detail.items() if k != "drone"})
+        return {"kind": kind, "t": start, **detail}
+
     def summary(self, obs: Observation | None = None) -> dict:
         """The compact state report given to supervisors (rules and Nemotron alike)."""
         obs = obs or self.obs

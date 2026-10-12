@@ -1,0 +1,117 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>SwarmLab</title>
+<link rel="stylesheet" href="/static/style.css">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Cpath d='M8 1l7 7-7 7-7-7z' fill='%234fb3a9'/%3E%3C/svg%3E">
+<script type="importmap">{"imports": {"three": "/static/vendor/three.module.min.js"}}</script>
+</head>
+<body>
+<header>
+  <div class="brand"><span class="logo">◆</span> SwarmLab <span class="sub">supervised drone-swarm formation flight</span></div>
+  <div id="ai-pill" class="pill">checking Nemotron…</div>
+</header>
+<main>
+  <section id="view">
+    <canvas id="scene"></canvas>
+    <div id="hud">
+      <div id="hud-title">No flight running</div>
+      <div id="hud-directive"></div>
+    </div>
+    <div id="legend">
+      <span><i class="dot ok"></i>flying</span><span><i class="dot fail"></i>failed / crashed</span>
+      <span><i class="dot ret"></i>left (battery)</span><span><i class="ring"></i>slot</span>
+      <span class="muted">Drones drawn 6x actual size</span>
+    </div>
+    <div id="viewbtns"><button id="view-reset">Follow</button><button id="view-top">Top view</button></div>
+  </section>
+  <aside>
+    <nav class="tabs">
+      <button data-tab="fly" class="active">Fly</button>
+      <button data-tab="mission">Mission</button>
+      <button data-tab="results">Results</button>
+      <button data-tab="about">About</button>
+    </nav>
+
+    <div class="tab active" id="tab-fly">
+      <label>Scenario <select id="scenario"></select></label>
+      <p id="scenario-desc" class="muted"></p>
+      <div class="row">
+        <label>Supervisor
+          <select id="config">
+            <option value="original+fixed">Original controller, fixed plan</option>
+            <option value="improved+fixed">Improved controller, fixed plan</option>
+            <option value="improved+rule" selected>Improved + rule supervisor</option>
+            <option value="improved+nemotron" id="opt-nemotron">Improved + Nemotron supervisor</option>
+          </select>
+        </label>
+        <label class="narrow">Seed <input id="seed" type="number" value="1000" min="0"></label>
+      </div>
+      <div class="row">
+        <button id="start" class="primary">Start flight</button>
+        <div class="seg" id="speed">
+          <button data-speed="1" class="active">1x</button><button data-speed="2">2x</button><button data-speed="5">5x</button>
+        </div>
+        <button id="pause">Pause</button>
+      </div>
+
+      <h3>Disturb the swarm</h3>
+      <div class="row wrap">
+        <button data-inject="gust">Gust front</button>
+        <button data-inject="motor_failure">Motor failure</button>
+        <button data-inject="blackout">Radio blackout</button>
+      </div>
+      <div class="row">
+        <select id="order-shape"><option>grid</option><option>line</option><option>column</option><option>v</option><option>ring</option></select>
+        <button id="order">Order formation</button>
+      </div>
+
+      <h3>Live</h3>
+      <div class="stats">
+        <div><span class="k">Formation error</span><span class="v" id="m-err">–</span></div>
+        <div><span class="k">Closest pair</span><span class="v" id="m-sep">–</span></div>
+        <div><span class="k">Flying / lost / left</span><span class="v" id="m-fly">–</span></div>
+        <div><span class="k">Crashes</span><span class="v" id="m-crash">–</span></div>
+        <div><span class="k">Battery, mean</span><span class="v" id="m-batt">–</span></div>
+        <div><span class="k">Speed</span><span class="v" id="m-speed">–</span></div>
+      </div>
+      <div class="progress"><div id="m-progress"></div></div>
+      <canvas id="spark" height="70"></canvas>
+      <p class="muted small">Formation error: distance from the ideal shape, in metres (formed below 1 m).</p>
+
+      <h3>Supervisor decisions <span id="ai-wait" class="muted small"></span></h3>
+      <ol id="log"></ol>
+      <button id="export">Download this run (JSON)</button>
+    </div>
+
+    <div class="tab" id="tab-mission">
+      <p>Describe a civilian mission in plain words. Nemotron turns it into a checked mission plan; anything outside civilian use is refused.</p>
+      <textarea id="mission-text" rows="4">Search the 400 by 250 m meadow for a missing hiker with 12 drones line abreast, 8 m apart, at 30 m.</textarea>
+      <div class="row wrap examples">
+        <button data-ex="Send the swarm single file down the 400 m forest trail at 4 m/s, stay under 20 m.">Forest trail</button>
+        <button data-ex="Orbit the water tower with a ring of 10 drones, 5 m apart, at 40 m.">Orbit</button>
+        <button data-ex="Delivery convoy of 8 in a column, 20 mph, 50 m up, 1.5 km to the depot.">Convoy</button>
+      </div>
+      <div class="row"><button id="compile" class="primary">Compile mission</button><button id="fly-mission" disabled>Fly this mission</button></div>
+      <div id="compile-out"></div>
+    </div>
+
+    <div class="tab" id="tab-results">
+      <div id="results"><p class="muted">Loading benchmark results…</p></div>
+    </div>
+
+    <div class="tab" id="tab-about">
+      <h3>How it works</h3>
+      <p>Each drone runs a 50 Hz controller: it tracks its slot in the formation, and a safety filter (control barrier functions) keeps it clear of other drones, obstacles and the ground. No language model is in this loop.</p>
+      <p>Every 5 seconds a supervisor reads a short status report and may change the formation, spacing, speed, altitude or safety margin. The supervisor is either hand-written rules or NVIDIA Nemotron on Nebius Token Factory. Every directive passes a safety validator first. If Nemotron fails or replies badly, the rules take over for that step.</p>
+      <p>The simulation includes wind and gust fronts, noisy GPS, lossy and delayed radio, motor failures, batteries and obstacles. It is a simulation, not flight hardware.</p>
+      <h3>Nebius evidence</h3>
+      <div id="evidence" class="muted">Loading…</div>
+    </div>
+  </aside>
+</main>
+<script type="module" src="/static/app.js"></script>
+</body>
+</html>

@@ -231,3 +231,47 @@ def make(name: str, seed: int = 0, n: int | None = None, **overrides) -> Scenari
         raise KeyError(f"unknown scenario {name!r}; choose from {', '.join(SCENARIOS)}")
     sc = SCENARIOS[name](seed) if n is None else SCENARIOS[name](seed, n=n)
     return dataclasses.replace(sc, **overrides) if overrides else sc
+
+
+def from_mission(spec: dict, seed: int = 0, text: str = "") -> Scenario:
+    """Build a flyable scenario from a compiled ``MissionSpec`` (open ground, light wind).
+
+    Unstated values take the defaults in ``ai.mission.DEFAULTS``. Values outside
+    the flight envelope are left for the safety validator to clamp at take-off,
+    so the clamp shows up in the directive log.
+    """
+    from ..ai.mission import DEFAULTS
+    if spec.get("refused"):
+        raise ValueError("this mission was refused: " + (spec.get("refusal_reason") or "outside civilian use"))
+    d = {k: (v if v is not None else DEFAULTS[k]) for k, v in (spec.get("directive") or {}).items()}
+    n = int(min(64, max(2, spec.get("drones") or DEFAULTS["drones"])))
+    route = spec.get("route") or {}
+    kind = route.get("type") or "transit"
+    rng = _rng(seed, 10)
+    from ..control.formations import formation_offsets
+    width = float(np.ptp(formation_offsets(d["formation"], n, d["spacing_m"])[:, 1]))
+    if kind == "survey":
+        w = float(route.get("width_m") or 300.0)
+        h = float(route.get("height_m") or 200.0)
+        lane = float(route.get("lane_m") or max(20.0, width + d["spacing_m"]))
+        waypoints = lawnmower(0.0, 0.0, min(w, 1500.0), min(h, 1500.0), lane)
+        loop = False
+    elif kind == "loop":
+        side = max(80.0, 3 * width)
+        waypoints = [(0.0, 0.0), (side, 0.0), (side, side * 0.7), (0.0, side * 0.7)]
+        loop = True
+    else:
+        length = float(route.get("length_m") or 300.0)
+        waypoints = [(0.0, 0.0), (min(length, 3000.0), 0.0)]
+        loop = False
+    ceiling = (spec.get("constraints") or {}).get("altitude_max_m") or 120.0
+    altitude = d["altitude_m"] if (spec.get("directive") or {}).get("altitude_m") is not None else min(DEFAULTS["altitude_m"], ceiling - 2.0)
+    path_len = sum(math.dist(a, b) for a, b in zip(waypoints, waypoints[1:]))
+    return Scenario(
+        name="custom_mission", title="Operator mission", description=text or "Mission compiled from the operator's request.",
+        n=n, duration_s=float(min(900.0, 60.0 + 1.6 * path_len / max(d["speed_mps"], 0.5))) if not loop else 180.0,
+        waypoints=waypoints, loop=loop,
+        directive=Directive(d["formation"], d["spacing_m"], d["speed_mps"], altitude, d["safety_margin_m"], source="mission"),
+        wind=_wind_from(rng, rng.uniform(1.0, 3.0)), altitude_max_m=float(ceiling), end_when_done=not loop,
+        use_case="operator mission", tags=("custom",),
+    )

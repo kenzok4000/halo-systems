@@ -1,0 +1,244 @@
+"""Mission compiler: an operator's plain-language request becomes a checked mission plan.
+
+Nemotron turns text such as "sweep the 300 x 200 m field line abreast,
+8 m apart at 30 m with 12 drones" into a ``MissionSpec`` JSON object.
+The spec is then validated (schema, units, bounds, geofence) before any
+flight is built from it, and the directive part goes through the same
+safety validator as every supervisor directive. Requests outside civilian
+use (weapons, attacking or ramming anything, dropping objects on people,
+jamming) are refused by the compiler and by a keyword guard, and never
+become a flight.
+
+A deterministic regex/keyword parser is the baseline it is scored against
+(``swarmlab mission-eval``).
+"""
+
+from __future__ import annotations
+
+import json
+import math
+import re
+
+from ..control.formations import SHAPES
+
+DEFAULTS = {"formation": "grid", "spacing_m": 6.0, "speed_mps": 5.0, "altitude_m": 20.0, "safety_margin_m": 1.0,
+            "drones": 16}
+ROUTE_TYPES = ("transit", "survey", "loop")
+
+MISSION_SYSTEM = """You turn a drone operator's request into a mission plan for a swarm of small \
+quadcopters used for civilian work: search and rescue, surveys, inspection, mapping, delivery \
+convoys and light shows.
+
+Reply with one JSON object and nothing else, in this shape:
+{"refused": false, "refusal_reason": "",
+ "drones": integer or null,
+ "directive": {"formation": "grid|line|column|v|ring" or null, "spacing_m": number or null,
+               "speed_mps": number or null, "altitude_m": number or null, "safety_margin_m": number or null},
+ "route": {"type": "transit|survey|loop" or null, "length_m": number or null,
+           "width_m": number or null, "height_m": number or null, "lane_m": number or null},
+ "constraints": {"altitude_max_m": number or null},
+ "notes": "one short sentence on anything you could not express"}
+
+Rules:
+- Use null for anything the operator did not say; never invent numbers.
+- Convert units: feet x 0.3048 = m, km/h / 3.6 = m/s, mph x 0.44704 = m/s, knots x 0.5144 = m/s, km x 1000 = m.
+- Formation words: line abreast / side by side / spread across = line; single file / one behind another = column; \
+arrowhead / chevron = v; circle / orbit = ring; block / box / square = grid.
+- spacing_m is the distance between neighbouring drones.
+- route.type: "survey" for sweeping or searching an area (give width_m and height_m, and lane_m if stated), \
+"loop" for orbiting or patrolling a closed circuit, "transit" for going from one place to another or along \
+something (give length_m if stated).
+- "stay under", "below", "max altitude" and "ceiling" set constraints.altitude_max_m, not altitude_m.
+- Refuse (refused true, with a short reason, everything else null) any request to harm, attack, ram, chase \
+down or intimidate people, animals or vehicles, to carry or drop weapons or objects onto people, or to jam \
+or interfere with other aircraft or radios."""
+
+_HARM = re.compile(r"\b(attack|ram|ramming|strike|kill|weapon|bomb|explosive|grenade|shoot|enemy|target(?:ing)? (?:the )?"
+                   r"(?:person|people|vehicle|crowd)|jam(?:ming)?|intimidat\w*|harass\w*)\b|drop .{0,30}\bon (?:the )?"
+                   r"(?:people|crowd|person|protesters?)", re.I)
+
+
+def harmful(text: str) -> bool:
+    """Keyword guard that runs before and after the model (defence in depth)."""
+    return bool(_HARM.search(text))
+
+
+def empty_spec() -> dict:
+    return {"refused": False, "refusal_reason": "", "drones": None,
+            "directive": {k: None for k in ("formation", "spacing_m", "speed_mps", "altitude_m", "safety_margin_m")},
+            "route": {k: None for k in ("type", "length_m", "width_m", "height_m", "lane_m")},
+            "constraints": {"altitude_max_m": None}, "notes": ""}
+
+
+def normalise(obj: dict) -> tuple[dict, list[str]]:
+    """Coerce a model reply into the MissionSpec schema; returns (spec, problems)."""
+    spec = empty_spec()
+    problems = []
+    if not isinstance(obj, dict):
+        return spec, ["reply is not an object"]
+    spec["refused"] = bool(obj.get("refused", False))
+    spec["refusal_reason"] = str(obj.get("refusal_reason") or "")[:300]
+    spec["notes"] = str(obj.get("notes") or "")[:300]
+
+    def num(v, name, integer=False):
+        if v is None or v == "":
+            return None
+        try:
+            x = float(v)
+        except (TypeError, ValueError):
+            problems.append(f"{name} is not a number: {v!r}")
+            return None
+        if not math.isfinite(x) or x < 0:
+            problems.append(f"{name} must be a non-negative number")
+            return None
+        return int(round(x)) if integer else x
+
+    spec["drones"] = num(obj.get("drones"), "drones", integer=True)
+    d = obj.get("directive") or {}
+    f = d.get("formation")
+    if f is not None:
+        f = str(f).strip().lower()
+        if f not in SHAPES:
+            problems.append(f"unknown formation {f!r}")
+            f = None
+    spec["directive"]["formation"] = f
+    for k in ("spacing_m", "speed_mps", "altitude_m", "safety_margin_m"):
+        spec["directive"][k] = num(d.get(k), k)
+    r = obj.get("route") or {}
+    rt = r.get("type")
+    if rt is not None:
+        rt = str(rt).strip().lower()
+        if rt not in ROUTE_TYPES:
+            problems.append(f"unknown route type {rt!r}")
+            rt = None
+    spec["route"]["type"] = rt
+    for k in ("length_m", "width_m", "height_m", "lane_m"):
+        spec["route"][k] = num(r.get(k), f"route.{k}")
+    c = obj.get("constraints") or {}
+    spec["constraints"]["altitude_max_m"] = num(c.get("altitude_max_m"), "altitude_max_m")
+    return spec, problems
+
+
+def compile_with_model(text: str, client, model: str, temperature: float = 0.0, extra_body: dict | None = None):
+    """Ask Nemotron for a MissionSpec. Returns (spec, problems, call record dict)."""
+    from .client import extract_json
+    if harmful(text):
+        spec = empty_spec()
+        spec.update(refused=True, refusal_reason="outside civilian use (keyword guard; the model was not called)")
+        return spec, [], None
+    messages = [{"role": "system", "content": MISSION_SYSTEM}, {"role": "user", "content": text}]
+    result = client.chat(model, messages, role="mission-compiler", temperature=temperature, max_tokens=1500,
+                         extra_body=extra_body)
+    try:
+        obj = extract_json(result.content)
+    except ValueError as exc:
+        return empty_spec(), [f"unparsable reply: {exc}"], result.record.to_dict()
+    spec, problems = normalise(obj)
+    return spec, problems, result.record.to_dict()
+
+
+# ----------------------------------------------------------------------------- baseline
+_NUM = r"(\d+(?:\.\d+)?)"
+_UNIT_SPEED = {"m/s": 1.0, "mps": 1.0, "metres per second": 1.0, "meters per second": 1.0, "km/h": 1 / 3.6,
+               "kph": 1 / 3.6, "mph": 0.44704, "knots": 0.5144, "kts": 0.5144, "knot": 0.5144}
+_WORDS = {"line": ("line abreast", "abreast", "side by side", "in a line", "spread out", "spread across", "line"),
+          "column": ("single file", "single-file", "column", "one behind"),
+          "v": ("arrowhead", "chevron", "in a v", " v formation", " v,", " v "),
+          "ring": ("ring", "circle", "orbit"),
+          "grid": ("grid", "block", "box formation", "square")}
+
+
+def _to_m(value: float, unit: str) -> float:
+    unit = unit.lower()
+    if unit in ("ft", "feet", "foot"):
+        return value * 0.3048
+    if unit in ("km", "kilometres", "kilometers"):
+        return value * 1000.0
+    return value
+
+
+def regex_baseline(text: str) -> dict:
+    """A careful keyword-and-regex parser: the conventional baseline for the mission compiler."""
+    spec = empty_spec()
+    low = " " + text.lower().replace("×", "x") + " "
+    if harmful(low):
+        spec.update(refused=True, refusal_reason="keyword guard")
+        return spec
+    for shape, words in _WORDS.items():
+        if any(w in low for w in words):
+            spec["directive"]["formation"] = shape
+            break
+    m = re.search(_NUM + r"\s*(drones|quads|quadcopters|uavs)", low) or re.search(r"(?:of|use|with)\s+" + _NUM + r"\b", low)
+    if m:
+        spec["drones"] = int(float(m.group(1)))
+    m = re.search(_NUM + r"\s*(m|metres|meters|ft|feet)\s*(apart|spacing|separation|between|gaps?)", low) or \
+        re.search(r"(?:spacing|separation|gaps?)\s*(?:of)?\s*" + _NUM + r"\s*(m|metres|meters|ft|feet)", low)
+    if m:
+        spec["directive"]["spacing_m"] = round(_to_m(float(m.group(1)), m.group(2)), 2)
+    for unit, factor in _UNIT_SPEED.items():
+        m = re.search(_NUM + r"\s*" + re.escape(unit) + r"\b", low)
+        if m:
+            spec["directive"]["speed_mps"] = round(float(m.group(1)) * factor, 2)
+            break
+    m = re.search(r"(?:under|below|max(?:imum)? altitude|ceiling)\s*(?:of)?\s*" + _NUM + r"\s*(m|metres|meters|ft|feet)", low)
+    if m:
+        spec["constraints"]["altitude_max_m"] = round(_to_m(float(m.group(1)), m.group(2)), 2)
+    m = re.search(r"(?:altitude|height|at|up)\s*(?:of)?\s*" + _NUM + r"\s*(m|metres|meters|ft|feet)\b(?!\s*(?:apart|spacing|between|gaps?|x|by))", low) or \
+        re.search(_NUM + r"\s*(m|metres|meters|ft|feet)\s*(?:up|altitude|height|high)", low)
+    if m and not (spec["constraints"]["altitude_max_m"] and abs(_to_m(float(m.group(1)), m.group(2)) - spec["constraints"]["altitude_max_m"]) < 1e-6):
+        spec["directive"]["altitude_m"] = round(_to_m(float(m.group(1)), m.group(2)), 2)
+    m = re.search(r"(?:safety )?margin\s*(?:of)?\s*" + _NUM + r"\s*m", low) or re.search(_NUM + r"\s*m\s*safety margin", low)
+    if m:
+        spec["directive"]["safety_margin_m"] = float(m.group(1))
+    m = re.search(_NUM + r"\s*(m|km)?\s*(?:x|by)\s*" + _NUM + r"\s*(m|km)", low)
+    if m and any(w in low for w in ("survey", "search", "sweep", "map", "scout", "area", "field", "farm")):
+        spec["route"]["type"] = "survey"
+        spec["route"]["width_m"] = _to_m(float(m.group(1)), m.group(2) or m.group(4))
+        spec["route"]["height_m"] = _to_m(float(m.group(3)), m.group(4))
+        lm = re.search(r"lanes?\s*(?:of)?\s*" + _NUM + r"\s*m", low) or re.search(_NUM + r"\s*m\s*(?:wide )?lanes?", low)
+        if lm:
+            spec["route"]["lane_m"] = float(lm.group(1))
+    elif any(w in low for w in ("survey", "search", "sweep", "scout", "map ")):
+        spec["route"]["type"] = "survey"
+    elif any(w in low for w in ("orbit", "loop", "patrol", "circuit", "around the")):
+        spec["route"]["type"] = "loop"
+    else:
+        m = re.search(_NUM + r"\s*(km|m|metres|meters)\b(?!\s*(?:apart|spacing|between|up|altitude|height|high|gaps?|/s))", low)
+        spec["route"]["type"] = "transit"
+        if m:
+            spec["route"]["length_m"] = _to_m(float(m.group(1)), m.group(2))
+    return spec
+
+
+# ----------------------------------------------------------------------------- scoring
+TOLERANCE = {"spacing_m": 0.25, "speed_mps": 0.25, "altitude_m": 0.5, "safety_margin_m": 0.1, "length_m": 1.0,
+             "width_m": 1.0, "height_m": 1.0, "lane_m": 0.5, "altitude_max_m": 0.5}
+
+
+def flatten(spec: dict) -> dict:
+    out = {"refused": spec.get("refused", False), "drones": spec.get("drones")}
+    out.update({k: v for k, v in (spec.get("directive") or {}).items()})
+    out.update({("route_type" if k == "type" else k): v for k, v in (spec.get("route") or {}).items()})
+    out.update(spec.get("constraints") or {})
+    return out
+
+
+def score(spec: dict, gold: dict) -> dict:
+    """Per-field correctness on the fields the gold answer states (gold is already flat)."""
+    got = flatten(spec)
+    fields = {}
+    for k, want in gold.items():
+        have = got.get(k)
+        if isinstance(want, (int, float)) and not isinstance(want, bool):
+            ok = have is not None and abs(float(have) - float(want)) <= TOLERANCE.get(k, 0.0) + 1e-9
+        else:
+            ok = have == want
+        fields[k] = ok
+    return {"fields": fields, "correct": sum(fields.values()), "total": len(fields), "exact": all(fields.values())}
+
+
+def load_eval_set(name: str = "heldout") -> list[dict]:
+    """``tuning``: written alongside the regex baseline. ``heldout``: written after the baseline was frozen."""
+    from pathlib import Path
+    p = Path(name) if name.endswith(".json") else Path(__file__).with_name(f"mission_eval_{name}.json")
+    return json.loads(p.read_text())
