@@ -116,9 +116,9 @@ def gusty_day(seed: int = 0, n: int = 16) -> Scenario:
     return Scenario(
         name="gusty_day",
         title="Gust fronts",
-        description="Transit in strong turbulence with repeated sudden crosswind gust fronts of 7-11 m/s.",
+        description="Close-formation transit (3 m spacing) in strong turbulence with repeated sudden crosswind gust fronts of 7-11 m/s.",
         n=n, duration_s=90.0, waypoints=[(0.0, 0.0), (420.0, 0.0)],
-        directive=Directive("grid", 4.5, 6.0, 25.0, 0.8, source="mission"),
+        directive=Directive("grid", 3.0, 6.0, 25.0, 0.8, source="mission"),
         wind=wind, use_case="infrastructure inspection in bad weather", tags=("disturbance",),
     )
 

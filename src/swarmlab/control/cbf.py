@@ -32,7 +32,7 @@ def _rows_dot(a, b):
 
 
 def build_constraints(p, v, nbr_pos, nbr_vel, nbr_age, active, *, d_safe, a_brake, gamma, max_neighbours=MAX_NEIGHBOURS,
-                      stale_growth=1.5, max_age=3.0, world=None, obstacle_clearance=1.0, floor_z=1.0,
+                      stale_growth=0.5, max_age=3.0, world=None, obstacle_clearance=1.0, floor_z=1.0,
                       obstacle_range=15.0):
     """Linear constraints G a <= b for every drone: shapes (n, K, 3), (n, K)."""
     n = len(p)

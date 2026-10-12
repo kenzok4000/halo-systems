@@ -8,7 +8,7 @@ tuned rules that a careful engineer would write for these scenarios:
   Return to the mission plan once the whole formation has room again.
 * Turbulence and near misses: widen spacing and raise the safety margin,
   and hold that for a while after it calms down.
-* Degraded radio: widen spacing and slow down while links are stale.
+* Degraded radio: slow down while many links are stale.
 * Energy: when the remaining leg needs more than 90% of the usable charge
   at the current speed, fly the cruise speed with the lowest energy per
   kilometre for the present headwind.
@@ -24,7 +24,7 @@ from .base import Decision, Supervisor
 CORRIDOR_BUFFER_M = 2.0     # free space wanted each side, on top of the safety margin
 MIN_SPACING_FRACTION = 0.6  # never squeeze below 60% of the mission spacing to fit a corridor
 GUST_LIMIT_MPS = 4.0
-STALE_LIMIT = 0.25
+STALE_LIMIT = 0.5
 HOLD_S = 15.0
 ENERGY_HEADROOM = 0.9
 ENERGY_RELEASE = 0.6
@@ -57,13 +57,13 @@ class RuleSupervisor(Supervisor):
             want["safety_margin_m"] = min(mission["safety_margin_m"] + 0.5, 2.0)
             reasons.append("gusts or near misses: wider spacing and margin")
 
-        # Degraded radio: more room and less speed.
+        # Badly degraded radio: slow down (drones still hold slots on their own GPS,
+        # so re-spacing only adds disruption; measured on the tuning seeds).
         if comms.get("stale_link_fraction", 0.0) > STALE_LIMIT or comms.get("isolated_drones", 0) > 0:
             self.radio_until = t + HOLD_S
         if t < self.radio_until:
-            want["spacing_m"] = max(want["spacing_m"], mission["spacing_m"] + 1.5)
             want["speed_mps"] = round(mission["speed_mps"] * 0.8, 2)
-            reasons.append("stale radio links: wider spacing, slower")
+            reasons.append("stale radio links: slower")
 
         # Energy: cheapest cruise speed for this headwind when the charge is tight.
         table = energy.get("wh_per_km_by_speed") or {}

@@ -40,7 +40,7 @@ class ImprovedController(Controller):
     kd = 3.2
     kc = 0.8
     a_brake = 3.0
-    gamma = 1.5
+    gamma = 3.0
 
     def __init__(self, *args, features=FEATURES, speed_limit: float = 20.0, **kwargs):
         super().__init__(*args, speed_limit=speed_limit, **kwargs)
