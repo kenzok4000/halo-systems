@@ -10,6 +10,7 @@ were tuned on.
 
 from __future__ import annotations
 
+import dataclasses
 import json
 import os
 import time
@@ -59,9 +60,15 @@ def split_config(config: str) -> tuple[str, str]:
 
 
 def run_one(scenario: str, seed: int, config: str, n: int | None = None, record_hz: float = 0.0,
-            keep_result: bool = False, supervisor_kw: dict | None = None, **overrides):
+            keep_result: bool = False, supervisor_kw: dict | None = None, gps_scale: float | None = None,
+            **overrides):
+    """``gps_scale`` multiplies the scenario's GPS noise and bias (the navigation-error sweep)."""
     ctrl_spec, sup_spec = split_config(config)
     sc = make(scenario, seed, n=n, **overrides)
+    if gps_scale is not None:
+        sc = dataclasses.replace(sc, sensing=dataclasses.replace(
+            sc.sensing, gps_sigma_m=sc.sensing.gps_sigma_m * gps_scale,
+            gps_bias_sigma_m=sc.sensing.gps_bias_sigma_m * gps_scale))
     body = DroneBody()
     sup_kw = dict(supervisor_kw or {})
     if sup_spec.startswith("nemotron"):
@@ -74,6 +81,8 @@ def run_one(scenario: str, seed: int, config: str, n: int | None = None, record_
         "scenario": scenario, "seed": seed, "config": config, "controller": ctrl_spec, "supervisor": sup_spec,
         "n": sc.n, "wall_s": round(time.perf_counter() - t0, 2), **result.metrics,
     }
+    if gps_scale is not None:
+        row["gps_scale"] = gps_scale
     if overrides:
         row["overrides"] = {k: (v if isinstance(v, (int, float, str, bool)) else repr(v)) for k, v in overrides.items()}
     return (row, result) if keep_result else row

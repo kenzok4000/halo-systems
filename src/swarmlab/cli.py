@@ -50,6 +50,8 @@ def cmd_bench(args) -> int:
     extra = {}
     if args.cache or args.ai_log:
         extra["supervisor_kw"] = {"cache_path": args.cache, "cache_mode": args.cache_mode, "log_path": args.ai_log}
+    if args.gps_scale is not None:
+        extra["gps_scale"] = args.gps_scale
     ns = [int(x) for x in args.n.split(",")] if args.n else None
     rows = run_grid(args.scenarios.split(","), _seeds(args.seeds), args.configs.split(","), args.out,
                     n=ns, workers=args.workers, extra=extra)
@@ -206,6 +208,7 @@ def main(argv=None) -> int:
     s.add_argument("--n", default=None, help="comma-separated drone counts (scaling study)")
     s.add_argument("--out", required=True)
     s.add_argument("--workers", type=int, default=None)
+    s.add_argument("--gps-scale", type=float, default=None, help="multiply GPS noise and bias (use a separate --out per value)")
     s.add_argument("--cache")
     s.add_argument("--cache-mode", default="record", choices=("record", "replay", "off"))
     s.add_argument("--ai-log", default=None)
