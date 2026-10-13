@@ -70,6 +70,10 @@ def run(evidence_dir: str = "evidence", model: str | None = None, flight: bool =
         report["usage"] = client.usage_summary()
         report["passed"] = code == 0
         (ev / "nebius_e2e.json").write_text(json.dumps(report, indent=2))
+        b = report["usage"]["budget"]
+        print_fn(f"This run: {report['usage']['prompt_tokens']} prompt + {report['usage']['completion_tokens']} completion "
+                 f"tokens, about ${report['usage']['cost_usd']:.4f}. Ledger total ${b['spent_usd']:.4f} of the "
+                 f"${b['cap_usd']:.2f} cap ({b['ledger']}).")
         print_fn(f"Evidence written to {ev / 'nebius_e2e.json'} and {log_path}")
         return code
 

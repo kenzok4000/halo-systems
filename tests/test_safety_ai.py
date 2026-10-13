@@ -6,12 +6,14 @@ parsing and logging logic only. Real calls are made by ``swarmlab doctor``.
 
 import json
 import math
+import os
 import tempfile
 import unittest
 from pathlib import Path
 
 import numpy as np
 
+from swarmlab.ai.budget import Budget, Pricing
 from swarmlab.ai.cache import CallCache
 from swarmlab.ai.client import NebiusClient, NebiusError, extract_json
 from swarmlab.control.cbf import build_constraints, project
@@ -21,6 +23,23 @@ from swarmlab.supervisor.nemotron import NemotronSupervisor, parse_directive
 from swarmlab.supervisor.rule import RuleSupervisor
 
 FAKE_KEY = "test-key-0123456789abcdefghijklmnop"
+_LEDGER_DIR = tempfile.TemporaryDirectory()
+_SAVED_ENV = {}
+
+
+def setUpModule():
+    # Fake calls must never reach the real spend ledger.
+    for k in ("SWARMLAB_LEDGER", "SWARMLAB_BUDGET_USD", "NEBIUS_PRICE_INPUT_PER_M", "NEBIUS_PRICE_OUTPUT_PER_M"):
+        _SAVED_ENV[k] = os.environ.pop(k, None)
+    os.environ["SWARMLAB_LEDGER"] = str(Path(_LEDGER_DIR.name) / "ledger.jsonl")
+
+
+def tearDownModule():
+    for k, v in _SAVED_ENV.items():
+        os.environ.pop(k, None)
+        if v is not None:
+            os.environ[k] = v
+    _LEDGER_DIR.cleanup()
 
 
 class ValidatorTest(unittest.TestCase):
@@ -207,6 +226,61 @@ class ClientTest(unittest.TestCase):
         c = NebiusClient(api_key="", transport=FakeTransport([]))
         with self.assertRaises(NebiusError):
             c.chat("m", [])
+
+
+class BudgetTest(unittest.TestCase):
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.ledger = Path(self.tmp.name) / "ledger.jsonl"
+
+    def tearDown(self):
+        self.tmp.cleanup()
+
+    def client(self, responses, cap=1.0, **kw):
+        t = FakeTransport(responses)
+        c = NebiusClient(api_key=FAKE_KEY, transport=t, sleep=lambda s: None, rate_per_s=1000, burst=1000,
+                         budget=Budget(self.ledger, cap), **kw)
+        return c, t
+
+    def test_cap_stops_the_call_before_it_is_sent(self):
+        c, t = self.client([ok(DIRECTIVE_JSON)], cap=0.0001)
+        with self.assertRaises(NebiusError) as ctx:
+            c.chat("nvidia/nemotron-nano-test", [{"role": "user", "content": "x"}], max_tokens=1200)
+        self.assertTrue(ctx.exception.fatal)
+        self.assertIn("budget cap", ctx.exception.reason)
+        self.assertEqual(t.calls, [])
+
+    def test_ledger_is_shared_and_counts_billed_failures(self):
+        # An empty reply is still billed; a dropped connection is counted at the worst case.
+        c, _ = self.client([ok("  ", 100, 1200), ConnectionError("reset"), ok(DIRECTIVE_JSON, 100, 20)])
+        r = c.chat("nvidia/nemotron-nano-test", [{"role": "user", "content": "x" * 30}], max_tokens=1200)
+        price = Pricing.for_model("nvidia/nemotron-nano-test")
+        entries = [json.loads(l) for l in self.ledger.read_text().splitlines()]
+        self.assertEqual([e["status"] for e in entries], ["unusable", "unknown", "ok"])
+        self.assertAlmostEqual(entries[0]["cost_usd"], price.cost(100, 1200), places=6)
+        self.assertGreater(entries[1]["cost_usd"], price.cost(0, 1200) - 1e-9)
+        self.assertEqual(r.record.prompt_tokens, 200)
+        other = Budget(self.ledger, 1.0)  # a second process reading the same file
+        self.assertAlmostEqual(other.spent_usd(), sum(e["cost_usd"] for e in entries), places=6)
+
+    def test_ceilings_and_env_prices(self):
+        self.assertGreater(Pricing.for_model("nvidia/some-new-model").output_per_m,
+                           Pricing.for_model("nvidia/nemotron-super").output_per_m)
+        os.environ["NEBIUS_PRICE_INPUT_PER_M"], os.environ["NEBIUS_PRICE_OUTPUT_PER_M"] = "0.5", "1.5"
+        try:
+            self.assertEqual(Pricing.for_model("anything").source, "env")
+        finally:
+            del os.environ["NEBIUS_PRICE_INPUT_PER_M"], os.environ["NEBIUS_PRICE_OUTPUT_PER_M"]
+
+    def test_strict_supervisor_stops_on_a_dead_key_instead_of_falling_back(self):
+        responses = [(401, {}, b'{"detail":"Unable to authenticate"}')]
+        c, _ = self.client(list(responses))
+        loose = NemotronSupervisor(client=c, model="nvidia/nemotron-test")
+        self.assertTrue(loose.decide(summary(), Directive(), 30.0).meta["fallback"])
+        c, _ = self.client(list(responses))
+        strict = NemotronSupervisor(client=c, model="nvidia/nemotron-test", strict=True)
+        with self.assertRaises(NebiusError):
+            strict.decide(summary(), Directive(), 30.0)
 
 
 class ExtractJsonTest(unittest.TestCase):

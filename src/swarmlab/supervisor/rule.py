@@ -59,7 +59,7 @@ class RuleSupervisor(Supervisor):
 
         # Badly degraded radio: slow down (drones still hold slots on their own GPS,
         # so re-spacing only adds disruption; measured on the tuning seeds).
-        if comms.get("stale_link_fraction", 0.0) > STALE_LIMIT or comms.get("isolated_drones", 0) > 0:
+        if comms.get("stale_link_fraction", 0.0) > STALE_LIMIT:
             self.radio_until = t + HOLD_S
         if t < self.radio_until:
             want["speed_mps"] = round(mission["speed_mps"] * 0.8, 2)

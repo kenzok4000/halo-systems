@@ -63,7 +63,10 @@ def run_one(scenario: str, seed: int, config: str, n: int | None = None, record_
     ctrl_spec, sup_spec = split_config(config)
     sc = make(scenario, seed, n=n, **overrides)
     body = DroneBody()
-    sim = Simulation(sc, make_controller(ctrl_spec, body, sc.world), make_supervisor(sup_spec, **(supervisor_kw or {})),
+    sup_kw = dict(supervisor_kw or {})
+    if sup_spec.startswith("nemotron"):
+        sup_kw.setdefault("strict", True)   # a dead key or spent budget fails the run instead of mislabelling it
+    sim = Simulation(sc, make_controller(ctrl_spec, body, sc.world), make_supervisor(sup_spec, **sup_kw),
                      seed=seed, body=body, record_hz=record_hz)
     t0 = time.perf_counter()
     result = sim.run()

@@ -9,6 +9,8 @@
 * Every call returns a ``CallRecord`` (latency, tokens, cost estimate,
   status, attempts, request id) and is appended to a JSON-lines log with
   secrets redacted, which is the evidence for the usage and cost report.
+* A spend guard (``budget.py``) checks a shared ledger before every request
+  and refuses calls that could cross the cap.
 * Responses are validated: HTTP status, JSON shape, a non-empty message.
   Callers parse and validate the content themselves (see ``extract_json``).
 
@@ -30,33 +32,22 @@ import uuid
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
 
+from .budget import Budget, BudgetExceeded, Pricing, estimate_prompt_tokens
+
 DEFAULT_BASE_URL = "https://api.tokenfactory.nebius.com/v1"
 RETRY_STATUS = {408, 409, 425, 429, 500, 502, 503, 504}
 _KEY_PATTERN = re.compile(r"(Bearer\s+)?[A-Za-z0-9_\-\.]{24,}")
 
 
 class NebiusError(RuntimeError):
-    def __init__(self, reason: str, status: int | None = None, record: "CallRecord | None" = None):
+    """``fatal`` errors (no key, key rejected, budget cap) will fail every later call too."""
+
+    def __init__(self, reason: str, status: int | None = None, record: "CallRecord | None" = None, fatal: bool = False):
         super().__init__(reason)
         self.reason = reason
         self.status = status
         self.record = record
-
-
-@dataclass
-class Pricing:
-    """USD per million tokens. Defaults are placeholders: set real prices with env vars or ``--price``."""
-
-    input_per_m: float = 0.0
-    output_per_m: float = 0.0
-
-    @classmethod
-    def from_env(cls) -> "Pricing":
-        return cls(float(os.environ.get("NEBIUS_PRICE_INPUT_PER_M", "0") or 0),
-                   float(os.environ.get("NEBIUS_PRICE_OUTPUT_PER_M", "0") or 0))
-
-    def cost(self, prompt_tokens: int, completion_tokens: int) -> float:
-        return (prompt_tokens * self.input_per_m + completion_tokens * self.output_per_m) / 1e6
+        self.fatal = fatal
 
 
 @dataclass
@@ -143,7 +134,8 @@ class NebiusClient:
     def __init__(self, api_key: str | None = None, base_url: str | None = None, *, timeout_s: float = 30.0,
                  max_retries: int = 4, backoff_base_s: float = 1.0, backoff_max_s: float = 20.0,
                  rate_per_s: float = 2.0, burst: int = 4, log_path: str | os.PathLike | None = None,
-                 pricing: Pricing | None = None, transport=None, get_transport=None, sleep=time.sleep):
+                 pricing: Pricing | None = None, budget: Budget | None = None, transport=None, get_transport=None,
+                 sleep=time.sleep):
         self.api_key = api_key if api_key is not None else os.environ.get("NEBIUS_API_KEY", "")
         self.base_url = (base_url or os.environ.get("NEBIUS_BASE_URL") or DEFAULT_BASE_URL).rstrip("/")
         self.timeout_s = timeout_s
@@ -152,7 +144,8 @@ class NebiusClient:
         self.backoff_max_s = backoff_max_s
         self.bucket = TokenBucket(rate_per_s, burst)
         self.log_path = Path(log_path) if log_path else None
-        self.pricing = pricing or Pricing.from_env()
+        self.pricing = pricing          # None: per-model prices from Pricing.for_model
+        self.budget = budget or Budget()
         self.transport = transport or _http_post
         self.get_transport = get_transport or _http_get
         self.sleep = sleep
@@ -208,7 +201,9 @@ class NebiusClient:
         if not self.configured:
             record.status, record.error = "error", "NEBIUS_API_KEY is not set"
             self._log(record)
-            raise NebiusError(record.error, record=record)
+            raise NebiusError(record.error, record=record, fatal=True)
+        pricing = self.pricing or Pricing.for_model(model)
+        worst_case = pricing.cost(estimate_prompt_tokens(messages), max_tokens)
         payload = {"model": model, "messages": messages, "temperature": temperature, "max_tokens": max_tokens}
         use_json = json_mode and model not in self._json_mode_unsupported
         if use_json:
@@ -221,12 +216,22 @@ class NebiusClient:
         while attempt <= self.max_retries:
             attempt += 1
             record.attempts = attempt
+            try:
+                self.budget.check(worst_case)
+            except BudgetExceeded as exc:
+                record.status, record.error = "error", str(exc)
+                record.latency_s = round(time.perf_counter() - t0, 3)
+                self._log(record)
+                raise NebiusError(str(exc), record=record, fatal=True) from None
             self.bucket.take()
             try:
                 status, headers, body = self.transport(f"{self.base_url}/chat/completions", self._headers(),
                                                        json.dumps(payload).encode(), timeout_s or self.timeout_s)
             except (urllib.error.URLError, TimeoutError, ConnectionError, OSError) as exc:
                 last_error, last_status = f"network error: {type(exc).__name__}: {exc}", None
+                # The server may have done the work before the connection broke: count the worst case.
+                self.budget.add(model=model, role=role, cost_usd=worst_case, status="unknown", call_id=record.call_id,
+                                pricing=pricing.source, note=f"no usage returned ({type(exc).__name__}); counted at worst case")
                 if attempt <= self.max_retries:
                     self.sleep(self._backoff(attempt, None))
                     continue
@@ -236,27 +241,32 @@ class NebiusClient:
             text = body.decode("utf-8", "replace") if isinstance(body, (bytes, bytearray)) else str(body)
             last_status = status
             if status == 200:
+                data, content = None, ""
                 try:
                     data = json.loads(text)
                     choice = data["choices"][0]
                     content = choice["message"].get("content") or ""
+                    last_error = "" if content.strip() else "empty message content"
                 except (ValueError, KeyError, IndexError, TypeError) as exc:
                     last_error = f"malformed response: {type(exc).__name__}"
+                # A 200 is billed even when the reply turns out empty or malformed (a reasoning model can
+                # spend all of max_tokens thinking), so charge it before deciding whether to retry.
+                usage = data.get("usage") if isinstance(data, dict) else None
+                used_p = int((usage or {}).get("prompt_tokens") or 0)
+                used_c = int((usage or {}).get("completion_tokens") or 0)
+                cost = pricing.cost(used_p, used_c) if usage else worst_case
+                record.prompt_tokens += used_p
+                record.completion_tokens += used_c
+                record.total_tokens = record.prompt_tokens + record.completion_tokens
+                record.cost_usd = round(record.cost_usd + cost, 6)
+                self.budget.add(model=model, role=role, prompt_tokens=used_p, completion_tokens=used_c, cost_usd=cost,
+                                status="ok" if not last_error else "unusable", call_id=record.call_id,
+                                pricing=pricing.source, note="" if usage else "no usage in response; counted at worst case")
+                if last_error:
                     if attempt <= self.max_retries:
                         self.sleep(self._backoff(attempt, None))
                         continue
                     break
-                if not content.strip():
-                    last_error = "empty message content"
-                    if attempt <= self.max_retries:
-                        self.sleep(self._backoff(attempt, None))
-                        continue
-                    break
-                usage = data.get("usage") or {}
-                record.prompt_tokens = int(usage.get("prompt_tokens") or 0)
-                record.completion_tokens = int(usage.get("completion_tokens") or 0)
-                record.total_tokens = int(usage.get("total_tokens") or record.prompt_tokens + record.completion_tokens)
-                record.cost_usd = self.pricing.cost(record.prompt_tokens, record.completion_tokens)
                 record.finish_reason = choice.get("finish_reason")
                 record.request_id = record.request_id or data.get("id")
                 record.response_format = "json_object" if use_json else "text"
@@ -279,7 +289,7 @@ class NebiusClient:
         record.status, record.http_status, record.error = "error", last_status, last_error
         record.latency_s = round(time.perf_counter() - t0, 3)
         self._log(record, payload, text or None)
-        raise NebiusError(last_error, last_status, record)
+        raise NebiusError(last_error, last_status, record, fatal=last_status in (401, 403))
 
     def usage_summary(self) -> dict:
         ok = [r for r in self.records if r.status == "ok"]
@@ -291,9 +301,10 @@ class NebiusClient:
             "retries": sum(max(0, r.attempts - 1) for r in self.records),
             "prompt_tokens": sum(r.prompt_tokens for r in ok),
             "completion_tokens": sum(r.completion_tokens for r in ok),
-            "cost_usd": round(sum(r.cost_usd for r in ok), 6),
+            "cost_usd": round(sum(r.cost_usd for r in self.records), 6),
             "latency_p50_s": lat[len(lat) // 2] if lat else None,
             "latency_p95_s": lat[min(len(lat) - 1, int(0.95 * len(lat)))] if lat else None,
+            "budget": self.budget.summary(),
         }
 
 

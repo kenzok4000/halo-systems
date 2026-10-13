@@ -9,7 +9,10 @@ safety validator.
 If the call fails (network, HTTP error, timeout, unparsable or incomplete
 JSON, or a replay-cache miss), the supervisor falls back to the rule
 supervisor's decision for that step and records why, so the swarm never
-waits on the API and every fallback is counted in the results.
+waits on the API and every fallback is counted in the results. With
+``strict=True`` (benchmarks) an error that would hit every later call too
+(no key, key rejected, budget cap) stops the run instead, so a flight that
+was really flown by the rules is never reported as a Nemotron result.
 """
 
 from __future__ import annotations
@@ -31,7 +34,7 @@ class NemotronSupervisor(Supervisor):
 
     def __init__(self, client: NebiusClient | None = None, model: str | None = None, cache: CallCache | None = None,
                  fallback: str = "rule", temperature: float = 0.2, max_tokens: int = 1200,
-                 extra_body: dict | None = None, system_prefix: str = ""):
+                 extra_body: dict | None = None, system_prefix: str = "", strict: bool = False):
         self.client = client or NebiusClient(timeout_s=20.0, max_retries=2)
         self.model = model or os.environ.get("SWARMLAB_SUPERVISOR_MODEL", "")
         if not self.model:
@@ -43,6 +46,7 @@ class NemotronSupervisor(Supervisor):
         self.extra_body = extra_body
         self.system = (system_prefix + "\n" + SUPERVISOR_SYSTEM).strip() if system_prefix else SUPERVISOR_SYSTEM
         self.history: list[dict] = []
+        self.strict = strict
 
     @classmethod
     def from_spec(cls, spec: str, cache_path: str | None = None, cache_mode: str = "record",
@@ -87,6 +91,8 @@ class NemotronSupervisor(Supervisor):
                     self.cache.put(key, content, rec)
             proposal = parse_directive(content)
         except (NebiusError, ValueError) as exc:
+            if self.strict and getattr(exc, "fatal", False):
+                raise
             err = getattr(exc, "record", None)
             if err is not None:
                 latency = err.latency_s

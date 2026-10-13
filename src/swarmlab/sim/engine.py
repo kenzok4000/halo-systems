@@ -107,6 +107,7 @@ class Simulation:
         self.directive: Directive = start.directive
         self.mission_directive: Directive = start.directive
         self.validator.last_change_t = -math.inf
+        self.ctrl.nav_sigma_m = nav_sigma
         self.ctrl.reset(self.path, self.directive, n)
         pos, vel = self.ctrl.plan.slots()
         self.p = pos + r_init.normal(0.0, 0.3, size=(n, 3))
@@ -263,6 +264,9 @@ class Simulation:
         entry = {"t": round(self.t, 2), "action": result.action, "violations": result.violations, **result.directive.to_dict()}
         if requested_t is not None:
             entry["requested_t"] = round(requested_t, 2)
+        if result.ok and source == "operator":
+            # An operator order replaces the mission plan that supervisors return to.
+            self.mission_directive = result.directive
         if result.ok and not result.directive.same_plan(self.directive):
             self.directive = result.directive
             self.ctrl.set_directive(self.directive, obs)

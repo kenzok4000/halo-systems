@@ -126,6 +126,49 @@ def cmd_report(args) -> int:
     return 0
 
 
+def cmd_stress(args) -> int:
+    from pathlib import Path
+    from .ai import tester
+    kind, _, model = args.searcher.partition(":")
+    if kind == "random":
+        searcher = tester.RandomSearch(args.seed)
+    elif kind == "cem":
+        searcher = tester.CrossEntropySearch(args.seed)
+    elif kind == "nemotron":
+        import os
+        from .ai.client import NebiusClient
+        model = model or os.environ.get("SWARMLAB_SUPERVISOR_MODEL", "")
+        if not model:
+            print("give a model: --searcher nemotron:<model id> (see `swarmlab doctor`)", file=sys.stderr)
+            return 2
+        searcher = tester.NemotronSearch(NebiusClient(timeout_s=90.0, max_retries=2, log_path=args.ai_log), model, args.seed)
+    else:
+        print(f"unknown searcher {args.searcher!r}: random, cem or nemotron:<model>", file=sys.stderr)
+        return 2
+    history = tester.run_search(searcher, budget=args.budget, batch=args.batch, seed=args.seed, workers=args.workers,
+                                progress=print)
+    out = {"searcher": args.searcher, "seed": args.seed, "budget": args.budget, "batch": args.batch,
+           "summary": tester.summarise_search(history), "failure_kinds": sorted(tester.failure_kinds(history)),
+           "history": history, "model_calls": getattr(searcher, "calls", [])}
+    Path(args.out).parent.mkdir(parents=True, exist_ok=True)
+    Path(args.out).write_text(json.dumps(out, indent=1))
+    print(json.dumps(out["summary"]))
+    return 0
+
+
+def cmd_budget(args) -> int:
+    from .ai.budget import Budget
+    budget = Budget(args.ledger, args.cap)
+    if args.add_usd is not None:
+        if not args.note:
+            print("--add-usd needs --note saying where the spend came from", file=sys.stderr)
+            return 2
+        budget.add(model=args.model or "", role="manual", prompt_tokens=args.prompt_tokens,
+                   completion_tokens=args.completion_tokens, cost_usd=args.add_usd, note=args.note)
+    print(json.dumps(budget.summary(), indent=2))
+    return 0
+
+
 def cmd_serve(args) -> int:
     from .dashboard.server import serve
     serve(args.host, args.port, args.results, args.evidence, model=args.model, open_browser=args.open)
@@ -171,6 +214,26 @@ def main(argv=None) -> int:
     s.add_argument("--scenario", default="forest_trail")
     s.add_argument("--seed", type=int, default=0)
     s.set_defaults(fn=cmd_doctor)
+
+    s = sub.add_parser("stress", help="search for conditions that make the swarm fail")
+    s.add_argument("--searcher", default="cem", help="random, cem or nemotron:<model id>")
+    s.add_argument("--budget", type=int, default=40, help="simulated flights to spend")
+    s.add_argument("--batch", type=int, default=4)
+    s.add_argument("--seed", type=int, default=0)
+    s.add_argument("--workers", type=int, default=4)
+    s.add_argument("--out", required=True)
+    s.add_argument("--ai-log", default=None)
+    s.set_defaults(fn=cmd_stress)
+
+    s = sub.add_parser("budget", help="show model spend against the cap, or record spend made elsewhere")
+    s.add_argument("--ledger", default=None, help="ledger file (default SWARMLAB_LEDGER or ~/.swarmlab/nebius_ledger.jsonl)")
+    s.add_argument("--cap", type=float, default=None, help="cap in USD (default SWARMLAB_BUDGET_USD or 18)")
+    s.add_argument("--add-usd", type=float, default=None, help="record spend made outside this tool")
+    s.add_argument("--prompt-tokens", type=int, default=0)
+    s.add_argument("--completion-tokens", type=int, default=0)
+    s.add_argument("--model", default=None)
+    s.add_argument("--note", default="")
+    s.set_defaults(fn=cmd_budget)
 
     s = sub.add_parser("serve", help="start the live dashboard")
     s.add_argument("--host", default="127.0.0.1")

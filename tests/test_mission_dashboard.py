@@ -1,6 +1,8 @@
 """Mission compiler parsing and scoring, scenario building, stats, and a dashboard smoke test."""
 
 import json
+import os
+import tempfile
 import threading
 import time
 import unittest
@@ -9,6 +11,22 @@ import urllib.request
 from swarmlab.ai.mission import (empty_spec, flatten, harmful, load_eval_set, normalise, regex_baseline, score)
 from swarmlab.eval.scenarios import from_mission
 from swarmlab.eval.stats import bootstrap_ci, paired, value
+
+_LEDGER_DIR = tempfile.TemporaryDirectory()
+_SAVED = None
+
+
+def setUpModule():
+    global _SAVED
+    _SAVED = os.environ.get("SWARMLAB_LEDGER")
+    os.environ["SWARMLAB_LEDGER"] = os.path.join(_LEDGER_DIR.name, "ledger.jsonl")
+
+
+def tearDownModule():
+    os.environ.pop("SWARMLAB_LEDGER", None)
+    if _SAVED is not None:
+        os.environ["SWARMLAB_LEDGER"] = _SAVED
+    _LEDGER_DIR.cleanup()
 
 
 class MissionTest(unittest.TestCase):

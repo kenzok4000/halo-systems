@@ -105,7 +105,8 @@ def compute_metrics(sim) -> dict:
 
     metrics = {
         "duration_s": round(duration, 2),
-        "completed": sim.done_t is not None,
+        # A looped circuit has no end, so completion does not apply.
+        "completed": None if sim.sc.loop else sim.done_t is not None,
         "completion_time_s": round(sim.done_t, 2) if sim.done_t is not None else None,
         "progress_m": round(float(sim.ctrl.plan.s), 1),
         "collisions": int(sim.collisions),

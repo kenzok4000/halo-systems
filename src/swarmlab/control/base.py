@@ -42,6 +42,9 @@ class Controller:
         self.accel_limit = accel_limit
         self.speed_limit = speed_limit
         self.floor_z = floor_z
+        # Accuracy of the navigation sensor (1 sigma per axis, metres), set by the simulator from the
+        # sensor spec, as a real controller is configured from its GNSS datasheet.
+        self.nav_sigma_m = 0.0
         self.plan: FormationPlan | None = None
         self.compute_s: list[float] = []
 

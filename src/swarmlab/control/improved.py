@@ -41,6 +41,7 @@ class ImprovedController(Controller):
     kc = 0.8
     a_brake = 3.0
     gamma = 3.0
+    nav_k = 2.0      # safety distances grow by this many sigma of navigation error (2 vs 0 and 3 on seeds 0-9)
 
     def __init__(self, *args, features=FEATURES, speed_limit: float = 20.0, **kwargs):
         super().__init__(*args, speed_limit=speed_limit, **kwargs)
@@ -117,11 +118,14 @@ class ImprovedController(Controller):
             self._a_prev = a
             self.compute_s.append(time.perf_counter() - t0)
             return a
-        d_safe = 2 * self.body.radius_m + plan.directive.safety_margin_m
+        # Distances are measured between position estimates, so pad them by the navigation error:
+        # sqrt(2) sigma for the relative position of two drones, sigma for one drone and a mapped obstacle.
+        nav = self.nav_k * self.nav_sigma_m
+        margin = plan.directive.safety_margin_m
         g, b, m = build_constraints(
             p, v, obs.nbr_pos, obs.nbr_vel, obs.nbr_age, act,
-            d_safe=d_safe, a_brake=self.a_brake, gamma=self.gamma, world=self.world,
-            obstacle_clearance=self.body.radius_m + plan.directive.safety_margin_m, floor_z=self.floor_z)
+            d_safe=2 * self.body.radius_m + margin + np.sqrt(2.0) * nav, a_brake=self.a_brake, gamma=self.gamma,
+            world=self.world, obstacle_clearance=self.body.radius_m + margin + nav, floor_z=self.floor_z)
         # Break symmetric deadlocks in front of obstacles: slide toward the slot's side.
         if self.world.obstacle_count:
             k_nbr = min(MAX_NEIGHBOURS, max(len(p) - 1, 0))
