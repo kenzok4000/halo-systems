@@ -45,6 +45,8 @@ Rules:
 - Formation words: line abreast / side by side / spread across = line; single file / one behind another = column; \
 arrowhead / chevron = v; circle / orbit = ring; block / box / square = grid.
 - spacing_m is the distance between neighbouring drones.
+- An area given as "A by B" has width_m A and height_m B, in that order.
+- A height given on its own ("at 25 m", "at twenty metres", "25 m up") is altitude_m.
 - route.type: "survey" for sweeping or searching an area (give width_m and height_m, and lane_m if stated), \
 "loop" for orbiting or patrolling a closed circuit, "transit" for going from one place to another or along \
 something (give length_m if stated).
