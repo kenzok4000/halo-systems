@@ -1,6 +1,6 @@
 # Evidence: the live end-to-end check
 
-`swarmlab doctor --flight` writes these files. Both runs below are real calls to Nebius Token Factory on 12 October 2026, kept as they were written apart from moving them into this folder. The API key never appears in them.
+`swarmlab doctor --flight` wrote these files (it now writes to `evidence/latest/`, so a new check does not overwrite them). Both runs below are real calls to Nebius Token Factory on 12 October 2026, kept as they were written apart from moving them into this folder. The API key never appears in them.
 
 ## `first-attempt/` (22:34 UTC): failed
 
@@ -13,9 +13,9 @@ This run used the code of the time plus a small local change, `thinking-off.patc
 | File | What it is |
 |---|---|
 | `doctor_stdout.txt` | The check's console output |
-| `nebius_e2e.json` | Each step with pass or fail, latency, request id, usage and cost |
+| `nebius_e2e.json` | Each step with pass or fail, latency, request id and token usage (that build had no prices, so its cost fields are 0) |
 | `nebius_calls.jsonl` | Every call in the check, one JSON line each |
 | `flight_forest_trail_0.json` | Metrics of the full forest-trail flight with Nemotron supervising |
-| `cache_forest_trail_0.jsonl` | That flight's calls, for replay without a key |
+| `cache_forest_trail_0.jsonl` | That flight's calls as recorded. They replay only with the code of that time (d91cfe6 plus the patch): the prompt has changed since, so today's code finds no match and stops |
 
-The supervisor call took 0.97 s and returned a directive the validator accepted. The full flight made 30 calls with no fallbacks, so the integration worked end to end. The flight itself did not reach the end of the trail: the model kept a grid formation that did not fit the trail. That led to the status report spelling out the corridor and energy checks in words, after which Nemotron finished every forest flight in tuning and on the held-out seeds (see `results/`).
+The supervisor call took 0.97 s and returned a directive the validator accepted. The full flight made 30 calls with no fallbacks, so the integration worked end to end. The flight itself did not reach the end of the trail: the model kept a grid formation that did not fit the trail. That led to the status report spelling out the corridor and energy checks in words, after which Nano and Super with reasoning off finished every forest flight in tuning rounds 2 and 3 and on the held-out seeds; Nano with reasoning on finished 3 of 5 in round 3 (see `results/`).

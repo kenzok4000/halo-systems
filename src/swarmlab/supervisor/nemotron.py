@@ -30,8 +30,8 @@ from .rule import RuleSupervisor
 
 
 # Per-attempt timeout and whole-call deadline, from the tuning-seed call logs. Without reasoning,
-# Nano answered within 3 s every time and Super's slow attempts were all-or-nothing (they timed out
-# at 20 s, then the retry answered in about 2 s), so a slow attempt is cut at 8 s and retried, and
+# Nano answered within 3 s every time and most of Super's slow first attempts were rescued by a quick
+# retry (41 of 56 second attempts answered in about 2.5 s), so a slow attempt is cut at 8 s and retried, and
 # the call gives up at 15 s: by then the report it answers is 75 m out of date at 5 m/s. With
 # reasoning, answers took 14 s at the median and 48 s at the 95th percentile, so one 60 s attempt.
 TIMEOUTS = {False: dict(timeout_s=8.0, max_retries=2, deadline_s=15.0),
