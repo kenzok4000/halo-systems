@@ -1,0 +1,48 @@
+{
+  "started_utc": "2026-10-12T22:34:16+00:00",
+  "base_url": "https://api.tokenfactory.nebius.com/v1",
+  "python": "3.13.16",
+  "steps": [
+    {
+      "step": "NEBIUS_API_KEY is set",
+      "ok": true,
+      "note": null
+    },
+    {
+      "step": "list models",
+      "ok": true,
+      "note": "25 models, 4 Nemotron",
+      "nemotron_models": [
+        "nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B",
+        "nvidia/Nemotron-3-Ultra-550b-a55b",
+        "nvidia/Nemotron-3_5-Lightning",
+        "nvidia/nemotron-3-super-120b-a12b"
+      ]
+    },
+    {
+      "step": "choose a Nemotron model",
+      "ok": true,
+      "note": "nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B",
+      "model": "nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B"
+    },
+    {
+      "step": "supervisor call",
+      "ok": false,
+      "note": "empty message content",
+      "http_status": 200
+    }
+  ],
+  "finished_utc": "2026-10-12T22:35:06+00:00",
+  "usage": {
+    "calls": 1,
+    "ok": 0,
+    "errors": 1,
+    "retries": 3,
+    "prompt_tokens": 0,
+    "completion_tokens": 0,
+    "cost_usd": 0,
+    "latency_p50_s": null,
+    "latency_p95_s": null
+  },
+  "passed": false
+}

@@ -1,0 +1,28 @@
+diff --git a/swarmlab/src/swarmlab/ai/doctor.py b/swarmlab/src/swarmlab/ai/doctor.py
+index 76556aa..e751716 100644
+--- a/swarmlab/src/swarmlab/ai/doctor.py
++++ b/swarmlab/src/swarmlab/ai/doctor.py
+@@ -94,7 +94,8 @@ def run(evidence_dir: str = "evidence", model: str | None = None, flight: bool =
+     sup = NemotronSupervisor(client=client, model=chosen, fallback="none")
+     t0 = time.perf_counter()
+     try:
+-        result = client.chat(chosen, sup._messages(summary), role="doctor-supervisor", temperature=0.2, max_tokens=1200)
++        result = client.chat(chosen, sup._messages(summary), role="doctor-supervisor", temperature=0.2, max_tokens=1200,
++                             extra_body=sup.extra_body)
+     except NebiusError as exc:
+         step("supervisor call", False, note=exc.reason[:300], http_status=exc.status)
+         return finish(5)
+diff --git a/swarmlab/src/swarmlab/supervisor/nemotron.py b/swarmlab/src/swarmlab/supervisor/nemotron.py
+index 68cc843..ed611dc 100644
+--- a/swarmlab/src/swarmlab/supervisor/nemotron.py
++++ b/swarmlab/src/swarmlab/supervisor/nemotron.py
+@@ -40,7 +40,8 @@ class NemotronSupervisor(Supervisor):
+         self.fallback = RuleSupervisor() if fallback == "rule" else None
+         self.temperature = temperature
+         self.max_tokens = max_tokens
+-        self.extra_body = extra_body
++        # Nemotron 3 reasons by default and spends max_tokens on it, leaving content empty.
++        self.extra_body = extra_body if extra_body is not None else {"chat_template_kwargs": {"enable_thinking": False}}
+         self.system = (system_prefix + "\n" + SUPERVISOR_SYSTEM).strip() if system_prefix else SUPERVISOR_SYSTEM
+         self.history: list[dict] = []
+ 

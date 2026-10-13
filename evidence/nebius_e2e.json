@@ -1,0 +1,125 @@
+{
+  "started_utc": "2026-10-12T22:36:07+00:00",
+  "base_url": "https://api.tokenfactory.nebius.com/v1",
+  "python": "3.13.16",
+  "steps": [
+    {
+      "step": "NEBIUS_API_KEY is set",
+      "ok": true,
+      "note": null
+    },
+    {
+      "step": "list models",
+      "ok": true,
+      "note": "25 models, 4 Nemotron",
+      "nemotron_models": [
+        "nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B",
+        "nvidia/Nemotron-3-Ultra-550b-a55b",
+        "nvidia/Nemotron-3_5-Lightning",
+        "nvidia/nemotron-3-super-120b-a12b"
+      ]
+    },
+    {
+      "step": "choose a Nemotron model",
+      "ok": true,
+      "note": "nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B",
+      "model": "nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B"
+    },
+    {
+      "step": "supervisor call",
+      "ok": true,
+      "note": "0.97 s, 1276 tokens",
+      "latency_s": 0.967,
+      "request_id": "0e8af562167bdb4d90f53a16ed110d2f",
+      "finish_reason": "stop",
+      "response_format": "json_object"
+    },
+    {
+      "step": "reply is a valid directive",
+      "ok": true,
+      "note": "accepted: {'formation': 'grid', 'spacing_m': 6.0, 'speed_mps': 5.0, 'altitude_m': 15.0, 'safety_margin_m': 1.0, 'reason': 'Current directive fits corridor width and avoids unnecessary changes.'}",
+      "reply": "{\n  \"formation\": \"grid\",\n  \"spacing_m\": 6.0,\n  \"speed_mps\": 5.0,\n  \"altitude_m\": 15.0,\n  \"safety_margin_m\": 1.0,\n  \"reason\": \"Current directive fits corridor width and avoids unnecessary changes.\"\n}",
+      "validation": {
+        "action": "accepted",
+        "violations": [],
+        "directive": {
+          "formation": "grid",
+          "spacing_m": 6.0,
+          "speed_mps": 5.0,
+          "altitude_m": 15.0,
+          "safety_margin_m": 1.0,
+          "reason": "Current directive fits corridor width and avoids unnecessary changes.",
+          "source": "nemotron"
+        }
+      },
+      "wall_s": 0.97
+    },
+    {
+      "step": "full flight with Nemotron supervising",
+      "ok": true,
+      "note": "30 calls, 0 fallbacks, completed=False",
+      "metrics": {
+        "scenario": "forest_trail",
+        "seed": 0,
+        "config": "improved+nemotron:nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B",
+        "controller": "improved",
+        "supervisor": "nemotron:nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B",
+        "n": 16,
+        "wall_s": 71.08,
+        "duration_s": 150.0,
+        "completed": false,
+        "completion_time_s": null,
+        "progress_m": 341.8,
+        "collisions": 0,
+        "obstacle_crashes": 0,
+        "ground_crashes": 0,
+        "any_collision": false,
+        "near_misses": 0,
+        "min_separation_m": 0.808,
+        "formation_rms_mean_m": 31.626,
+        "shape_error_mean_m": 27.083,
+        "shape_error_p95_m": 63.124,
+        "shape_error_steady_m": 27.083,
+        "formation_error_mean_m": 25.033,
+        "formation_error_p95_m": 59.285,
+        "formation_error_steady_m": 25.033,
+        "time_formed_pct": 20.6,
+        "settle_time_s": 0.02,
+        "transition_settle_s": null,
+        "recovery_time_s": null,
+        "disturbance_peak_error_m": null,
+        "energy_wh": 95.024,
+        "energy_wh_per_drone": 5.939,
+        "energy_wh_per_km": 19.424,
+        "mean_power_w_per_drone": 142.54,
+        "drones_lost": 0,
+        "drones_retired": 0,
+        "drones_flying_end": 16,
+        "ctrl_ms_mean": 3.335,
+        "ctrl_ms_p95": 5.248,
+        "directive_changes": 0,
+        "directives_rejected": 0,
+        "comms_delivery_rate": 0.74,
+        "ai_calls": 30,
+        "ai_latency_mean_s": 1.13,
+        "ai_latency_p95_s": 1.365,
+        "ai_fallbacks": 0,
+        "ai_tokens": 44902,
+        "ai_cost_usd": 0.0
+      }
+    }
+  ],
+  "finished_utc": "2026-10-12T22:37:25+00:00",
+  "usage": {
+    "calls": 1,
+    "ok": 1,
+    "errors": 0,
+    "retries": 0,
+    "prompt_tokens": 1206,
+    "completion_tokens": 70,
+    "cost_usd": 0.0,
+    "latency_p50_s": 0.967,
+    "latency_p95_s": 0.967
+  },
+  "passed": true
+}

@@ -1,0 +1,7 @@
+[PASS] NEBIUS_API_KEY is set
+[PASS] list models: 25 models, 4 Nemotron
+[PASS] choose a Nemotron model: nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B
+[PASS] supervisor call: 0.97 s, 1276 tokens
+[PASS] reply is a valid directive: accepted: {'formation': 'grid', 'spacing_m': 6.0, 'speed_mps': 5.0, 'altitude_m': 15.0, 'safety_margin_m': 1.0, 'reason': 'Current directive fits corridor width and avoids unnecessary changes.'}
+[PASS] full flight with Nemotron supervising: 30 calls, 0 fallbacks, completed=False
+Evidence written to evidence/nebius_e2e.json and evidence/nebius_calls.jsonl

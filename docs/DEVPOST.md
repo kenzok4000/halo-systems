@@ -1,6 +1,6 @@
 # Devpost submission draft
 
-Draft for review. Before submission, every number marked ⟨…⟩ is replaced from `results/REPORT.md`, and the final audit checks each claim against the code or a log.
+Draft for review. Every number here is copied from `results/REPORT.md`, `results/STRESS.md` or the mission-compiler files in `results/`, and the final audit checks each claim against the code or a log.
 
 ## Project name
 
@@ -36,13 +36,15 @@ Small drone swarms can search a forest for a missing hiker, scout a field or ins
 
 ## Results
 
-⟨Headline table from results/REPORT.md: crashes, time in formation and completion for original, improved, rules and Nemotron on the held-out seeds.⟩
+All on held-out seeds 1000-1019, run once, 20 flights per scenario and configuration. The Nemotron setup was chosen on tuning seeds and committed before these runs.
 
-⟨Where Nemotron beat the tuned rules, where it tied, and where it did worse.⟩
-
-⟨Mission compiler: field accuracy, Nemotron vs regex baseline, on the held-out prompts.⟩
-
-⟨Stress search: failures and distinct failure kinds found per 40 flights, for each searcher.⟩
+* **Safety.** Over nine scenarios, the original formation controller lost 300 drones in 180 flights. The improved controller, supervised by the rules or by Nemotron, lost none in 180 flights each, with no near misses.
+* **Supervision.** Without a supervisor, the improved controller finished 5% of forest-trail flights and 55% of urban-canyon flights, because its safety filter will not squeeze a formation through a gap it does not fit. With the rules or Nemotron it finished all of them.
+* **Nemotron 3 Nano against the tuned rules:** better beyond noise in four of nine scenarios and worse in none. It held formation better in the forest (86% against 85% of the time), used less energy in the urban canyon (7.55 against 7.68 Wh per drone-km), and did not slow down needlessly when the radio degraded (66 s against 70 s). On a low-battery leg it finished in 128 s against 138 s, on 4.52 against 4.77 Wh per drone-km. In the other five scenarios it made no difference.
+* **Nemotron 3 Super**, run alongside as a declared comparison, did worse than the rules in two scenarios: less time in formation in the urban canyon, and a slower, costlier low-battery leg that retired more drones.
+* **Mission compiler** on 20 held-out requests: the regex baseline got 83.9% of fields right and 9 requests fully right. Nemotron 3 Nano got 97.6% and 18. Nano with reasoning on and Super both got 100% and 20, and all three refused the 3 harmful requests, two of which the keyword guard missed.
+* **Stress testing**, 200 flights per searcher: Nemotron found 46 failures in 39 distinct conditions, against 15 for corner search, 10 for the cross-entropy method and 2 for random search. It found the same 13 kinds of failure as corner search, mostly by pushing every condition near its limit.
+* **Safety filter ablation.** Re-flying all 1,000 stress tests without the safety filter raised the failures from 89 to 289 and the drones lost from 391 to 2,019.
 
 ## Challenges
 
@@ -52,7 +54,9 @@ Small drone swarms can search a forest for a missing hiker, scout a field or ins
 
 ## Accomplishments
 
-⟨From the final results.⟩
+* A supervisor that a 3-billion-active-parameter model runs for about $0.004 a flight, with 3,400 calls and no fallbacks on the held-out seeds, and that never did worse than tuned rules there.
+* The held-out Nemotron flights can be replayed exactly without a key: replaying 24 of them from the published call cache gave identical results.
+* The evidence includes the failures: the first live call that returned nothing, the run where reasoning was switched off and the model ignored the corridor check, and the scenarios where Nemotron made no difference or did worse.
 
 ## What we learned
 
@@ -71,16 +75,17 @@ Python, numpy, matplotlib, three.js, NVIDIA Nemotron 3, Nebius Token Factory
 
 ## NVIDIA and Nebius usage
 
-* Model: NVIDIA Nemotron 3 ⟨chosen variant⟩ via Nebius Token Factory (`https://api.tokenfactory.nebius.com/v1`).
+* Models: NVIDIA Nemotron 3 Nano (`nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B`, the main supervisor) and Nemotron 3 Super (`nvidia/nemotron-3-super-120b-a12b`), via Nebius Token Factory (`https://api.tokenfactory.nebius.com/v1`).
 * Roles: supervisor, mission compiler, test engineer (see docs/NVIDIA_NEBIUS.md).
-* Usage over the whole project: ⟨tokens, calls, estimated cost from the ledger⟩.
+* Usage over the whole project, from the spend ledger: 13,064 requests, 22.3 million prompt tokens and 3.6 million completion tokens, an estimated $8.23 at price ceilings set above the listed prices. The ledger counts requests that failed after sending at their worst case.
 
 ## Feedback on Nebius Token Factory and NVIDIA models
 
 * Setup: the OpenAI-compatible endpoint worked with a standard-library client. The model list returned 25 models, 4 of them Nemotron.
 * Nemotron 3 Nano with reasoning off answered in about 1 s (p50 0.97 s, p95 1.37 s over 31 calls of about 1,400 prompt tokens), and JSON mode worked.
 * With reasoning on, the reasoning comes back in `message.reasoning` and counts against `max_tokens`. When it runs out, `content` is null with `finish_reason: "length"`. A clearer note in the quick-start, or a separate reasoning budget, would save people the paid empty replies we hit.
-* ⟨Super and reasoning-mode latency and quality, from the tuning runs.⟩
+* On the held-out runs, Nano answered supervisor calls in 1.17 s on average and Super in 1.37 s, with no failed calls in 6,874. In the last tuning round, 12 of 826 Nano calls timed out at 8 s on the first attempt and the retry ran past the 15 s deadline, so the rules took those steps. In the first tuning round, before the whole-call deadline existed, 39 of 540 Super calls took over 30 s, the slowest 64 s.
+* For the mission compiler, Super was both the most accurate and the fastest (median 1.3 s), while Nano took 5 s with reasoning off and 12 s with it on, because a mission plan is a longer answer.
 
 ## Updates during the submission period
 

@@ -12,7 +12,61 @@ SwarmLab is a reproducible simulation testbed for civilian drone swarms: search 
 
 Every Nemotron output passes a safety validator before it can affect a flight. While a call is out, the drones keep flying on the current directive. Any failure (network, a call past its deadline, bad JSON) falls back to the rules for that step.
 
-> Status: results in this README are filled in from `results/REPORT.md` at the end of the build. Nothing here is a projection.
+## Results
+
+Held-out seeds 1000-1019, run once after everything was frozen. Every number below is copied from [results/REPORT.md](results/REPORT.md) and [results/STRESS.md](results/STRESS.md), which give 95% confidence intervals and seed-by-seed comparisons. The Nemotron setup was chosen on tuning seeds and committed before these runs ([docs/BENCHMARKS.md](docs/BENCHMARKS.md)).
+
+**Safety.** Over the nine scenarios (180 flights per configuration), the original controller lost 300 drones and had 151 near misses. The improved controller, supervised by the rules or by Nemotron, lost none and had no near misses.
+
+**Supervision.** In five scenarios (open transit, formation changes, gusty day, motor failures, field survey) the supervisors made no measurable difference. In the other four, the supervisor decides whether the mission works:
+
+| Scenario | Metric | Fixed plan | Rules | Nemotron 3 Nano | Nemotron 3 Super |
+|---|---|---|---|---|---|
+| Forest trail | Missions completed | 5% | 100% | 100% | 100% |
+| | Time in formation | 22% | 85% | 86% | 86% |
+| Urban canyon | Missions completed | 55% | 100% | 100% | 100% |
+| | Time in formation | 36% | 90% | 89% | 86% |
+| | Energy (Wh per drone-km) | 13.48 | 7.68 | 7.55 | 7.49 |
+| Degraded radio | Completion time (s) | 66 | 70 | 66 | 66 |
+| | Energy (Wh per drone-km) | 6.73 | 7.15 | 6.73 | 6.73 |
+| Low battery | Missions completed | 45% | 100% | 100% | 100% |
+| | Completion time (s) | 242 | 138 | 128 | 146 |
+| | Energy (Wh per drone-km) | 6.71 | 4.77 | 4.52 | 4.89 |
+| | Drones retired at the battery reserve | 16.00 | 0.65 | 0.50 | 1.55 |
+
+"Fixed plan" is the improved controller flying the mission plan with no supervisor. Nemotron 3 Nano, the entry chosen before the held-out runs, did better than the rules beyond noise in four scenarios and worse in none. It held formation better in the forest, used less energy in the urban canyon, and did not slow down needlessly when the radio degraded, as the rules did. On the low-battery leg it finished faster on less energy. It flew faster than the planned speed for 77% of that flight, against 55% for the rules, which its instructions allow only when the charge cannot last at the planned speed. It made 3,400 calls with no fallbacks, at 1.17 s mean latency and an estimated $0.004 per flight.
+
+**Mission compiler** (20 held-out requests):
+
+| Parser | Fields right | Requests fully right | Harmful requests refused | Median call |
+|---|---|---|---|---|
+| Regex and keyword baseline | 83.9% | 9 of 20 | 1 of 3 | n/a |
+| Nemotron 3 Nano, reasoning off | 97.6% | 18 of 20 | 3 of 3 | 5.0 s |
+| Nemotron 3 Nano, reasoning on | 100% | 20 of 20 | 3 of 3 | 11.8 s |
+| Nemotron 3 Super | 100% | 20 of 20 | 3 of 3 | 1.3 s |
+
+A keyword guard caught one of the harmful requests before any model saw it, and Nemotron refused the other two ("smash into its windscreen", "diving at" a dog).
+
+**Stress testing** (5 searches of 40 flights per searcher, against the improved controller with rules):
+
+| Searcher | Failures | Distinct failing conditions | Kinds of failure |
+|---|---|---|---|
+| Random | 2 | 2 | 1 |
+| Cross-entropy method | 10 | 10 | 8 |
+| Corners of the parameter box | 15 | 15 | 13 |
+| Nemotron 3 Nano | 46 | 39 | 13 |
+| Nemotron 3 Nano, reasoning on | 16 | 16 | 11 |
+
+Nemotron found 2.6 times as many distinct failing conditions as the best baseline, but no more kinds of failure, and mostly by setting every condition near its harshest value.
+
+**Ablations.** Removing the leader's pacing cut time in formation during formation changes from 75% to 48%, and removing slot reassignment cut it to 54%. Removing the blend between formations raised it slightly, to 78%, but cost 7% more energy there and 5 s more on the forest trail. Removing the safety filter changed nothing in the nine scenarios, where the supervisor keeps the swarm out of trouble. Re-flying all 1,000 stress tests without it raised the failures from 89 to 289 and the drones lost from 391 to 2,019. With GPS error tripled, the improved controller still lost no drones in the forest, where the original lost 9.1 per flight. Neither controller then kept the formation within 1 m for most of the flight.
+
+**Where the AI did worse or did not help**
+
+* Nemotron 3 Super, the larger model, held formation less well than the rules in the urban canyon, and on the low-battery leg it was slower, used more energy and retired more drones (1.55 per flight against 0.65).
+* Nano with reasoning on completed 3 of 5 forest flights in the last tuning round, where the rules completed 5, and took several seconds per call. It was not run on the held-out seeds.
+* Nano with reasoning off got 2 of 20 mission requests wrong: a convoy "nose to tail" became line abreast, and "2 km by 800 m" became 800 m by 2 m.
+* In five of the nine scenarios, Nemotron made no difference.
 
 ## Quick start
 

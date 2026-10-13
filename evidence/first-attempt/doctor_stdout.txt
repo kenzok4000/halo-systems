@@ -1,0 +1,5 @@
+[PASS] NEBIUS_API_KEY is set
+[PASS] list models: 25 models, 4 Nemotron
+[PASS] choose a Nemotron model: nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B
+[FAIL] supervisor call: empty message content
+Evidence written to evidence/nebius_e2e.json and evidence/nebius_calls.jsonl
