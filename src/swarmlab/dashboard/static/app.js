@@ -184,11 +184,15 @@ function onAi(a) {
 function onEvent(e) {
   const skip = { directive: 1, injected: 1 };
   if (skip[e.kind]) return;
-  const what = { motor_failure: `motor failure on drone ${e.drone}`, gust_front: `gust front ${fmt(Math.hypot(...e.velocity_mps.slice(0, 2)))} m/s`,
-    comms_blackout: `radio blackout for ${e.drones.length} drones`, collision: `collision: drones ${e.drone} and ${e.other}`,
-    obstacle_crash: `drone ${e.drone} hit an obstacle`, ground_crash: `drone ${e.drone} hit the ground`,
-    retired_low_battery: `drone ${e.drone} left at ${e.battery_pct}% battery`, mission_complete: "mission complete",
-    directive_rejected: "a directive was rejected" }[e.kind] || e.kind;
+  // One function per kind: only the matching one runs, since each reads fields only its kind has.
+  const text = { motor_failure: () => `motor failure on drone ${e.drone}`,
+    gust_front: () => `gust front ${fmt(Math.hypot(...(e.velocity_mps || [0, 0]).slice(0, 2)))} m/s`,
+    comms_blackout: () => `radio blackout for ${(e.drones || []).length} drones`,
+    collision: () => `collision: drones ${e.drone} and ${e.other}`,
+    obstacle_crash: () => `drone ${e.drone} hit an obstacle`, ground_crash: () => `drone ${e.drone} hit the ground`,
+    retired_low_battery: () => `drone ${e.drone} left at ${e.battery_pct}% battery`, mission_complete: () => "mission complete",
+    directive_rejected: () => "a directive was rejected" }[e.kind];
+  const what = text ? text() : e.kind;
   logItem("event", `t=${fmt(e.t)} s ${esc(what)}`);
 }
 

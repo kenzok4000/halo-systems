@@ -32,6 +32,7 @@ There is no music, or royalty-free music only. No third-party logos appear apart
 
 ## Recording
 
+* Dashboard shots are filmed by `tools/record_shot.cjs`, which drives the running dashboard in headless Chromium through Playwright and screen-records the page (for example `node tools/record_shot.cjs --scenario forest_trail --config original+fixed --seed 1000 --speed 2 --seconds 20 --out video/shot2.webm`). It only clicks the same controls a person would, so every frame is the real dashboard flying a real simulation.
 * Record at 1920×1080 and 30 fps, with the browser zoomed so the side panel is legible.
 * Record each shot separately and cut in an editor. Speed changes are labelled on screen (for example "2x").
 * Shot 4 is a replay of a cached Nemotron run, labelled "replay of a recorded Nemotron run" on screen. Shot 6 is a live call.
