@@ -93,6 +93,21 @@ class StatsTest(unittest.TestCase):
 
 
 class DashboardSmokeTest(unittest.TestCase):
+    def test_recorded_calls_make_nemotron_replayable_without_a_key(self):
+        from pathlib import Path
+        from swarmlab.dashboard.server import State
+        with tempfile.TemporaryDirectory() as tmp:
+            cache = Path(tmp) / "cache.jsonl"
+            saved = os.environ.pop("NEBIUS_API_KEY", None)
+            try:
+                self.assertFalse(State(Path(tmp), Path(tmp), "nvidia/m", cache).ai_status()["ai_available"])
+                cache.write_text("")
+                st = State(Path(tmp), Path(tmp), "nvidia/m", cache).ai_status()
+                self.assertEqual((st["ai_available"], st["mode"]), (True, "replay"))
+            finally:
+                if saved is not None:
+                    os.environ["NEBIUS_API_KEY"] = saved
+
     def test_server_runs_a_flight_and_streams_frames(self):
         from http.server import ThreadingHTTPServer
         from pathlib import Path

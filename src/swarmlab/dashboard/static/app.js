@@ -358,7 +358,11 @@ async function init() {
   $("#scenario").dispatchEvent(new Event("change"));
   status = await api("/api/status");
   const pill = $("#ai-pill");
-  if (status.ai_available) { pill.textContent = `Nemotron on Nebius: ${status.model.split("/").pop()}`; pill.classList.add("on"); }
+  if (status.ai_available) {
+    const name = status.model.split("/").pop();
+    pill.textContent = status.mode === "replay" ? `Nemotron: replaying recorded calls (${name})` : `Nemotron on Nebius: ${name}`;
+    pill.classList.add("on");
+  }
   else { pill.textContent = status.key_present ? "Nemotron: no model set" : "Nemotron not configured (rules only)"; $("#opt-nemotron").disabled = true; }
 }
 init();

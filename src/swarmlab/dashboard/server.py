@@ -74,7 +74,9 @@ class LiveRun:
         ctrl_spec, sup_spec = split_config(config)
         body = DroneBody()
         sup = make_supervisor(sup_spec, **(supervisor_kw or {}))
-        self.async_sup = AsyncSupervisor(sup) if sup.uses_ai else None
+        # Replayed calls return at once, so they run in step with the simulation, exactly as in the benchmark.
+        replay = getattr(getattr(sup, "cache", None), "mode", None) == "replay"
+        self.async_sup = AsyncSupervisor(sup) if sup.uses_ai and not replay else None
         self.sim = Simulation(scenario, make_controller(ctrl_spec, body, scenario.world), self.async_sup or sup,
                               seed=seed, body=body, record_hz=0)
         self.id = uuid.uuid4().hex[:10]
@@ -193,17 +195,20 @@ class LiveRun:
 
 
 class State:
-    def __init__(self, results_dir: Path, evidence_dir: Path, model: str | None, cache_dir: Path | None):
+    def __init__(self, results_dir: Path, evidence_dir: Path, model: str | None, cache_path: Path | None = None):
         self.runs: dict[str, LiveRun] = {}
         self.results_dir = results_dir
         self.evidence_dir = evidence_dir
         self.model = model or os.environ.get("SWARMLAB_SUPERVISOR_MODEL") or None
-        self.cache_dir = cache_dir
+        self.cache_path = cache_path
         self.lock = threading.Lock()
 
     def ai_status(self) -> dict:
         key = bool(os.environ.get("NEBIUS_API_KEY"))
-        return {"key_present": key, "model": self.model, "ai_available": key and bool(self.model),
+        cached = bool(self.cache_path and self.cache_path.exists())
+        # Without a key, a recorded call cache still lets Nemotron runs be replayed exactly.
+        mode = "live" if key else "replay" if cached else None
+        return {"key_present": key, "model": self.model, "ai_available": bool(mode and self.model), "mode": mode,
                 "base_url": os.environ.get("NEBIUS_BASE_URL") or "https://api.tokenfactory.nebius.com/v1"}
 
     def start(self, body: dict) -> LiveRun:
@@ -224,6 +229,8 @@ class State:
         if "nemotron" in config:
             log = self.evidence_dir / "dashboard_calls.jsonl"
             kw = {"log_path": str(log)}
+            if self.cache_path:
+                kw.update(cache_path=str(self.cache_path), cache_mode="record" if self.ai_status()["mode"] == "live" else "replay")
         with self.lock:
             for rid in [r for r, run in self.runs.items() if run.sim.ended or run.stop]:
                 del self.runs[rid]
@@ -441,15 +448,15 @@ def _evidence(evidence_dir: Path) -> dict:
 
 
 def serve(host: str = "127.0.0.1", port: int = 8765, results_dir: str = "results", evidence_dir: str = "evidence",
-          model: str | None = None, cache_dir: str | None = None, open_browser: bool = False) -> None:
-    state = State(Path(results_dir), Path(evidence_dir), model, Path(cache_dir) if cache_dir else None)
+          model: str | None = None, cache: str | None = None, open_browser: bool = False) -> None:
+    state = State(Path(results_dir), Path(evidence_dir), model, Path(cache) if cache else None)
     Path(evidence_dir).mkdir(parents=True, exist_ok=True)
     httpd = ThreadingHTTPServer((host, port), make_handler(state))
     httpd.daemon_threads = True
     url = f"http://{host}:{port}/"
     print(f"SwarmLab dashboard on {url} (Ctrl+C to stop)")
     st = state.ai_status()
-    print(f"Nemotron: {'available, model ' + st['model'] if st['ai_available'] else 'not configured (rule supervisor and regex compiler only)'}")
+    print(f"Nemotron: {st['mode'] + ', model ' + st['model'] if st['ai_available'] else 'not configured (rule supervisor and regex compiler only)'}")
     if open_browser:
         import webbrowser
         webbrowser.open(url)

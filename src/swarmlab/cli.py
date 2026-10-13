@@ -175,7 +175,7 @@ def cmd_budget(args) -> int:
 
 def cmd_serve(args) -> int:
     from .dashboard.server import serve
-    serve(args.host, args.port, args.results, args.evidence, model=args.model, open_browser=args.open)
+    serve(args.host, args.port, args.results, args.evidence, model=args.model, cache=args.cache, open_browser=args.open)
     return 0
 
 
@@ -245,6 +245,7 @@ def main(argv=None) -> int:
     s.add_argument("--results", default="results")
     s.add_argument("--evidence", default="evidence")
     s.add_argument("--model", default=None, help="Nemotron model id (default SWARMLAB_SUPERVISOR_MODEL)")
+    s.add_argument("--cache", default=None, help="Nemotron call cache: replays recorded runs without a key, records with one")
     s.add_argument("--open", action="store_true", help="open a browser")
     s.set_defaults(fn=cmd_serve)
 
