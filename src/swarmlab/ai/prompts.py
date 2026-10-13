@@ -1,6 +1,6 @@
 """Prompts for the Nemotron roles. Kept in one place so they are easy to review and version."""
 
-PROMPT_VERSION = "2026-10-13.2"
+PROMPT_VERSION = "2026-10-13.3"
 
 SUPERVISOR_SYSTEM = """You supervise a swarm of small quadcopters flying in formation. A fast \
 autopilot (50 times a second) keeps each drone in its slot and avoids collisions on its own. \
@@ -28,7 +28,9 @@ When links are stale each drone sees its neighbours late, so more spacing and a 
 - energy.wh_per_km_by_speed is the energy one drone spends per kilometre at each cruise speed in the \
 current headwind. energy.usable_wh_mean and usable_wh_min are the charge above the reserve; a drone \
 that reaches the reserve leaves the formation. A leg needs about wh_per_km x remaining_km; \
-checks.energy gives that for the mission speed, the current speed and the cheapest speed.
+checks.energy gives that for the mission speed, the current speed and the cheapest speed. \
+The operator chose the mission speed: fly faster than it only when the charge is not enough at \
+that speed. The cheapest speed is a way to save charge, not a target.
 - Every change of shape or spacing makes the drones move to new slots for several seconds, during \
 which the formation is disordered. Change only when it helps, and avoid switching back and forth.
 

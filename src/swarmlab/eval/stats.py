@@ -28,6 +28,7 @@ METRICS = {
     "transition_settle_s": ("Formation change time (s)", -1),
     "recovery_time_s": ("Recovery after disturbance (s)", -1),
     "directive_changes": ("Directive changes", 0),
+    "time_faster_than_plan_pct": ("Time faster than planned (%)", 0),
     "ctrl_ms_mean": ("Controller time per step (ms)", -1),
     "ai_calls": ("Model calls", 0),
     "ai_fallbacks": ("Fallbacks to rules", -1),

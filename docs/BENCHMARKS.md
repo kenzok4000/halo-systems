@@ -49,6 +49,7 @@ Nine scenarios, each with 16 drones (12 in the field survey). Each tests one thi
 | Completion time (s) | For completed runs only |
 | Energy (Wh per drone-km) | Battery energy per drone per kilometre flown |
 | Drones retired | Drones that left the formation at the battery reserve |
+| Time faster than planned (%) | Share of the flight flown faster than the operator's planned speed. Flying faster than planned shortens completion time, so this is reported beside it |
 | Model calls, fallbacks, latency, tokens, cost | From the call records, for Nemotron runs |
 
 Time in formation counts the drones still flying. A controller that loses drones in a crash can still score well on it, which is why crashes are always reported beside it.

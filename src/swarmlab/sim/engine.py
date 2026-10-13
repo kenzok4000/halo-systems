@@ -134,7 +134,8 @@ class Simulation:
         self.record_every = max(1, int(round(1.0 / (record_hz * self.dt)))) if record_hz > 0 else 0
         self.frames: list[dict] = []
         self.series = {k: [] for k in ("t", "rms_error", "shape_error", "integrity_error", "max_error", "min_sep",
-                                       "active", "power_w", "leader_speed", "progress_m", "ctrl_ms")}
+                                       "active", "power_w", "leader_speed", "progress_m", "ctrl_ms",
+                                       "speed_over_plan")}
         self._integrity = 0.0
         self.done_t = None
         self.ended = False
@@ -344,6 +345,7 @@ class Simulation:
         slots, _ = self.ctrl.plan.slots()
         s = self.series
         s["t"].append(self.t)
+        s["speed_over_plan"].append(self.directive.speed_mps - self.mission_directive.speed_mps)
         if active.any():
             err = np.linalg.norm(self.p[active] - slots[active], axis=1)
             rel = (self.p[active] - self.p[active].mean(axis=0)) - (slots[active] - slots[active].mean(axis=0))

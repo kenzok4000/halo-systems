@@ -137,6 +137,10 @@ def compute_metrics(sim) -> dict:
         "ctrl_ms_mean": round(float(ctrl.mean()), 3) if len(ctrl) else None,
         "ctrl_ms_p95": round(float(np.percentile(ctrl, 95)), 3) if len(ctrl) else None,
         "directive_changes": len(change_times),
+        # Share of the flight spent faster than the operator's planned speed (supervisors may slow down
+        # for safety, and may speed up when the charge would not last; anything else ignores the plan).
+        "time_faster_than_plan_pct": round(100.0 * float(np.mean(np.asarray(s["speed_over_plan"]) > 0.05)), 1)
+        if len(s.get("speed_over_plan", [])) else None,
         "directives_rejected": sum(1 for e in events if e["kind"] == "directive_rejected"),
         "comms_delivery_rate": round(sim.sensing.delivery_rate, 3),
         "ai_calls": len(ai),

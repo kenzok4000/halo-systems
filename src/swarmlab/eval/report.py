@@ -23,7 +23,7 @@ CONFIG_LABELS = {
     "original+rule": "Original + rule supervisor",
 }
 TABLE_METRICS = ("time_formed_pct", "formation_error_mean_m", "crashes", "near_misses", "completed",
-                 "completion_time_s", "energy_wh_per_km", "drones_retired")
+                 "completion_time_s", "energy_wh_per_km", "drones_retired", "time_faster_than_plan_pct")
 COLORS = ["#8c8c8c", "#4c78a8", "#f58518", "#54a24b", "#b279a2", "#e45756", "#72b7b2", "#eeca3b"]
 
 
@@ -76,7 +76,7 @@ def _fmt(cell, metric) -> str:
     if cell is None or cell.get("mean") is None:
         return "n/a"
     m, lo, hi = cell["mean"], cell["lo"], cell["hi"]
-    digits = 0 if metric in ("time_formed_pct", "completed", "completion_time_s") else 2
+    digits = 0 if metric in ("time_formed_pct", "completed", "completion_time_s", "time_faster_than_plan_pct") else 2
     if lo is None or hi is None or abs(hi - lo) < 10 ** -digits / 2:
         return f"{m:.{digits}f}"
     return f"{m:.{digits}f} [{lo:.{digits}f}, {hi:.{digits}f}]"
