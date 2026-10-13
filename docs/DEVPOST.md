@@ -26,6 +26,7 @@ Small drone swarms can search a forest for a missing hiker, scout a field or ins
 * Turns plain-language mission requests into checked mission plans, and refuses non-civilian requests.
 * Searches for conditions that make the swarm fail, with Nemotron as a test engineer against random search, corner search and the cross-entropy method.
 * Benchmarks the controllers and supervisors on held-out seeds, with confidence intervals and paired comparisons, and shows it live in a 3D dashboard.
+* Scouts for wildfire ignitions: a thermal sweep of a block of dry scrub for smouldering hotspots, flown with 1, 4 and 16 drones on the same seeds, so the time a swarm saves in finding every hotspot is a measured number, not a claim.
 
 ## How we built it
 

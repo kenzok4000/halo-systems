@@ -19,6 +19,9 @@ Definitions (also in docs/BENCHMARKS.md):
   radii plus 0.5 m, counted once per encounter.
 * energy: electrical energy from the thrust-based power model, per drone
   and per kilometre flown.
+* scouting (scenarios with a ground sensor): targets found, time to the
+  first and the last find, share of the survey area whose cells have been
+  inside a camera footprint, and the time to cover 90% of it.
 """
 
 from __future__ import annotations
@@ -150,4 +153,33 @@ def compute_metrics(sim) -> dict:
         "ai_tokens": int(sum(c.get("total_tokens", 0) for c in ai)),
         "ai_cost_usd": round(float(sum(c.get("cost_usd", 0.0) for c in ai)), 5),
     }
+    if sim.sc.sensor.enabled:
+        metrics.update(scouting_metrics(sim, t, duration))
     return metrics
+
+
+def scouting_metrics(sim, t: np.ndarray, duration: float) -> dict:
+    """Targets found and area covered, for scenarios with a ground sensor."""
+    found_t = sim.target_found_t
+    total = len(found_t)
+    found = found_t[~np.isnan(found_t)]
+    cov = np.asarray(sim.series.get("coverage_pct", []), dtype=float)
+    out = {
+        "targets_total": total,
+        "targets_found": int(len(found)),
+        "targets_found_pct": round(100.0 * len(found) / total, 1) if total else None,
+        "first_find_s": round(float(found.min()), 1) if len(found) else None,
+        "all_found_s": round(float(found.max()), 1) if total and len(found) == total else None,
+        "find_time_mean_s": round(float(found.mean()), 1) if len(found) else None,
+        "area_covered_pct": None,
+        "coverage_90pct_s": None,
+        "coverage_ha_per_min": None,
+    }
+    if sim.coverage is not None and len(cov):
+        area_ha = sim.coverage.size * sim.sc.sensor.cell_m ** 2 / 10000.0
+        out["area_covered_pct"] = round(float(cov[-1]), 1)
+        hit = np.nonzero(cov >= 90.0)[0]
+        out["coverage_90pct_s"] = round(float(t[hit[0]]), 1) if len(hit) else None
+        if duration > 0:
+            out["coverage_ha_per_min"] = round(float(cov[-1]) / 100.0 * area_ha / (duration / 60.0), 3)
+    return out

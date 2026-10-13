@@ -4,7 +4,7 @@ This page explains how the numbers in `results/REPORT.md` are produced and how t
 
 ## Scenarios
 
-Nine scenarios, each with 16 drones (12 in the field survey). Each tests one thing a supervisor might need to handle.
+Ten scenarios, each with 16 drones (12 in the field survey; the wildfire scout is also flown with 1 and 4, see below). Each tests one thing a supervisor might need to handle, except the wildfire scout, which measures what a swarm is for.
 
 | Scenario | Use case | What makes it hard |
 |---|---|---|
@@ -17,6 +17,7 @@ Nine scenarios, each with 16 drones (12 in the field survey). Each tests one thi
 | motor_failures | Any | Three drones lose power at random moments |
 | low_battery | Delivery, long legs | A 1.2 km leg into a headwind with batteries at about 32% |
 | field_survey | Crop scouting, search | A lawnmower sweep of a 280 × 210 m field in line abreast |
+| wildfire_scout | Wildfire scouting | A thermal sweep of a 300 × 200 m block of dry scrub for six smouldering hotspots, line abreast at 20 m; the lane width follows from the camera footprint and the number of drones |
 
 ## Configurations
 
@@ -60,8 +61,15 @@ Chosen on 13 October 2026 from the last tuning round (seeds 5-9, `results/tuning
 | Drones retired | Drones that left the formation at the battery reserve |
 | Time faster than planned (%) | Share of the flight during which the supervisor's directive set a speed above the operator's planned speed. Flying faster than planned shortens completion time, so this is reported beside it |
 | Model calls, fallbacks, latency, tokens, cost | From the call records, for Nemotron runs |
+| Targets found (%) | Scouting scenarios: share of the hotspots that some drone's camera footprint held for the dwell time (0.5 s) |
+| Time to first find, time to find all (s) | Scouting scenarios: when the first and the last hotspot were found; time to find all is averaged over the runs that found every one |
+| Area covered (%), time to 90% coverage (s), coverage rate (ha/min) | Scouting scenarios: cells of the survey block (5 m) whose centre has been inside a footprint |
 
 Time in formation counts the drones still flying. A controller that loses drones in a crash can still score well on it, which is why crashes are always reported beside it.
+
+### Swarm-size sweep (wildfire scout)
+
+The wildfire scout is flown with 1, 4 and 16 drones on the same 20 held-out seeds (same hotspots, same wind), with the improved controller and the rule supervisor. The camera is a 45° thermal camera looking down from 20 m, so each drone sees a 16.6 m wide strip; drones fly line abreast 14 m apart (15% overlap), and the block is swept in as many lanes as the formation's width needs: one lane for 16 drones, 4 for 4, 13 for 1. The sweep answers the question the use case turns on: how much sooner does a swarm find every ignition than one drone? Rows are in `results/wildfire/runs.jsonl` and the report in `results/wildfire/REPORT.md`.
 
 ## Stress-test search
 

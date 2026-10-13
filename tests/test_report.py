@@ -44,6 +44,21 @@ class ReportTest(unittest.TestCase):
                             progress=lambda *a, **k: None)
             self.assertEqual(sorted(r.get("gps_scale") for r in more), [0.5, 2.0])
 
+    def test_scouting_rows_get_their_own_table(self):
+        rows = [row("wildfire_scout", "improved+rule", s, n=n, targets_total=6, targets_found=6, targets_found_pct=100.0,
+                    first_find_s=3.0, all_found_s=400.0 / n, area_covered_pct=100.0, coverage_90pct_s=600.0 / n,
+                    coverage_ha_per_min=0.5 * n) for n in (1, 16) for s in range(3)]
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "runs.jsonl"
+            path.write_text("".join(json.dumps(r) + "\n" for r in rows))
+            md = build(path, Path(tmp) / "out").read_text()
+        self.assertIn("### wildfire_scout, 1 drones", md)
+        self.assertIn("### wildfire_scout, 16 drones", md)
+        self.assertIn("| Configuration | Targets found (%) | Time to first find (s) | Time to find all (s) |", md)
+        self.assertIn("| Improved + rule supervisor | 100 | 3.0 | 25.0 | 100 | 37.5 | 8.0 |", md)
+        # Scenarios without a sensor get no scouting table.
+        self.assertEqual(md.count("Scouting:"), 2)
+
     def test_sweeps_are_split_not_averaged(self):
         rows = [row("open_transit", "improved+rule", 0, n=8), row("open_transit", "improved+rule", 0, n=32),
                 row("forest_trail", "improved+rule", 0)]
