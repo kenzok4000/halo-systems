@@ -115,7 +115,8 @@ The regex baseline and both prompt sets were added in the same first commit, and
 ## Tests
 
 ```bash
-python3 -m unittest discover -s tests
+python3 -m unittest discover -s tests -v                    # after pip install -e .
+PYTHONPATH=src python3 -m unittest discover -s tests -v     # or without installing
 ```
 
-The tests need no network. Model calls are tested against a fake transport.
+The tests need no key and no internet connection: model calls go to a fake transport, and two tests start a local server on 127.0.0.1. The suite takes about half a minute on a laptop, and CI runs it on Python 3.10 to 3.13 ([tests.yml](../.github/workflows/tests.yml)).

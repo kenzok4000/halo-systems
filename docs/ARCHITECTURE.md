@@ -18,12 +18,12 @@ Halo Systems has three loops that run at very different speeds. Only the fastest
 
 ## Simulator (`sim/`)
 
-* **Body and power** (`body.py`, `physics.py`). Point-mass quadcopter: 1.2 kg, thrust-to-weight 2.5, drag area 0.035 m², radius 0.15 m, first-order motor lag of 0.05 s. Rotor power comes from momentum theory: induced velocity from Glauert's relation v_i⁴ + V²v_i² = v_h⁴, plus parasitic power D·V. That gives about 17 minutes of hover on the battery. Energy per kilometre has a minimum at an economical cruise speed, which the supervisor can choose.
+* **Body and power** (`body.py`, `physics.py`). Point-mass quadcopter: 1.2 kg, thrust-to-weight 2.5, drag area 0.035 m², radius 0.15 m, first-order motor lag of 0.05 s, and no downward thrust, since a quadcopter cannot push itself down. Rotor power comes from momentum theory: induced velocity from Glauert's relation v_i⁴ + V²v_i² = v_h⁴, plus parasitic power D·V. That gives about 17 minutes of hover on the battery. Energy per kilometre has a minimum at an economical cruise speed, which the supervisor can choose.
 * **Wind** (`wind.py`). Steady mean, Ornstein-Uhlenbeck turbulence that is common to the swarm plus a smaller local part per drone, and gust fronts. A gust front sweeps across the formation, reaching each drone after a delay set by its position along the gust direction, so the formation is pulled apart and not just pushed sideways.
 * **Sensing and radio** (`sensing.py`). Each drone's navigation fix has white noise plus a slowly drifting bias, like GNSS. Each drone broadcasts its estimate every step. Messages arrive after a latency with jitter, can be lost, are cut off by range limits and blackouts, and are dead-reckoned forward by their age.
 * **World** (`world.py`). Trees (cylinders) and buildings (boxes) with a clearance query. `free_width_ahead` measures the obstacle-free lane along the path, from the formation's tail to 100 m ahead of its centre.
 * **Ground sensor and targets** (`scenario.py`, `engine.py`). A scenario can carry targets on the ground (smouldering hotspots) and a camera looking straight down from each drone. The footprint is a disc of radius altitude × tan(FOV/2), the circle inscribed in the image. Ten times a second the engine adds dwell to every target inside some flying drone's footprint; a target is found once its dwell reaches the sensor's dwell time, and the find is an event with the drone and the time. Coverage is a grid of 5 m cells over the survey block, marked when a cell's centre falls inside a footprint. The supervisor's report carries the count found so far and the area covered, not the hotspots' positions.
-* **Engine** (`engine.py`). Fixed 0.02 s step. It applies scripted events (motor failures, operator orders, blackouts), detects collisions by closest approach within each step, retires drones whose battery reaches the reserve, and builds the status report for the supervisor. A supervisor's answer is applied only after its measured latency has passed in simulated time, so a slow model has a real cost.
+* **Engine** (`engine.py`). Fixed 0.02 s step. It applies scripted events (motor failures, operator orders, blackouts), detects drone-to-drone collisions by closest approach within each step and obstacle and ground strikes at the end of each step, retires drones whose battery reaches the reserve, and builds the status report for the supervisor. A supervisor's answer is applied only after its measured latency has passed in simulated time, so a slow model has a real cost.
 
 ## Controllers (`control/`)
 
@@ -35,7 +35,7 @@ Both controllers get the same noisy observations and the same acceleration limit
   2. *blend*: synchronised straight-line transitions to the new slots at a bounded speed (as in CAPT, Turpin et al.).
   3. *pace*: the virtual leader slows when the formation is out of shape and before bends.
   4. *consensus*: a term on the relative shape with neighbours heard in the last second, so a common push does not tear the formation.
-  5. *cbf*: a control-barrier-function safety filter (Wang, Ames and Egerstedt, 2017) for drone-to-drone, obstacle and ground clearance. Each drone keeps the acceleration closest to its nominal command that satisfies all its constraints, found with Dykstra's alternating projections. Safety distances include body size, the directive's safety margin, two standard deviations of navigation error, and a margin that grows with the age of each neighbour's last message. The filter sees obstacles out to 15 m, like a forward depth sensor. Its obstacle barrier only holds if a drone closes on an obstacle no faster than √(2 a_brake gap), so near mapped obstacles the leader is held to the speed at which an obstacle first seen at 15 m can still be avoided (about 9 m/s). The stress-test search found tree strikes at 8 to 10 m/s before this cap was added.
+  5. *cbf*: a control-barrier-function safety filter (Wang, Ames and Egerstedt, 2017) for drone-to-drone, obstacle and ground clearance. Each drone keeps the acceleration closest to its nominal command that satisfies all its constraints, found approximately with a fixed 12 rounds of Dykstra's alternating projections. Safety distances include body size, the directive's safety margin, two standard deviations of navigation error, and a margin that grows with the age of each neighbour's last message. The filter sees obstacles out to 15 m, like a forward depth sensor. Its obstacle barrier only holds if a drone closes on an obstacle no faster than √(2 a_brake gap), so near mapped obstacles the leader is held to the speed at which an obstacle first seen at 15 m can still be avoided (about 9 m/s). The stress-test search found tree strikes at 8 to 10 m/s before this cap was added.
   6. *filter*: a complementary filter on the navigation estimate.
   7. *feedforward*: the slot's own acceleration, low-passed.
 
@@ -56,7 +56,7 @@ All supervisors read the same status report (`Simulation.summary`) and return th
 
 Every directive, whoever proposed it, passes the validator before the controller sees it:
 
-* Schema check: a known formation and five numeric fields.
+* Schema check: a known formation and finite numbers. A missing field keeps its current value, and the omission is logged as a violation.
 * Clamping to the flight envelope: spacing 2-15 m, speed 0.5-12 m/s, altitude 5 m up to the scenario's ceiling, safety margin 0.5-4 m.
 * A spacing floor of bodies + margin + 3√2 σ_nav, the smallest spacing the safety filter can hold with the navigation error present.
 * A rate limit of one change per 3 s.
@@ -65,7 +65,7 @@ Every directive, whoever proposed it, passes the validator before the controller
 
 * `client.py`: OpenAI-compatible client for Nebius Token Factory with timeouts, retries with backoff and jitter, `Retry-After`, a client-side rate limit, JSON-mode fallback, response validation, and a redacted call log.
 * `budget.py`: a spend ledger shared by every process, checked before each request. See [NVIDIA_NEBIUS.md](NVIDIA_NEBIUS.md).
-* `cache.py`: a record/replay cache keyed on model, messages and temperature, so any Nemotron run can be replayed exactly without a key.
+* `cache.py`: a record/replay cache keyed on the model, messages, temperature and request options (reasoning switch, token limit). The supervisor's calls go through it, so any Nemotron supervisor flight can be replayed exactly without a key. The mission compiler's and test engineer's calls are kept in call logs instead.
 * `mission.py`: the mission compiler, its civilian-use guard, the regex baseline and the scoring.
 * `tester.py`: the stress-test search (random, corners, cross-entropy method, Nemotron), and re-flying a search on another configuration.
 * `doctor.py`: the end-to-end check, which writes `evidence/latest/` (the committed check is in `evidence/`).
@@ -80,4 +80,14 @@ The headline formation metric is the *integrity error*. The ideal formation is t
 
 ## Dashboard (`dashboard/`)
 
-A standard-library HTTP server streams frames over server-sent events to a three.js page. Supervisor calls run on a worker thread, so the flight never waits for the API. The page lets the operator start flights, inject gusts, motor failures and radio blackouts, order formations, compile missions and browse the benchmark results.
+A standard-library HTTP server streams frames over server-sent events to a three.js page. With a key, supervisor calls run on a worker thread, so the flight never waits for the API. When replaying recorded calls without a key, they are answered in step with the simulation, exactly as in the benchmark. The page lets the operator start flights, inject gusts, motor failures and radio blackouts, order formations, compile missions and browse the benchmark results.
+
+## Known simplifications
+
+Beyond what the model leaves out by design (rotor and attitude dynamics, terrain, smoke), a review of the code found these. They apply equally to every configuration, so comparisons between controllers and supervisors are unaffected, but they make some conditions milder than their settings suggest.
+
+* **Vertical turbulence is much weaker than set.** `wind.py` scales the vertical part of the shared turbulence by 0.3 on every step rather than once, so vertical gusts are close to zero. Horizontal turbulence, local turbulence and gust fronts behave as described.
+* **Vertical GPS bias** starts at 0.6 of the horizontal bias but drifts to the full size within about 20 s (`sensing.py`).
+* **Obstacle and ground strikes** are checked at the end of each 0.02 s step, so a fast grazing pass of a thin trunk could be missed. Drone-to-drone contact is checked within the step.
+* **Drones that retire** at the battery reserve leave the flight where they are (a real drone would land), and other drones are not checked against them.
+* **Radio latency** is rounded to whole steps, so the default 50-70 ms becomes 40-60 ms.

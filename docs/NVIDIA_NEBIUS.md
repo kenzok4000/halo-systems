@@ -21,7 +21,7 @@ Nothing the model says reaches the motors directly. Every directive passes the s
 * **Credentials** come from the environment only (`NEBIUS_API_KEY`). The key is never logged, printed or written to disk, and log lines are scrubbed of the key and of bearer tokens. The key is sent only over https and never follows a redirect.
 * **Timeouts and deadlines.** Every request has a timeout, and a supervisor call has a deadline for the whole call, retries and waits included: 15 s with reasoning off (8 s per attempt) and 60 s with it on (one attempt). After that the rules decide that step. The values come from the first tuning round's call log (`results/tuning/round1/calls.jsonl.gz`): most of Super's slow first attempts were rescued by a quick retry (41 of 56 second attempts answered in about 2.5 s), and an answer much later than 15 s describes a swarm that has flown on 75 m.
 * **Retries** use exponential backoff with jitter on network errors and HTTP 408, 409, 425, 429, 500, 502, 503 and 504. `Retry-After` is honoured, up to 20 s. Authentication errors are not retried.
-* **Rate limiting** uses a client-side token bucket.
+* **Rate limiting** uses a client-side token bucket of 2 requests per second (bursts of 4) for each client. Benchmark workers each have their own client, so 4 workers can send up to 8 requests per second between them.
 * **JSON mode** is used when the model supports it, with an automatic fallback when it does not.
 * **Responses are validated**: HTTP status, JSON shape, and a non-empty message. Replies are then parsed defensively (reasoning tags and code fences are stripped) and checked field by field.
 * **Graceful failure**: the supervisor falls back to the rule supervisor for that step. In the dashboard, a failed mission-compiler call falls back to the regex parser. The test engineer tops up with random tests. Every fallback is counted.
@@ -37,7 +37,9 @@ With reasoning off, Nemotron 3 Nano answered in about 1 s but, before the status
 
 ## Spend guard
 
-`ai/budget.py` keeps a ledger of every call's tokens and estimated cost in a JSON-lines file (`HALO_LEDGER`), shared by all processes and sessions that use the same file. Before each request, the guard adds a pessimistic estimate of that request to the total: about three characters per token for the prompt, plus the full `max_tokens` for the reply. If the total would pass the cap (`HALO_BUDGET_USD`, default 18), the call is refused. A benchmark then stops instead of running up a bill.
+`ai/budget.py` keeps a ledger of every call's tokens and estimated cost in a JSON-lines file (`HALO_LEDGER`), shared by all processes and sessions that use the same file. Before each request, the guard adds a pessimistic estimate of that request to the total: about three characters per token for the prompt, plus the full `max_tokens` for the reply. If the total would pass the cap (`HALO_BUDGET_USD`, default 18), the call is refused. A benchmark then stops instead of running up a bill. The check and the request are not one atomic step across processes, so parallel workers can pass the cap by up to about one worst-case request each.
+
+Over the whole project the ledger recorded about 13,100 requests (13,066 logged by the client and 35 from the first live check, entered by hand), 22.3 million prompt tokens and 3.6 million completion tokens, an estimated $8.23 at the price ceilings. It counts every attempt, retries included, and counts requests that timed out at their worst case.
 
 * Some requests are billed even though they give no usable answer. A reply that turns out empty or malformed is counted at its reported usage. A connection that drops after sending is counted at the worst case.
 * Unless real prices are given in `NEBIUS_PRICE_INPUT_PER_M` and `NEBIUS_PRICE_OUTPUT_PER_M`, costs use built-in price ceilings set above the prices listed for these models, so the ledger over-counts.
@@ -46,13 +48,13 @@ With reasoning off, Nemotron 3 Nano answered in about 1 s but, before the status
 
 ## Reproducibility
 
-Every Nemotron call in a benchmark can be recorded to a cache keyed on the model, the messages, the temperature and the request options (reasoning switch, token limit). Failed calls are stored too, with their error and latency, so a replayed run falls back at exactly the moments the live run did. Anyone can then replay the run exactly, with no key and no cost:
+Every Nemotron supervisor call in a benchmark can be recorded to a cache keyed on the model, the messages, the temperature and the request options (reasoning switch, token limit). Failed calls are stored too, with their error and latency, so a replayed run falls back at exactly the moments the live run did. Anyone can then replay the run exactly, with no key and no cost:
 
 ```bash
 halo bench ... --configs improved+nemotron:<model> --cache results/nemotron_cache.jsonl --cache-mode replay
 ```
 
-A replay that misses the cache is reported as a fallback, never silently filled.
+A benchmark replay that misses the cache stops that run with an error rather than letting the rules fill in; in the dashboard the rules take that step and the log shows the fallback. The mission compiler's and test engineer's calls are not cached: they are kept in call logs (`results/mission_calls.jsonl.gz`, `results/stress/nemotron_calls.jsonl.gz`), and their results are scored from the committed outputs.
 
 ## Evidence
 
@@ -63,6 +65,6 @@ A replay that misses the cache is reported as a fallback, never silently filled.
 3. It validates the reply and passes it through the safety validator.
 4. It flies a full scenario with Nemotron supervising.
 
-It writes `evidence/nebius_e2e.json` (each step, pass or fail, usage and cost) and `evidence/nebius_calls.jsonl` (every call, redacted).
+It writes `evidence/nebius_e2e.json` (each step, pass or fail, usage and cost) and `evidence/nebius_calls.jsonl` (every call, redacted). The usage in `nebius_e2e.json` covers the doctor's own supervisor call only; the flight's calls are in `nebius_calls.jsonl` and the flight record.
 
 Status: the end-to-end check passed live on 12 October 2026. The model list returned 25 models, 4 of them Nemotron. A supervisor call to Nemotron 3 Nano took 0.97 s and returned a valid directive that the validator accepted. A full forest-trail flight then made 30 calls with no fallbacks, although the flight did not reach the end of the trail because the model kept a grid that did not fit. The first attempt, two minutes earlier, failed with an empty reply; `evidence/README.md` explains both runs. The integration is also tested offline against a fake transport (`tests/test_safety_ai.py`).
