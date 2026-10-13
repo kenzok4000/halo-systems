@@ -1,0 +1,1762 @@
+{
+ "forest_trail, GPS error x0.5|original+fixed": {
+  "time_formed_pct": {
+   "mean": 86.95500000000001,
+   "lo": 85.63000000000001,
+   "hi": 88.16499999999999,
+   "n": 20
+  },
+  "formation_error_mean_m": {
+   "mean": 0.56645,
+   "lo": 0.5409,
+   "hi": 0.5936524999999999,
+   "n": 20
+  },
+  "formation_error_p95_m": {
+   "mean": 2.89275,
+   "lo": 2.80444875,
+   "hi": 2.9778525,
+   "n": 20
+  },
+  "crashes": {
+   "mean": 7.65,
+   "lo": 7.05,
+   "hi": 8.25,
+   "n": 20
+  },
+  "near_misses": {
+   "mean": 0.8,
+   "lo": 0.5,
+   "hi": 1.15,
+   "n": 20
+  },
+  "min_separation_m": {
+   "mean": 0.65535,
+   "lo": 0.5680962500000001,
+   "hi": 0.7417499999999999,
+   "n": 20
+  },
+  "completed": {
+   "mean": 100.0,
+   "lo": 100.0,
+   "hi": 100.0,
+   "n": 20
+  },
+  "completion_time_s": {
+   "mean": 86.16000000000001,
+   "lo": 86.16000000000001,
+   "hi": 86.16000000000001,
+   "n": 20
+  },
+  "energy_wh_per_km": {
+   "mean": 7.680349999999999,
+   "lo": 7.598042499999999,
+   "hi": 7.76925375,
+   "n": 20
+  },
+  "drones_retired": {
+   "mean": 0.0,
+   "lo": 0.0,
+   "hi": 0.0,
+   "n": 20
+  },
+  "transition_settle_s": {
+   "mean": null,
+   "lo": null,
+   "hi": null,
+   "n": 0
+  },
+  "recovery_time_s": {
+   "mean": null,
+   "lo": null,
+   "hi": null,
+   "n": 0
+  },
+  "directive_changes": {
+   "mean": 0.0,
+   "lo": 0.0,
+   "hi": 0.0,
+   "n": 20
+  },
+  "time_faster_than_plan_pct": {
+   "mean": 0.0,
+   "lo": 0.0,
+   "hi": 0.0,
+   "n": 20
+  },
+  "ctrl_ms_mean": {
+   "mean": 0.9228999999999999,
+   "lo": 0.8657,
+   "hi": 0.9896499999999999,
+   "n": 20
+  },
+  "ai_calls": {
+   "mean": 0.0,
+   "lo": 0.0,
+   "hi": 0.0,
+   "n": 20
+  },
+  "ai_fallbacks": {
+   "mean": 0.0,
+   "lo": 0.0,
+   "hi": 0.0,
+   "n": 20
+  },
+  "ai_latency_mean_s": {
+   "mean": null,
+   "lo": null,
+   "hi": null,
+   "n": 0
+  }
+ },
+ "forest_trail, GPS error x0.5|improved+rule": {
+  "time_formed_pct": {
+   "mean": 84.79499999999999,
+   "lo": 84.55,
+   "hi": 85.05499999999999,
+   "n": 20
+  },
+  "formation_error_mean_m": {
+   "mean": 2.11305,
+   "lo": 2.07684875,
+   "hi": 2.14975125,
+   "n": 20
+  },
+  "formation_error_p95_m": {
+   "mean": 18.06825,
+   "lo": 17.82865,
+   "hi": 18.322309999999998,
+   "n": 20
+  },
+  "crashes": {
+   "mean": 0.0,
+   "lo": 0.0,
+   "hi": 0.0,
+   "n": 20
+  },
+  "near_misses": {
+   "mean": 0.0,
+   "lo": 0.0,
+   "hi": 0.0,
+   "n": 20
+  },
+  "min_separation_m": {
+   "mean": 3.2382000000000004,
+   "lo": 3.0394962500000005,
+   "hi": 3.4356549999999997,
+   "n": 20
+  },
+  "completed": {
+   "mean": 100.0,
+   "lo": 100.0,
+   "hi": 100.0,
+   "n": 20
+  },
+  "completion_time_s": {
+   "mean": 86.17100000000002,
+   "lo": 86.16300000000001,
+   "hi": 86.18100000000001,
+   "n": 20
+  },
+  "energy_wh_per_km": {
+   "mean": 7.8911,
+   "lo": 7.80775,
+   "hi": 7.976706250000001,
+   "n": 20
+  },
+  "drones_retired": {
+   "mean": 0.0,
+   "lo": 0.0,
+   "hi": 0.0,
+   "n": 20
+  },
+  "transition_settle_s": {
+   "mean": 4.721,
+   "lo": 4.3544875,
+   "hi": 5.1180125,
+   "n": 20
+  },
+  "recovery_time_s": {
+   "mean": null,
+   "lo": null,
+   "hi": null,
+   "n": 0
+  },
+  "directive_changes": {
+   "mean": 3.15,
+   "lo": 2.85,
+   "hi": 3.5,
+   "n": 20
+  },
+  "time_faster_than_plan_pct": {
+   "mean": 0.0,
+   "lo": 0.0,
+   "hi": 0.0,
+   "n": 20
+  },
+  "ctrl_ms_mean": {
+   "mean": 3.6708,
+   "lo": 3.62845,
+   "hi": 3.7149499999999995,
+   "n": 20
+  },
+  "ai_calls": {
+   "mean": 0.0,
+   "lo": 0.0,
+   "hi": 0.0,
+   "n": 20
+  },
+  "ai_fallbacks": {
+   "mean": 0.0,
+   "lo": 0.0,
+   "hi": 0.0,
+   "n": 20
+  },
+  "ai_latency_mean_s": {
+   "mean": null,
+   "lo": null,
+   "hi": null,
+   "n": 0
+  }
+ },
+ "gusty_day, GPS error x0.5|original+fixed": {
+  "time_formed_pct": {
+   "mean": 100.0,
+   "lo": 100.0,
+   "hi": 100.0,
+   "n": 20
+  },
+  "formation_error_mean_m": {
+   "mean": 0.22425,
+   "lo": 0.21955,
+   "hi": 0.22955,
+   "n": 20
+  },
+  "formation_error_p95_m": {
+   "mean": 0.2825,
+   "lo": 0.27135,
+   "hi": 0.2935,
+   "n": 20
+  },
+  "crashes": {
+   "mean": 0.0,
+   "lo": 0.0,
+   "hi": 0.0,
+   "n": 20
+  },
+  "near_misses": {
+   "mean": 0.0,
+   "lo": 0.0,
+   "hi": 0.0,
+   "n": 20
+  },
+  "min_separation_m": {
+   "mean": 2.18155,
+   "lo": 2.1186475,
+   "hi": 2.23895125,
+   "n": 20
+  },
+  "completed": {
+   "mean": 100.0,
+   "lo": 100.0,
+   "hi": 100.0,
+   "n": 20
+  },
+  "completion_time_s": {
+   "mean": 72.66000000000001,
+   "lo": 72.66000000000001,
+   "hi": 72.66000000000001,
+   "n": 20
+  },
+  "energy_wh_per_km": {
+   "mean": 6.72445,
+   "lo": 6.66019875,
+   "hi": 6.7845525,
+   "n": 20
+  },
+  "drones_retired": {
+   "mean": 0.0,
+   "lo": 0.0,
+   "hi": 0.0,
+   "n": 20
+  },
+  "transition_settle_s": {
+   "mean": null,
+   "lo": null,
+   "hi": null,
+   "n": 0
+  },
+  "recovery_time_s": {
+   "mean": 0.0,
+   "lo": 0.0,
+   "hi": 0.0,
+   "n": 20
+  },
+  "directive_changes": {
+   "mean": 0.0,
+   "lo": 0.0,
+   "hi": 0.0,
+   "n": 20
+  },
+  "time_faster_than_plan_pct": {
+   "mean": 0.0,
+   "lo": 0.0,
+   "hi": 0.0,
+   "n": 20
+  },
+  "ctrl_ms_mean": {
+   "mean": 0.28204999999999997,
+   "lo": 0.27664999999999995,
+   "hi": 0.28769999999999996,
+   "n": 20
+  },
+  "ai_calls": {
+   "mean": 0.0,
+   "lo": 0.0,
+   "hi": 0.0,
+   "n": 20
+  },
+  "ai_fallbacks": {
+   "mean": 0.0,
+   "lo": 0.0,
+   "hi": 0.0,
+   "n": 20
+  },
+  "ai_latency_mean_s": {
+   "mean": null,
+   "lo": null,
+   "hi": null,
+   "n": 0
+  }
+ },
+ "gusty_day, GPS error x0.5|improved+rule": {
+  "time_formed_pct": {
+   "mean": 99.07999999999998,
+   "lo": 99.05999999999999,
+   "hi": 99.09499999999998,
+   "n": 20
+  },
+  "formation_error_mean_m": {
+   "mean": 0.25034999999999996,
+   "lo": 0.2447,
+   "hi": 0.25634999999999997,
+   "n": 20
+  },
+  "formation_error_p95_m": {
+   "mean": 0.36014999999999997,
+   "lo": 0.33795000000000003,
+   "hi": 0.38495125,
+   "n": 20
+  },
+  "crashes": {
+   "mean": 0.0,
+   "lo": 0.0,
+   "hi": 0.0,
+   "n": 20
+  },
+  "near_misses": {
+   "mean": 0.0,
+   "lo": 0.0,
+   "hi": 0.0,
+   "n": 20
+  },
+  "min_separation_m": {
+   "mean": 2.19675,
+   "lo": 2.1277,
+   "hi": 2.26390125,
+   "n": 20
+  },
+  "completed": {
+   "mean": 100.0,
+   "lo": 100.0,
+   "hi": 100.0,
+   "n": 20
+  },
+  "completion_time_s": {
+   "mean": 72.66000000000001,
+   "lo": 72.66000000000001,
+   "hi": 72.66000000000001,
+   "n": 20
+  },
+  "energy_wh_per_km": {
+   "mean": 6.74715,
+   "lo": 6.68244875,
+   "hi": 6.8076525000000006,
+   "n": 20
+  },
+  "drones_retired": {
+   "mean": 0.0,
+   "lo": 0.0,
+   "hi": 0.0,
+   "n": 20
+  },
+  "transition_settle_s": {
+   "mean": 0.7400000000000001,
+   "lo": 0.7250000000000001,
+   "hi": 0.76,
+   "n": 20
+  },
+  "recovery_time_s": {
+   "mean": 0.18450000000000003,
+   "lo": 0.044,
+   "hi": 0.35200000000000004,
+   "n": 20
+  },
+  "directive_changes": {
+   "mean": 1.0,
+   "lo": 1.0,
+   "hi": 1.0,
+   "n": 20
+  },
+  "time_faster_than_plan_pct": {
+   "mean": 0.0,
+   "lo": 0.0,
+   "hi": 0.0,
+   "n": 20
+  },
+  "ctrl_ms_mean": {
+   "mean": 2.4548,
+   "lo": 2.4109487499999998,
+   "hi": 2.4969,
+   "n": 20
+  },
+  "ai_calls": {
+   "mean": 0.0,
+   "lo": 0.0,
+   "hi": 0.0,
+   "n": 20
+  },
+  "ai_fallbacks": {
+   "mean": 0.0,
+   "lo": 0.0,
+   "hi": 0.0,
+   "n": 20
+  },
+  "ai_latency_mean_s": {
+   "mean": null,
+   "lo": null,
+   "hi": null,
+   "n": 0
+  }
+ },
+ "forest_trail, GPS error x1|original+fixed": {
+  "time_formed_pct": {
+   "mean": 87.11000000000001,
+   "lo": 85.619875,
+   "hi": 88.465,
+   "n": 20
+  },
+  "formation_error_mean_m": {
+   "mean": 0.723,
+   "lo": 0.69665,
+   "hi": 0.75140125,
+   "n": 20
+  },
+  "formation_error_p95_m": {
+   "mean": 2.9126000000000003,
+   "lo": 2.8291449999999996,
+   "hi": 3.0013999999999994,
+   "n": 20
+  },
+  "crashes": {
+   "mean": 7.85,
+   "lo": 7.3,
+   "hi": 8.4,
+   "n": 20
+  },
+  "near_misses": {
+   "mean": 0.9,
+   "lo": 0.6,
+   "hi": 1.25,
+   "n": 20
+  },
+  "min_separation_m": {
+   "mean": 0.67825,
+   "lo": 0.60064875,
+   "hi": 0.7566499999999999,
+   "n": 20
+  },
+  "completed": {
+   "mean": 100.0,
+   "lo": 100.0,
+   "hi": 100.0,
+   "n": 20
+  },
+  "completion_time_s": {
+   "mean": 86.16000000000001,
+   "lo": 86.16000000000001,
+   "hi": 86.16000000000001,
+   "n": 20
+  },
+  "energy_wh_per_km": {
+   "mean": 7.674149999999999,
+   "lo": 7.59024875,
+   "hi": 7.7639999999999985,
+   "n": 20
+  },
+  "drones_retired": {
+   "mean": 0.0,
+   "lo": 0.0,
+   "hi": 0.0,
+   "n": 20
+  },
+  "transition_settle_s": {
+   "mean": null,
+   "lo": null,
+   "hi": null,
+   "n": 0
+  },
+  "recovery_time_s": {
+   "mean": null,
+   "lo": null,
+   "hi": null,
+   "n": 0
+  },
+  "directive_changes": {
+   "mean": 0.0,
+   "lo": 0.0,
+   "hi": 0.0,
+   "n": 20
+  },
+  "time_faster_than_plan_pct": {
+   "mean": 0.0,
+   "lo": 0.0,
+   "hi": 0.0,
+   "n": 20
+  },
+  "ctrl_ms_mean": {
+   "mean": 0.8925000000000001,
+   "lo": 0.84135,
+   "hi": 0.94815,
+   "n": 20
+  },
+  "ai_calls": {
+   "mean": 0.0,
+   "lo": 0.0,
+   "hi": 0.0,
+   "n": 20
+  },
+  "ai_fallbacks": {
+   "mean": 0.0,
+   "lo": 0.0,
+   "hi": 0.0,
+   "n": 20
+  },
+  "ai_latency_mean_s": {
+   "mean": null,
+   "lo": null,
+   "hi": null,
+   "n": 0
+  }
+ },
+ "forest_trail, GPS error x1|improved+rule": {
+  "time_formed_pct": {
+   "mean": 84.665,
+   "lo": 84.42999999999999,
+   "hi": 84.92,
+   "n": 20
+  },
+  "formation_error_mean_m": {
+   "mean": 2.2825999999999995,
+   "lo": 2.2454999999999994,
+   "hi": 2.3190999999999997,
+   "n": 20
+  },
+  "formation_error_p95_m": {
+   "mean": 18.0648,
+   "lo": 17.82224625,
+   "hi": 18.313707500000003,
+   "n": 20
+  },
+  "crashes": {
+   "mean": 0.0,
+   "lo": 0.0,
+   "hi": 0.0,
+   "n": 20
+  },
+  "near_misses": {
+   "mean": 0.0,
+   "lo": 0.0,
+   "hi": 0.0,
+   "n": 20
+  },
+  "min_separation_m": {
+   "mean": 2.9979,
+   "lo": 2.81044375,
+   "hi": 3.1920524999999995,
+   "n": 20
+  },
+  "completed": {
+   "mean": 100.0,
+   "lo": 100.0,
+   "hi": 100.0,
+   "n": 20
+  },
+  "completion_time_s": {
+   "mean": 86.17500000000001,
+   "lo": 86.16400000000002,
+   "hi": 86.18800000000002,
+   "n": 20
+  },
+  "energy_wh_per_km": {
+   "mean": 7.8893499999999985,
+   "lo": 7.807347500000001,
+   "hi": 7.972751250000003,
+   "n": 20
+  },
+  "drones_retired": {
+   "mean": 0.0,
+   "lo": 0.0,
+   "hi": 0.0,
+   "n": 20
+  },
+  "transition_settle_s": {
+   "mean": 4.76,
+   "lo": 4.384500000000001,
+   "hi": 5.1625,
+   "n": 20
+  },
+  "recovery_time_s": {
+   "mean": null,
+   "lo": null,
+   "hi": null,
+   "n": 0
+  },
+  "directive_changes": {
+   "mean": 3.15,
+   "lo": 2.85,
+   "hi": 3.5,
+   "n": 20
+  },
+  "time_faster_than_plan_pct": {
+   "mean": 0.0,
+   "lo": 0.0,
+   "hi": 0.0,
+   "n": 20
+  },
+  "ctrl_ms_mean": {
+   "mean": 3.6461999999999994,
+   "lo": 3.5862000000000007,
+   "hi": 3.7063500000000005,
+   "n": 20
+  },
+  "ai_calls": {
+   "mean": 0.0,
+   "lo": 0.0,
+   "hi": 0.0,
+   "n": 20
+  },
+  "ai_fallbacks": {
+   "mean": 0.0,
+   "lo": 0.0,
+   "hi": 0.0,
+   "n": 20
+  },
+  "ai_latency_mean_s": {
+   "mean": null,
+   "lo": null,
+   "hi": null,
+   "n": 0
+  }
+ },
+ "gusty_day, GPS error x1|original+fixed": {
+  "time_formed_pct": {
+   "mean": 100.0,
+   "lo": 100.0,
+   "hi": 100.0,
+   "n": 20
+  },
+  "formation_error_mean_m": {
+   "mean": 0.42000000000000004,
+   "lo": 0.41209999999999997,
+   "hi": 0.42905,
+   "n": 20
+  },
+  "formation_error_p95_m": {
+   "mean": 0.48830000000000007,
+   "lo": 0.47605000000000014,
+   "hi": 0.5023000000000001,
+   "n": 20
+  },
+  "crashes": {
+   "mean": 0.0,
+   "lo": 0.0,
+   "hi": 0.0,
+   "n": 20
+  },
+  "near_misses": {
+   "mean": 0.0,
+   "lo": 0.0,
+   "hi": 0.0,
+   "n": 20
+  },
+  "min_separation_m": {
+   "mean": 1.9257500000000003,
+   "lo": 1.8651475,
+   "hi": 1.97925,
+   "n": 20
+  },
+  "completed": {
+   "mean": 100.0,
+   "lo": 100.0,
+   "hi": 100.0,
+   "n": 20
+  },
+  "completion_time_s": {
+   "mean": 72.66000000000001,
+   "lo": 72.66000000000001,
+   "hi": 72.66000000000001,
+   "n": 20
+  },
+  "energy_wh_per_km": {
+   "mean": 6.7307999999999995,
+   "lo": 6.666248749999999,
+   "hi": 6.791600000000001,
+   "n": 20
+  },
+  "drones_retired": {
+   "mean": 0.0,
+   "lo": 0.0,
+   "hi": 0.0,
+   "n": 20
+  },
+  "transition_settle_s": {
+   "mean": null,
+   "lo": null,
+   "hi": null,
+   "n": 0
+  },
+  "recovery_time_s": {
+   "mean": 0.0,
+   "lo": 0.0,
+   "hi": 0.0,
+   "n": 20
+  },
+  "directive_changes": {
+   "mean": 0.0,
+   "lo": 0.0,
+   "hi": 0.0,
+   "n": 20
+  },
+  "time_faster_than_plan_pct": {
+   "mean": 0.0,
+   "lo": 0.0,
+   "hi": 0.0,
+   "n": 20
+  },
+  "ctrl_ms_mean": {
+   "mean": 0.2739499999999999,
+   "lo": 0.2668,
+   "hi": 0.28135000000000004,
+   "n": 20
+  },
+  "ai_calls": {
+   "mean": 0.0,
+   "lo": 0.0,
+   "hi": 0.0,
+   "n": 20
+  },
+  "ai_fallbacks": {
+   "mean": 0.0,
+   "lo": 0.0,
+   "hi": 0.0,
+   "n": 20
+  },
+  "ai_latency_mean_s": {
+   "mean": null,
+   "lo": null,
+   "hi": null,
+   "n": 0
+  }
+ },
+ "gusty_day, GPS error x1|improved+rule": {
+  "time_formed_pct": {
+   "mean": 99.05999999999999,
+   "lo": 99.02499999999999,
+   "hi": 99.085,
+   "n": 20
+  },
+  "formation_error_mean_m": {
+   "mean": 0.43929999999999997,
+   "lo": 0.43125,
+   "hi": 0.44844999999999996,
+   "n": 20
+  },
+  "formation_error_p95_m": {
+   "mean": 0.5208499999999999,
+   "lo": 0.5035487500000001,
+   "hi": 0.5403,
+   "n": 20
+  },
+  "crashes": {
+   "mean": 0.0,
+   "lo": 0.0,
+   "hi": 0.0,
+   "n": 20
+  },
+  "near_misses": {
+   "mean": 0.0,
+   "lo": 0.0,
+   "hi": 0.0,
+   "n": 20
+  },
+  "min_separation_m": {
+   "mean": 2.0803000000000003,
+   "lo": 2.0091424999999994,
+   "hi": 2.1436499999999996,
+   "n": 20
+  },
+  "completed": {
+   "mean": 100.0,
+   "lo": 100.0,
+   "hi": 100.0,
+   "n": 20
+  },
+  "completion_time_s": {
+   "mean": 72.66000000000001,
+   "lo": 72.66000000000001,
+   "hi": 72.66000000000001,
+   "n": 20
+  },
+  "energy_wh_per_km": {
+   "mean": 6.746650000000001,
+   "lo": 6.682049999999999,
+   "hi": 6.80730125,
+   "n": 20
+  },
+  "drones_retired": {
+   "mean": 0.0,
+   "lo": 0.0,
+   "hi": 0.0,
+   "n": 20
+  },
+  "transition_settle_s": {
+   "mean": 0.7550000000000001,
+   "lo": 0.7350000000000001,
+   "hi": 0.7800000000000001,
+   "n": 20
+  },
+  "recovery_time_s": {
+   "mean": 0.187,
+   "lo": 0.0455,
+   "hi": 0.3555,
+   "n": 20
+  },
+  "directive_changes": {
+   "mean": 1.0,
+   "lo": 1.0,
+   "hi": 1.0,
+   "n": 20
+  },
+  "time_faster_than_plan_pct": {
+   "mean": 0.0,
+   "lo": 0.0,
+   "hi": 0.0,
+   "n": 20
+  },
+  "ctrl_ms_mean": {
+   "mean": 2.3592000000000004,
+   "lo": 2.3032500000000002,
+   "hi": 2.4191512499999996,
+   "n": 20
+  },
+  "ai_calls": {
+   "mean": 0.0,
+   "lo": 0.0,
+   "hi": 0.0,
+   "n": 20
+  },
+  "ai_fallbacks": {
+   "mean": 0.0,
+   "lo": 0.0,
+   "hi": 0.0,
+   "n": 20
+  },
+  "ai_latency_mean_s": {
+   "mean": null,
+   "lo": null,
+   "hi": null,
+   "n": 0
+  }
+ },
+ "forest_trail, GPS error x2|original+fixed": {
+  "time_formed_pct": {
+   "mean": 79.71499999999999,
+   "lo": 76.31487499999997,
+   "hi": 82.72512499999999,
+   "n": 20
+  },
+  "formation_error_mean_m": {
+   "mean": 1.0895999999999997,
+   "lo": 1.0620000000000003,
+   "hi": 1.11505125,
+   "n": 20
+  },
+  "formation_error_p95_m": {
+   "mean": 3.0792000000000006,
+   "lo": 3.00864625,
+   "hi": 3.1492512500000003,
+   "n": 20
+  },
+  "crashes": {
+   "mean": 8.25,
+   "lo": 7.75,
+   "hi": 8.8,
+   "n": 20
+  },
+  "near_misses": {
+   "mean": 1.55,
+   "lo": 1.05,
+   "hi": 2.05,
+   "n": 20
+  },
+  "min_separation_m": {
+   "mean": 0.6112500000000001,
+   "lo": 0.51389625,
+   "hi": 0.7187049999999998,
+   "n": 20
+  },
+  "completed": {
+   "mean": 100.0,
+   "lo": 100.0,
+   "hi": 100.0,
+   "n": 20
+  },
+  "completion_time_s": {
+   "mean": 86.16000000000001,
+   "lo": 86.16000000000001,
+   "hi": 86.16000000000001,
+   "n": 20
+  },
+  "energy_wh_per_km": {
+   "mean": 7.66575,
+   "lo": 7.57434625,
+   "hi": 7.765150000000001,
+   "n": 20
+  },
+  "drones_retired": {
+   "mean": 0.0,
+   "lo": 0.0,
+   "hi": 0.0,
+   "n": 20
+  },
+  "transition_settle_s": {
+   "mean": null,
+   "lo": null,
+   "hi": null,
+   "n": 0
+  },
+  "recovery_time_s": {
+   "mean": null,
+   "lo": null,
+   "hi": null,
+   "n": 0
+  },
+  "directive_changes": {
+   "mean": 0.0,
+   "lo": 0.0,
+   "hi": 0.0,
+   "n": 20
+  },
+  "time_faster_than_plan_pct": {
+   "mean": 0.0,
+   "lo": 0.0,
+   "hi": 0.0,
+   "n": 20
+  },
+  "ctrl_ms_mean": {
+   "mean": 0.8803000000000001,
+   "lo": 0.82194875,
+   "hi": 0.9492025,
+   "n": 20
+  },
+  "ai_calls": {
+   "mean": 0.0,
+   "lo": 0.0,
+   "hi": 0.0,
+   "n": 20
+  },
+  "ai_fallbacks": {
+   "mean": 0.0,
+   "lo": 0.0,
+   "hi": 0.0,
+   "n": 20
+  },
+  "ai_latency_mean_s": {
+   "mean": null,
+   "lo": null,
+   "hi": null,
+   "n": 0
+  }
+ },
+ "forest_trail, GPS error x2|improved+rule": {
+  "time_formed_pct": {
+   "mean": 83.13499999999999,
+   "lo": 80.59,
+   "hi": 84.98,
+   "n": 20
+  },
+  "formation_error_mean_m": {
+   "mean": 2.5250999999999997,
+   "lo": 2.499,
+   "hi": 2.55445,
+   "n": 20
+  },
+  "formation_error_p95_m": {
+   "mean": 17.410600000000002,
+   "lo": 17.25784375,
+   "hi": 17.5973525,
+   "n": 20
+  },
+  "crashes": {
+   "mean": 0.0,
+   "lo": 0.0,
+   "hi": 0.0,
+   "n": 20
+  },
+  "near_misses": {
+   "mean": 0.0,
+   "lo": 0.0,
+   "hi": 0.0,
+   "n": 20
+  },
+  "min_separation_m": {
+   "mean": 3.0724999999999993,
+   "lo": 2.9044937500000003,
+   "hi": 3.2366025,
+   "n": 20
+  },
+  "completed": {
+   "mean": 100.0,
+   "lo": 100.0,
+   "hi": 100.0,
+   "n": 20
+  },
+  "completion_time_s": {
+   "mean": 86.16600000000001,
+   "lo": 86.162,
+   "hi": 86.17000000000002,
+   "n": 20
+  },
+  "energy_wh_per_km": {
+   "mean": 7.86585,
+   "lo": 7.7847475,
+   "hi": 7.946151249999999,
+   "n": 20
+  },
+  "drones_retired": {
+   "mean": 0.0,
+   "lo": 0.0,
+   "hi": 0.0,
+   "n": 20
+  },
+  "transition_settle_s": {
+   "mean": 6.2,
+   "lo": 5.5909875,
+   "hi": 6.896512499999998,
+   "n": 20
+  },
+  "recovery_time_s": {
+   "mean": null,
+   "lo": null,
+   "hi": null,
+   "n": 0
+  },
+  "directive_changes": {
+   "mean": 2.4,
+   "lo": 2.15,
+   "hi": 2.65,
+   "n": 20
+  },
+  "time_faster_than_plan_pct": {
+   "mean": 0.0,
+   "lo": 0.0,
+   "hi": 0.0,
+   "n": 20
+  },
+  "ctrl_ms_mean": {
+   "mean": 3.6109999999999998,
+   "lo": 3.56335,
+   "hi": 3.659,
+   "n": 20
+  },
+  "ai_calls": {
+   "mean": 0.0,
+   "lo": 0.0,
+   "hi": 0.0,
+   "n": 20
+  },
+  "ai_fallbacks": {
+   "mean": 0.0,
+   "lo": 0.0,
+   "hi": 0.0,
+   "n": 20
+  },
+  "ai_latency_mean_s": {
+   "mean": null,
+   "lo": null,
+   "hi": null,
+   "n": 0
+  }
+ },
+ "gusty_day, GPS error x2|original+fixed": {
+  "time_formed_pct": {
+   "mean": 96.775,
+   "lo": 93.08500000000001,
+   "hi": 99.455,
+   "n": 20
+  },
+  "formation_error_mean_m": {
+   "mean": 0.82495,
+   "lo": 0.8092499999999999,
+   "hi": 0.8430500000000001,
+   "n": 20
+  },
+  "formation_error_p95_m": {
+   "mean": 0.9553999999999998,
+   "lo": 0.9285500000000001,
+   "hi": 0.9863999999999999,
+   "n": 20
+  },
+  "crashes": {
+   "mean": 0.0,
+   "lo": 0.0,
+   "hi": 0.0,
+   "n": 20
+  },
+  "near_misses": {
+   "mean": 0.0,
+   "lo": 0.0,
+   "hi": 0.0,
+   "n": 20
+  },
+  "min_separation_m": {
+   "mean": 1.5700500000000002,
+   "lo": 1.46415,
+   "hi": 1.66525,
+   "n": 20
+  },
+  "completed": {
+   "mean": 100.0,
+   "lo": 100.0,
+   "hi": 100.0,
+   "n": 20
+  },
+  "completion_time_s": {
+   "mean": 72.66000000000001,
+   "lo": 72.66000000000001,
+   "hi": 72.66000000000001,
+   "n": 20
+  },
+  "energy_wh_per_km": {
+   "mean": 6.762200000000002,
+   "lo": 6.6975475,
+   "hi": 6.82305,
+   "n": 20
+  },
+  "drones_retired": {
+   "mean": 0.0,
+   "lo": 0.0,
+   "hi": 0.0,
+   "n": 20
+  },
+  "transition_settle_s": {
+   "mean": null,
+   "lo": null,
+   "hi": null,
+   "n": 0
+  },
+  "recovery_time_s": {
+   "mean": 0.7435,
+   "lo": 0.1959000000000001,
+   "hi": 1.4344999999999999,
+   "n": 20
+  },
+  "directive_changes": {
+   "mean": 0.0,
+   "lo": 0.0,
+   "hi": 0.0,
+   "n": 20
+  },
+  "time_faster_than_plan_pct": {
+   "mean": 0.0,
+   "lo": 0.0,
+   "hi": 0.0,
+   "n": 20
+  },
+  "ctrl_ms_mean": {
+   "mean": 0.2722,
+   "lo": 0.26444999999999996,
+   "hi": 0.27895125,
+   "n": 20
+  },
+  "ai_calls": {
+   "mean": 0.0,
+   "lo": 0.0,
+   "hi": 0.0,
+   "n": 20
+  },
+  "ai_fallbacks": {
+   "mean": 0.0,
+   "lo": 0.0,
+   "hi": 0.0,
+   "n": 20
+  },
+  "ai_latency_mean_s": {
+   "mean": null,
+   "lo": null,
+   "hi": null,
+   "n": 0
+  }
+ },
+ "gusty_day, GPS error x2|improved+rule": {
+  "time_formed_pct": {
+   "mean": 95.38499999999999,
+   "lo": 91.63499999999999,
+   "hi": 98.10999999999999,
+   "n": 20
+  },
+  "formation_error_mean_m": {
+   "mean": 0.8352499999999999,
+   "lo": 0.8196000000000001,
+   "hi": 0.85355,
+   "n": 20
+  },
+  "formation_error_p95_m": {
+   "mean": 0.9615999999999998,
+   "lo": 0.9342987500000001,
+   "hi": 0.9934499999999999,
+   "n": 20
+  },
+  "crashes": {
+   "mean": 0.0,
+   "lo": 0.0,
+   "hi": 0.0,
+   "n": 20
+  },
+  "near_misses": {
+   "mean": 0.0,
+   "lo": 0.0,
+   "hi": 0.0,
+   "n": 20
+  },
+  "min_separation_m": {
+   "mean": 2.0605,
+   "lo": 1.8989462500000003,
+   "hi": 2.2116562499999994,
+   "n": 20
+  },
+  "completed": {
+   "mean": 100.0,
+   "lo": 100.0,
+   "hi": 100.0,
+   "n": 20
+  },
+  "completion_time_s": {
+   "mean": 72.66400000000002,
+   "lo": 72.66100000000002,
+   "hi": 72.668,
+   "n": 20
+  },
+  "energy_wh_per_km": {
+   "mean": 6.750049999999999,
+   "lo": 6.684900000000001,
+   "hi": 6.810151249999999,
+   "n": 20
+  },
+  "drones_retired": {
+   "mean": 0.0,
+   "lo": 0.0,
+   "hi": 0.0,
+   "n": 20
+  },
+  "transition_settle_s": {
+   "mean": 1.08,
+   "lo": 0.8649999999999999,
+   "hi": 1.4351249999999982,
+   "n": 20
+  },
+  "recovery_time_s": {
+   "mean": 0.8295,
+   "lo": 0.3565,
+   "hi": 1.3685249999999998,
+   "n": 20
+  },
+  "directive_changes": {
+   "mean": 1.0,
+   "lo": 1.0,
+   "hi": 1.0,
+   "n": 20
+  },
+  "time_faster_than_plan_pct": {
+   "mean": 0.0,
+   "lo": 0.0,
+   "hi": 0.0,
+   "n": 20
+  },
+  "ctrl_ms_mean": {
+   "mean": 2.26275,
+   "lo": 2.2307987499999995,
+   "hi": 2.29955,
+   "n": 20
+  },
+  "ai_calls": {
+   "mean": 0.0,
+   "lo": 0.0,
+   "hi": 0.0,
+   "n": 20
+  },
+  "ai_fallbacks": {
+   "mean": 0.0,
+   "lo": 0.0,
+   "hi": 0.0,
+   "n": 20
+  },
+  "ai_latency_mean_s": {
+   "mean": null,
+   "lo": null,
+   "hi": null,
+   "n": 0
+  }
+ },
+ "forest_trail, GPS error x3|original+fixed": {
+  "time_formed_pct": {
+   "mean": 13.449999999999998,
+   "lo": 9.684874999999998,
+   "hi": 17.540124999999996,
+   "n": 20
+  },
+  "formation_error_mean_m": {
+   "mean": 1.4175499999999999,
+   "lo": 1.3814987500000002,
+   "hi": 1.4528024999999998,
+   "n": 20
+  },
+  "formation_error_p95_m": {
+   "mean": 3.1991500000000004,
+   "lo": 3.11514875,
+   "hi": 3.2794524999999997,
+   "n": 20
+  },
+  "crashes": {
+   "mean": 9.1,
+   "lo": 8.4,
+   "hi": 9.85,
+   "n": 20
+  },
+  "near_misses": {
+   "mean": 1.8,
+   "lo": 1.35,
+   "hi": 2.3,
+   "n": 20
+  },
+  "min_separation_m": {
+   "mean": 0.5171499999999999,
+   "lo": 0.43795,
+   "hi": 0.61200375,
+   "n": 20
+  },
+  "completed": {
+   "mean": 100.0,
+   "lo": 100.0,
+   "hi": 100.0,
+   "n": 20
+  },
+  "completion_time_s": {
+   "mean": 86.16000000000001,
+   "lo": 86.16000000000001,
+   "hi": 86.16000000000001,
+   "n": 20
+  },
+  "energy_wh_per_km": {
+   "mean": 7.68665,
+   "lo": 7.59064875,
+   "hi": 7.789504999999999,
+   "n": 20
+  },
+  "drones_retired": {
+   "mean": 0.0,
+   "lo": 0.0,
+   "hi": 0.0,
+   "n": 20
+  },
+  "transition_settle_s": {
+   "mean": null,
+   "lo": null,
+   "hi": null,
+   "n": 0
+  },
+  "recovery_time_s": {
+   "mean": null,
+   "lo": null,
+   "hi": null,
+   "n": 0
+  },
+  "directive_changes": {
+   "mean": 0.0,
+   "lo": 0.0,
+   "hi": 0.0,
+   "n": 20
+  },
+  "time_faster_than_plan_pct": {
+   "mean": 0.0,
+   "lo": 0.0,
+   "hi": 0.0,
+   "n": 20
+  },
+  "ctrl_ms_mean": {
+   "mean": 0.82175,
+   "lo": 0.7699974999999998,
+   "hi": 0.88230125,
+   "n": 20
+  },
+  "ai_calls": {
+   "mean": 0.0,
+   "lo": 0.0,
+   "hi": 0.0,
+   "n": 20
+  },
+  "ai_fallbacks": {
+   "mean": 0.0,
+   "lo": 0.0,
+   "hi": 0.0,
+   "n": 20
+  },
+  "ai_latency_mean_s": {
+   "mean": null,
+   "lo": null,
+   "hi": null,
+   "n": 0
+  }
+ },
+ "forest_trail, GPS error x3|improved+rule": {
+  "time_formed_pct": {
+   "mean": 4.125000000000001,
+   "lo": 2.665,
+   "hi": 6.1,
+   "n": 20
+  },
+  "formation_error_mean_m": {
+   "mean": 2.8445,
+   "lo": 2.8229987499999996,
+   "hi": 2.86890125,
+   "n": 20
+  },
+  "formation_error_p95_m": {
+   "mean": 17.20565,
+   "lo": 17.131,
+   "hi": 17.280699999999996,
+   "n": 20
+  },
+  "crashes": {
+   "mean": 0.0,
+   "lo": 0.0,
+   "hi": 0.0,
+   "n": 20
+  },
+  "near_misses": {
+   "mean": 0.0,
+   "lo": 0.0,
+   "hi": 0.0,
+   "n": 20
+  },
+  "min_separation_m": {
+   "mean": 2.6539499999999996,
+   "lo": 2.4941887499999997,
+   "hi": 2.8237574999999997,
+   "n": 20
+  },
+  "completed": {
+   "mean": 100.0,
+   "lo": 100.0,
+   "hi": 100.0,
+   "n": 20
+  },
+  "completion_time_s": {
+   "mean": 86.24600000000001,
+   "lo": 86.23997499999999,
+   "hi": 86.253,
+   "n": 20
+  },
+  "energy_wh_per_km": {
+   "mean": 7.871450000000001,
+   "lo": 7.790348749999999,
+   "hi": 7.951601250000001,
+   "n": 20
+  },
+  "drones_retired": {
+   "mean": 0.0,
+   "lo": 0.0,
+   "hi": 0.0,
+   "n": 20
+  },
+  "transition_settle_s": {
+   "mean": 50.726000000000006,
+   "lo": 47.892,
+   "hi": 53.04702500000001,
+   "n": 20
+  },
+  "recovery_time_s": {
+   "mean": null,
+   "lo": null,
+   "hi": null,
+   "n": 0
+  },
+  "directive_changes": {
+   "mean": 2.0,
+   "lo": 2.0,
+   "hi": 2.0,
+   "n": 20
+  },
+  "time_faster_than_plan_pct": {
+   "mean": 0.0,
+   "lo": 0.0,
+   "hi": 0.0,
+   "n": 20
+  },
+  "ctrl_ms_mean": {
+   "mean": 3.61165,
+   "lo": 3.5323,
+   "hi": 3.6998062500000004,
+   "n": 20
+  },
+  "ai_calls": {
+   "mean": 0.0,
+   "lo": 0.0,
+   "hi": 0.0,
+   "n": 20
+  },
+  "ai_fallbacks": {
+   "mean": 0.0,
+   "lo": 0.0,
+   "hi": 0.0,
+   "n": 20
+  },
+  "ai_latency_mean_s": {
+   "mean": null,
+   "lo": null,
+   "hi": null,
+   "n": 0
+  }
+ },
+ "gusty_day, GPS error x3|original+fixed": {
+  "time_formed_pct": {
+   "mean": 3.2699999999999996,
+   "lo": 2.42,
+   "hi": 4.1899999999999995,
+   "n": 20
+  },
+  "formation_error_mean_m": {
+   "mean": 1.2310499999999998,
+   "lo": 1.2073500000000001,
+   "hi": 1.2589499999999998,
+   "n": 20
+  },
+  "formation_error_p95_m": {
+   "mean": 1.4278,
+   "lo": 1.3887500000000002,
+   "hi": 1.47645125,
+   "n": 20
+  },
+  "crashes": {
+   "mean": 0.0,
+   "lo": 0.0,
+   "hi": 0.0,
+   "n": 20
+  },
+  "near_misses": {
+   "mean": 0.0,
+   "lo": 0.0,
+   "hi": 0.0,
+   "n": 20
+  },
+  "min_separation_m": {
+   "mean": 1.8755499999999998,
+   "lo": 1.7159,
+   "hi": 2.01865125,
+   "n": 20
+  },
+  "completed": {
+   "mean": 100.0,
+   "lo": 100.0,
+   "hi": 100.0,
+   "n": 20
+  },
+  "completion_time_s": {
+   "mean": 72.66000000000001,
+   "lo": 72.66000000000001,
+   "hi": 72.66000000000001,
+   "n": 20
+  },
+  "energy_wh_per_km": {
+   "mean": 6.7955,
+   "lo": 6.730850000000001,
+   "hi": 6.857651250000002,
+   "n": 20
+  },
+  "drones_retired": {
+   "mean": 0.0,
+   "lo": 0.0,
+   "hi": 0.0,
+   "n": 20
+  },
+  "transition_settle_s": {
+   "mean": null,
+   "lo": null,
+   "hi": null,
+   "n": 0
+  },
+  "recovery_time_s": {
+   "mean": 38.1505,
+   "lo": 36.06692499999999,
+   "hi": 39.91052500000001,
+   "n": 20
+  },
+  "directive_changes": {
+   "mean": 0.0,
+   "lo": 0.0,
+   "hi": 0.0,
+   "n": 20
+  },
+  "time_faster_than_plan_pct": {
+   "mean": 0.0,
+   "lo": 0.0,
+   "hi": 0.0,
+   "n": 20
+  },
+  "ctrl_ms_mean": {
+   "mean": 0.2854500000000001,
+   "lo": 0.2752,
+   "hi": 0.2965,
+   "n": 20
+  },
+  "ai_calls": {
+   "mean": 0.0,
+   "lo": 0.0,
+   "hi": 0.0,
+   "n": 20
+  },
+  "ai_fallbacks": {
+   "mean": 0.0,
+   "lo": 0.0,
+   "hi": 0.0,
+   "n": 20
+  },
+  "ai_latency_mean_s": {
+   "mean": null,
+   "lo": null,
+   "hi": null,
+   "n": 0
+  }
+ },
+ "gusty_day, GPS error x3|improved+rule": {
+  "time_formed_pct": {
+   "mean": 3.6799999999999997,
+   "lo": 2.689875,
+   "hi": 4.749999999999999,
+   "n": 20
+  },
+  "formation_error_mean_m": {
+   "mean": 1.2359499999999999,
+   "lo": 1.21185,
+   "hi": 1.26325,
+   "n": 20
+  },
+  "formation_error_p95_m": {
+   "mean": 1.4282,
+   "lo": 1.38815,
+   "hi": 1.47545125,
+   "n": 20
+  },
+  "crashes": {
+   "mean": 0.0,
+   "lo": 0.0,
+   "hi": 0.0,
+   "n": 20
+  },
+  "near_misses": {
+   "mean": 0.0,
+   "lo": 0.0,
+   "hi": 0.0,
+   "n": 20
+  },
+  "min_separation_m": {
+   "mean": 2.59225,
+   "lo": 2.3587474999999998,
+   "hi": 2.81995,
+   "n": 20
+  },
+  "completed": {
+   "mean": 100.0,
+   "lo": 100.0,
+   "hi": 100.0,
+   "n": 20
+  },
+  "completion_time_s": {
+   "mean": 72.749,
+   "lo": 72.739,
+   "hi": 72.75899999999999,
+   "n": 20
+  },
+  "energy_wh_per_km": {
+   "mean": 6.765650000000001,
+   "lo": 6.7006,
+   "hi": 6.82590125,
+   "n": 20
+  },
+  "drones_retired": {
+   "mean": 0.0,
+   "lo": 0.0,
+   "hi": 0.0,
+   "n": 20
+  },
+  "transition_settle_s": {
+   "mean": 60.145,
+   "lo": 50.086925,
+   "hi": 68.113025,
+   "n": 20
+  },
+  "recovery_time_s": {
+   "mean": 38.24199999999999,
+   "lo": 36.16494999999999,
+   "hi": 39.996024999999996,
+   "n": 20
+  },
+  "directive_changes": {
+   "mean": 1.0,
+   "lo": 1.0,
+   "hi": 1.0,
+   "n": 20
+  },
+  "time_faster_than_plan_pct": {
+   "mean": 0.0,
+   "lo": 0.0,
+   "hi": 0.0,
+   "n": 20
+  },
+  "ctrl_ms_mean": {
+   "mean": 2.44895,
+   "lo": 2.39689875,
+   "hi": 2.498055,
+   "n": 20
+  },
+  "ai_calls": {
+   "mean": 0.0,
+   "lo": 0.0,
+   "hi": 0.0,
+   "n": 20
+  },
+  "ai_fallbacks": {
+   "mean": 0.0,
+   "lo": 0.0,
+   "hi": 0.0,
+   "n": 20
+  },
+  "ai_latency_mean_s": {
+   "mean": null,
+   "lo": null,
+   "hi": null,
+   "n": 0
+  }
+ }
+}
