@@ -2,7 +2,7 @@
 
 **Supervised drone-swarm formation flight: a 50 Hz safety-filtered controller, with NVIDIA Nemotron on Nebius Token Factory as the slow-loop supervisor, mission compiler and test engineer.**
 
-![Nemotron orders a column as the swarm enters a forest trail; a replay of a recorded held-out run in the live dashboard](docs/demo.gif)
+![Sixteen drones sweep a block of dry scrub line abreast and light up six smouldering hotspots as their cameras pass over them; the live dashboard, wildfire scout scenario, seed 1000](docs/wildfire.gif)
 
 SwarmLab is a reproducible simulation testbed for civilian drone swarms: search and rescue under a forest canopy, field and solar-farm surveys, facade inspection in a street canyon, delivery convoys and light shows. A language model never flies the drones. The drones fly themselves at 50 Hz, and Nemotron works where a model's judgement helps and its latency doesn't hurt:
 
@@ -46,6 +46,18 @@ Nemotron 3 Nano is the entry chosen before the held-out runs. On the five headli
 * Low battery: 11 s faster on 5% less energy, partly because Nano flew faster than its instructions allowed (see below).
 
 Nano never changed the plan in six of the nine scenarios. It made 3,400 calls with no fallbacks, at about 1.2 s per call and an estimated $0.004 per flight.
+
+**Wildfire scouting, the headline use.** The morning after a lightning storm, a block of dry scrub has to be swept for smouldering ignitions before the wind gets up. The wildfire scout scenario flies that sweep with thermal cameras (45° field of view, 20 m up, a 16.6 m strip per drone) over a 300 × 200 m block with six hotspots, and the same 20 held-out blocks were flown with 1, 4 and 16 drones (`results/wildfire/`). Every flight found every hotspot with no crashes. What changes is time:
+
+| Drones | Time to find all six hotspots | Time to cover 90% of the block | Energy for the block | Coverage rate |
+|---|---|---|---|---|
+| 1 | 536 s [487, 580] | 620 s | 25.1 Wh | 0.5 ha/min |
+| 4 | 180 s [163, 196] | 198 s | 32.9 Wh | 1.6 ha/min |
+| 16 | 41 s [38, 43] | 44 s | 32.7 Wh | 6.2 ha/min |
+
+Means over 20 seeds with 95% bootstrap intervals. Seed by seed, 16 drones found the last hotspot 13.3 times sooner than one drone [12.0, 14.5], 8.3 minutes earlier on a block that one drone needs 11.6 minutes to finish, for 30% more battery energy in total. One drone's first find came after 96 s on average; sixteen drones' after 6.5 s.
+
+![Time to find all six hotspots and to cover 90% of the block, for 1, 4 and 16 drones](results/wildfire/swarm_size.png)
 
 **Mission compiler** (20 held-out requests):
 
@@ -107,6 +119,8 @@ swarmlab serve                          # the dashboard now offers the Nemotron 
 
 ## How it works
 
+![Nemotron orders a column as the swarm enters a forest trail; a replay of a recorded held-out run in the live dashboard](docs/demo.gif)
+
 ![Three loops: a mission compiler before flight, a supervisor every 5 s, and a 50 Hz controller with a safety filter. No language model in the fast loop.](docs/architecture.png)
 
 ```
@@ -129,6 +143,8 @@ See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md), [docs/BENCHMARKS.md](docs/BENC
 swarmlab bench --scenarios open_transit,formation_changes,forest_trail,urban_canyon,gusty_day,comms_degraded,motor_failures,low_battery,field_survey \
   --configs original+fixed,improved+fixed,improved+rule --seeds heldout --out results/runs.jsonl
 swarmlab report results/runs.jsonl --out results
+swarmlab bench --scenarios wildfire_scout --configs improved+rule --seeds heldout --n 1,4,16 --out results/wildfire/runs.jsonl
+swarmlab report results/wildfire/runs.jsonl --out results/wildfire
 swarmlab mission-eval --sets heldout --out results/mission_eval_baseline.json   # regex baseline; add --model <id> for Nemotron
 ```
 
