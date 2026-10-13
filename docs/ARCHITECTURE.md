@@ -22,6 +22,7 @@ Halo Systems has three loops that run at very different speeds. Only the fastest
 * **Wind** (`wind.py`). Steady mean, Ornstein-Uhlenbeck turbulence that is common to the swarm plus a smaller local part per drone, and gust fronts. A gust front sweeps across the formation, reaching each drone after a delay set by its position along the gust direction, so the formation is pulled apart and not just pushed sideways.
 * **Sensing and radio** (`sensing.py`). Each drone's navigation fix has white noise plus a slowly drifting bias, like GNSS. Each drone broadcasts its estimate every step. Messages arrive after a latency with jitter, can be lost, are cut off by range limits and blackouts, and are dead-reckoned forward by their age.
 * **World** (`world.py`). Trees (cylinders) and buildings (boxes) with a clearance query. `free_width_ahead` measures the obstacle-free lane along the path, from the formation's tail to 100 m ahead of its centre.
+* **Ground sensor and targets** (`scenario.py`, `engine.py`). A scenario can carry targets on the ground (smouldering hotspots) and a camera looking straight down from each drone. The footprint is a disc of radius altitude × tan(FOV/2), the circle inscribed in the image. Ten times a second the engine adds dwell to every target inside some flying drone's footprint; a target is found once its dwell reaches the sensor's dwell time, and the find is an event with the drone and the time. Coverage is a grid of 5 m cells over the survey block, marked when a cell's centre falls inside a footprint. The supervisor's report carries the count found so far and the area covered, not the hotspots' positions.
 * **Engine** (`engine.py`). Fixed 0.02 s step. It applies scripted events (motor failures, operator orders, blackouts), detects collisions by closest approach within each step, retires drones whose battery reaches the reserve, and builds the status report for the supervisor. A supervisor's answer is applied only after its measured latency has passed in simulated time, so a slow model has a real cost.
 
 ## Controllers (`control/`)
@@ -71,7 +72,7 @@ Every directive, whoever proposed it, passes the validator before the controller
 
 ## Evaluation (`eval/`)
 
-* `scenarios.py`: the nine benchmark scenarios, plus `from_mission` for compiled missions.
+* `scenarios.py`: the ten benchmark scenarios, plus `from_mission` for compiled missions.
 * `runner.py`: runs a grid of scenarios × configurations × seeds in parallel processes, resumable, one JSON line per run.
 * `metrics.py`, `stats.py` and `report.py`: per-run metrics, bootstrap confidence intervals, paired comparisons on the same seeds, and the Markdown report with charts.
 

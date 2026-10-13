@@ -15,7 +15,7 @@ import sys
 from pathlib import Path
 
 from .. import jsonl
-from .stats import METRICS, paired, summarise
+from .stats import METRICS, SCOUT_METRICS, paired, summarise
 
 CONFIG_LABELS = {
     "original+fixed": "Original controller",
@@ -94,7 +94,8 @@ def _fmt(cell, metric) -> str:
     if cell is None or cell.get("mean") is None:
         return "n/a"
     m, lo, hi = cell["mean"], cell["lo"], cell["hi"]
-    digits = 0 if metric in ("time_formed_pct", "completed", "completion_time_s", "time_faster_than_plan_pct") else 2
+    digits = 0 if metric in ("time_formed_pct", "completed", "completion_time_s", "time_faster_than_plan_pct",
+                             "targets_found_pct", "area_covered_pct") else 1 if metric in SCOUT_METRICS else 2
     if lo is None or hi is None or abs(hi - lo) < 10 ** -digits / 2:
         return f"{m:.{digits}f}"
     return f"{m:.{digits}f} [{lo:.{digits}f}, {hi:.{digits}f}]"
@@ -115,6 +116,16 @@ def tables(rows, summary) -> str:
                 continue
             out.append(f"| {label(cfg)} | " + " | ".join(_fmt(cell.get(m), m) for m in TABLE_METRICS) + " |")
         out.append("")
+        if any(r.get("targets_total") for r in rows if r.get("scenario") == sc and "error" not in r):
+            out.append("Scouting: what the swarm found and covered. Time to find all is averaged over the runs that found every target.\n")
+            out.append("| Configuration | " + " | ".join(METRICS[m][0] for m in SCOUT_METRICS) + " |")
+            out.append("|" + "---|" * (len(SCOUT_METRICS) + 1))
+            for cfg in configs:
+                cell = summary.get((sc, cfg))
+                if not cell:
+                    continue
+                out.append(f"| {label(cfg)} | " + " | ".join(_fmt(cell.get(m), m) for m in SCOUT_METRICS) + " |")
+            out.append("")
     return "\n".join(out)
 
 
@@ -134,7 +145,7 @@ def comparisons(rows, pairs) -> str:
 
 
 _ORDER = ["open_transit", "formation_changes", "forest_trail", "urban_canyon", "gusty_day", "comms_degraded",
-          "motor_failures", "low_battery", "field_survey"]
+          "motor_failures", "low_battery", "field_survey", "wildfire_scout"]
 
 
 def _scenario_order(name):

@@ -88,7 +88,7 @@ Nemotron found 2.6 times as many distinct failing conditions as the best baselin
 git clone <repo-url> halo-systems && cd halo-systems
 python3 -m venv .venv && . .venv/bin/activate
 python3 -m pip install -e '.[report]'   # numpy, plus matplotlib for charts
-halo list                           # the nine scenarios
+halo list                           # the ten scenarios
 halo run forest_trail --config improved+rule --seed 1000   # one flight, about 30 s
 halo serve --open                   # live 3D dashboard on http://127.0.0.1:8765
 python3 -m unittest discover -s tests   # no network needed

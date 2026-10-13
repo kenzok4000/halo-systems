@@ -8,6 +8,7 @@ import unittest
 import numpy as np
 
 from halo_systems.control.assignment import hungarian
+from halo_systems.control.directive import Directive
 from halo_systems.control.formations import SHAPES, Path, formation_offsets
 from halo_systems.control.improved import ImprovedController
 from halo_systems.control.original import OriginalController
@@ -123,6 +124,16 @@ class ScenarioTest(unittest.TestCase):
         sc = make("open_transit", 0, n=6, duration_s=5.0)
         self.assertEqual((sc.n, sc.duration_s), (6, 5.0))
 
+    def test_wildfire_scout_lanes_follow_swarm_size(self):
+        # One drone sweeps the block in many lanes, sixteen abreast in one; the hotspots do not move.
+        lanes = {n: len(make("wildfire_scout", 0, n=n).waypoints) // 2 for n in (1, 4, 16)}
+        self.assertEqual(lanes[16], 1)
+        self.assertGreater(lanes[4], lanes[16])
+        self.assertGreater(lanes[1], 3 * lanes[4])
+        a, b = make("wildfire_scout", 0, n=1), make("wildfire_scout", 0, n=16)
+        self.assertEqual([t.to_dict() for t in a.targets], [t.to_dict() for t in b.targets])
+        self.assertTrue(a.sensor.enabled and a.sensor.area == (0.0, 0.0, 300.0, 200.0))
+
 
 def short(name="open_transit", n=6, duration=6.0):
     return make(name, 3, n=n, duration_s=duration)
@@ -182,6 +193,39 @@ class EngineTest(unittest.TestCase):
         gaps = np.diff(sup.asked)
         self.assertGreater(len(sup.asked), 1)
         self.assertTrue(np.all(gaps >= 12.0 - 1e-6), sup.asked)   # never asked again before the answer came
+
+    def test_ground_sensor_finds_targets_in_view_and_marks_coverage(self):
+        from halo_systems.sim.scenario import SensorConfig, Target
+        sensor = SensorConfig(fov_deg=45.0, dwell_s=0.5, cell_m=2.0, area=(0.0, -20.0, 60.0, 20.0))
+        targets = [Target(30.0, 2.0, 2.0), Target(30.0, 60.0, 2.0)]   # under the sweep; far off it
+        sc = make("open_transit", 0, n=2, duration_s=30.0, waypoints=[(0.0, 0.0), (60.0, 0.0)],
+                  directive=Directive("line", 6.0, 6.0, 20.0, 1.0, source="mission"), targets=targets, sensor=sensor)
+        r = self.run_sim(ImprovedController, scenario=sc)
+        m = r.metrics
+        self.assertEqual((m["targets_total"], m["targets_found"]), (2, 1))
+        found = [e for e in r.events if e["kind"] == "target_found"]
+        self.assertEqual([e["target"] for e in found], [0])
+        self.assertIn(found[0]["drone"], (0, 1))
+        self.assertIsNotNone(m["first_find_s"])
+        self.assertIsNone(m["all_found_s"])
+        # Two drones 6 m apart at 20 m with a 45 degree camera see a strip about 22.6 m wide of the 40 m area.
+        self.assertTrue(45.0 < m["area_covered_pct"] < 70.0, m["area_covered_pct"])
+        # A target must stay in view for the dwell time: an impossible dwell finds nothing.
+        slow = dataclasses.replace(sc, sensor=dataclasses.replace(sensor, dwell_s=1e6))
+        self.assertEqual(self.run_sim(ImprovedController, scenario=slow).metrics["targets_found"], 0)
+
+    def test_wildfire_scout_finds_every_hotspot_and_reports_to_the_supervisor(self):
+        from halo_systems.eval.scenarios import wildfire_scout
+        sc = wildfire_scout(0, n=8, block_m=(120.0, 100.0), hotspots=3)
+        body = DroneBody()
+        sim = Simulation(sc, ImprovedController(body, sc.world), seed=0, body=body, record_hz=0)
+        r = sim.run()
+        m = r.metrics
+        self.assertTrue(m["completed"])
+        self.assertEqual((m["targets_found"], m["collisions"]), (3, 0))
+        self.assertGreaterEqual(m["area_covered_pct"], 99.0)
+        self.assertLessEqual(m["coverage_90pct_s"], m["completion_time_s"])
+        self.assertEqual(sim.summary()["mission"]["targets_found_so_far"], 3)
 
     def test_summary_has_the_fields_supervisors_use(self):
         sc = make("forest_trail", 0)

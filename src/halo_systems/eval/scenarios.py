@@ -5,8 +5,9 @@ forests, gust timings, failure times and wind directions, not just new
 sensor noise. Every scenario also carries a plain-language mission text,
 which is what an operator would type (used by the mission compiler).
 
-Civilian use cases covered: search and rescue, agricultural and forest
-survey, infrastructure inspection, delivery convoys, and light shows.
+Civilian use cases covered: wildfire scouting, search and rescue,
+agricultural and forest survey, infrastructure inspection, delivery convoys,
+and light shows.
 """
 
 from __future__ import annotations
@@ -18,7 +19,7 @@ import numpy as np
 
 from ..control.directive import Directive
 from ..control.formations import lawnmower
-from ..sim.scenario import MotorFailure, Scenario, ScriptedDirective
+from ..sim.scenario import MotorFailure, Scenario, ScriptedDirective, SensorConfig, Target
 from ..sim.sensing import Blackout, SensingConfig
 from ..sim.wind import GustFront, WindConfig
 from ..sim.world import Box, Cylinder, World
@@ -216,9 +217,47 @@ def urban_canyon(seed: int = 0, n: int = 16) -> Scenario:
     )
 
 
+SCOUT_FOV_DEG = 45.0          # a small radiometric thermal camera's horizontal field of view
+SCOUT_ALTITUDE_M = 20.0       # low enough to resolve a smouldering patch of a few metres
+SCOUT_SPACING_M = 14.0        # 15% overlap between neighbouring footprints (16.6 m wide at 20 m)
+SCOUT_SPEED_MPS = 6.0
+
+
+def wildfire_scout(seed: int = 0, n: int = 16, block_m: tuple = (300.0, 200.0), hotspots: int = 6) -> Scenario:
+    """Find smouldering hotspots in a block of dry scrub the morning after a lightning storm.
+
+    The swarm sweeps the block line abreast with thermal cameras looking down. The lane
+    width follows from the camera footprint and the number of drones, so the same block
+    takes one drone many passes and sixteen drones one: the value of a swarm is the
+    time to find every hotspot, measured against swarm size (``make("wildfire_scout", seed, n=4)``).
+    """
+    rng = _rng(seed, 11)
+    w, h = float(block_m[0]), float(block_m[1])
+    sensor = SensorConfig(fov_deg=SCOUT_FOV_DEG, dwell_s=0.5, cell_m=5.0, area=(0.0, 0.0, w, h))
+    swath = 2.0 * float(sensor.footprint_radius(SCOUT_ALTITUDE_M))
+    lane = (max(n, 1) - 1) * SCOUT_SPACING_M + swath
+    path = lawnmower(0.0, 0.0, w, h, lane)
+    margin = 10.0
+    targets = [Target(float(x), float(y), float(r), "hotspot")
+               for x, y, r in zip(rng.uniform(margin, w - margin, hotspots), rng.uniform(margin, h - margin, hotspots),
+                                  rng.uniform(1.5, 4.0, hotspots))]
+    length = sum(math.dist(a, b) for a, b in zip(path, path[1:]))
+    return Scenario(
+        name="wildfire_scout",
+        title="Wildfire scout",
+        description=f"Thermal sweep of a {w:.0f} x {h:.0f} m block of dry scrub for smouldering hotspots the morning "
+                    f"after a lightning storm, line abreast at {SCOUT_ALTITUDE_M:.0f} m so the camera footprints overlap.",
+        n=n, duration_s=float(min(1800.0, 60.0 + 1.6 * length / SCOUT_SPEED_MPS)), waypoints=path,
+        directive=Directive("line", SCOUT_SPACING_M, SCOUT_SPEED_MPS, SCOUT_ALTITUDE_M, 1.0, source="mission"),
+        wind=_wind_from(rng, rng.uniform(3.0, 6.0), sigma=1.0, local=0.4),
+        targets=targets, sensor=sensor,
+        use_case="wildfire scouting: finding ignitions before they grow", tags=("survey", "scouting"),
+    )
+
+
 SCENARIOS = {
     f.__name__: f for f in (open_transit, formation_changes, forest_trail, gusty_day, comms_degraded,
-                            motor_failures, low_battery, field_survey, urban_canyon)
+                            motor_failures, low_battery, field_survey, urban_canyon, wildfire_scout)
 }
 
 # Scenarios where the swarm has to change its plan to do well (supervisor benchmark).

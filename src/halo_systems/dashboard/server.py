@@ -120,7 +120,10 @@ class LiveRun:
         return {"id": self.id, "config": self.config, "seed": self.seed, "scenario": sc.summary(),
                 "world": sc.world.to_dict(), "path": np.round(self.sim.path.points, 2).tolist(), "loop": sc.loop,
                 "n": sc.n, "body_radius_m": self.sim.body.radius_m, "directive": self.sim.directive.to_dict(),
-                "altitude_max_m": sc.altitude_max_m}
+                "altitude_max_m": sc.altitude_max_m,
+                "targets": [t.to_dict() for t in sc.targets],
+                "sensor": {"fov_deg": sc.sensor.fov_deg, "area": list(sc.sensor.area) if sc.sensor.area else None}
+                if sc.sensor.enabled else None}
 
     # -- the loop -----------------------------------------------------------------
     def _loop(self) -> None:
@@ -185,6 +188,10 @@ class LiveRun:
             "battery_mean": round(float(np.mean(100 * sim.battery_wh[sim.active_mask()] / sim.capacity_wh)), 1) if sim.active_mask().any() else 0.0,
             "near_misses": int(sim.near_miss_events),
         }
+        if sim.sc.sensor.enabled:
+            f["metrics"]["targets_found"] = sim.targets_found
+            f["metrics"]["targets_total"] = len(sim.targets)
+            f["metrics"]["coverage_pct"] = sim.coverage_pct
         f["directive"] = {k: v for k, v in sim.directive.to_dict().items()}
         f["heading"] = round(float(sim.ctrl.plan.heading), 3)
         f["ai_pending"] = bool(self.async_sup and self.async_sup.future is not None)
@@ -228,7 +235,8 @@ class State:
             name = body.get("scenario", "forest_trail")
             if name not in SCENARIOS:
                 raise ValueError(f"unknown scenario {name!r}")
-            scenario = make(name, seed)
+            n = body.get("n")
+            scenario = make(name, seed, n=int(n)) if n else make(name, seed)
         kw = {}
         if "nemotron" in config:
             log = self.evidence_dir / "dashboard_calls.jsonl"

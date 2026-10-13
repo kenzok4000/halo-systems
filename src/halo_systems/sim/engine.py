@@ -35,6 +35,7 @@ NEAR_MISS_EXTRA_M = 0.5
 FAILURE_DETECTION_S = 1.0
 LOOKAHEAD_M = 100.0          # how far ahead of the formation centre the supervisor summary looks
 INTEGRITY_EVERY = 5          # steps between formation-integrity evaluations (10 Hz)
+SENSE_EVERY = 5              # steps between ground-sensor updates (10 Hz, a thermal camera's frame rate)
 
 
 @dataclass
@@ -135,7 +136,21 @@ class Simulation:
         self.frames: list[dict] = []
         self.series = {k: [] for k in ("t", "rms_error", "shape_error", "integrity_error", "max_error", "min_sep",
                                        "active", "power_w", "leader_speed", "progress_m", "ctrl_ms",
-                                       "speed_over_plan")}
+                                       "speed_over_plan", "targets_found", "coverage_pct")}
+        # Ground sensing: targets to find and the survey area's coverage grid.
+        sensor = scenario.sensor
+        self.targets = np.array([[t.x, t.y, t.radius_m] for t in scenario.targets], dtype=float).reshape(-1, 3)
+        self.target_seen_s = np.zeros(len(self.targets))
+        self.target_found_t = np.full(len(self.targets), np.nan)
+        self.target_found_by = np.full(len(self.targets), -1)
+        self.coverage: np.ndarray | None = None
+        if sensor.enabled and sensor.area:
+            x0, y0, x1, y1 = sensor.area
+            nx = max(1, int(math.ceil((x1 - x0) / sensor.cell_m)))
+            ny = max(1, int(math.ceil((y1 - y0) / sensor.cell_m)))
+            self.coverage = np.zeros((nx, ny), dtype=bool)
+            self._cover_x = x0 + (np.arange(nx) + 0.5) * sensor.cell_m
+            self._cover_y = y0 + (np.arange(ny) + 0.5) * sensor.cell_m
         self._integrity = 0.0
         self.done_t = None
         self.ended = False
@@ -238,8 +253,54 @@ class Simulation:
 
         self._collisions(p0, airborne)
         self._energy(thrust, powered, np.linalg.norm(self.v - wind, axis=1))
+        if self.sc.sensor.enabled and self.k % SENSE_EVERY == 0:
+            self._sense_ground(SENSE_EVERY * dt)
         self._record(obs)
         self._check_end()
+
+    def _sense_ground(self, elapsed: float) -> None:
+        """Targets in some flying drone's camera footprint accumulate dwell; covered cells are marked."""
+        act = self.active_mask()
+        if not act.any():
+            return
+        p = self.p[act]
+        foot = self.sc.sensor.footprint_radius(p[:, 2])
+        if len(self.targets):
+            d = np.hypot(p[:, None, 0] - self.targets[None, :, 0], p[:, None, 1] - self.targets[None, :, 1])
+            in_view = d - self.targets[None, :, 2] <= foot[:, None]
+            seen = in_view.any(axis=0)
+            pending = np.isnan(self.target_found_t)
+            self.target_seen_s[seen & pending] += elapsed
+            found = pending & (self.target_seen_s >= self.sc.sensor.dwell_s - 1e-9)
+            drones = np.nonzero(act)[0]
+            for j in np.nonzero(found)[0]:
+                by = int(drones[np.argmin(np.where(in_view[:, j], d[:, j], np.inf))])
+                self.target_found_t[j] = self.t
+                self.target_found_by[j] = by
+                self.event("target_found", by, target=int(j), what=self.sc.targets[j].kind,
+                           x=round(float(self.targets[j, 0]), 1), y=round(float(self.targets[j, 1]), 1))
+        if self.coverage is not None:
+            cell = self.sc.sensor.cell_m
+            x0, y0 = self._cover_x[0] - 0.5 * cell, self._cover_y[0] - 0.5 * cell
+            nx, ny = self.coverage.shape
+            for (x, y, _), r in zip(p, foot):
+                if r <= 0.0:
+                    continue
+                i0, i1 = max(0, int((x - r - x0) // cell)), min(nx, int((x + r - x0) // cell) + 1)
+                j0, j1 = max(0, int((y - r - y0) // cell)), min(ny, int((y + r - y0) // cell) + 1)
+                if i0 >= i1 or j0 >= j1:
+                    continue
+                cx = self._cover_x[i0:i1, None]
+                cy = self._cover_y[None, j0:j1]
+                self.coverage[i0:i1, j0:j1] |= (cx - x) ** 2 + (cy - y) ** 2 <= r * r
+
+    @property
+    def coverage_pct(self) -> float | None:
+        return round(100.0 * float(self.coverage.mean()), 2) if self.coverage is not None else None
+
+    @property
+    def targets_found(self) -> int:
+        return int(np.sum(~np.isnan(self.target_found_t)))
 
     # ------------------------------------------------------------------------
     def _supervise(self, obs: Observation) -> None:
@@ -373,6 +434,8 @@ class Simulation:
         s["leader_speed"].append(float(self.ctrl.plan.speed_now))
         s["progress_m"].append(float(self.ctrl.plan.s))
         s["ctrl_ms"].append(1000.0 * (self.ctrl.compute_s[-1] if self.ctrl.compute_s else 0.0))
+        s["targets_found"].append(float(self.targets_found))
+        s["coverage_pct"].append(float(self.coverage_pct) if self.coverage is not None else float("nan"))
         # Rolling windows for the supervisor summary (estimates only).
         est_sep = self._estimated_min_sep(obs)
         self._sep_window.append((self.t, est_sep))
@@ -424,6 +487,8 @@ class Simulation:
             "wind": np.round(self.wind.ambient(self.t), 2).tolist(),
             "formation": self.directive.formation,
             "battery": np.round(100 * self.battery_wh / self.capacity_wh, 1).tolist(),
+            **({"found": (~np.isnan(self.target_found_t)).tolist(), "coverage_pct": self.coverage_pct}
+               if self.sc.sensor.enabled else {}),
         }
 
     def _check_end(self) -> None:
@@ -520,6 +585,8 @@ class Simulation:
                 "progress_pct": round(100 * plan.s / plan.path.length, 1) if plan.path.length > 0 and not plan.path.loop else None,
                 "remaining_m": round(remaining, 1) if remaining is not None else None,
                 "leader_speed_mps": round(plan.speed_now, 2),
+                **({"targets_found_so_far": self.targets_found, "area_covered_pct": self.coverage_pct}
+                   if self.sc.sensor.enabled else {}),
             },
             "swarm": {"flying": int(act.sum()), "planned": self.n, "lost_drones": lost,
                       "retired_low_battery": int(np.sum(self.status == RETIRED))},

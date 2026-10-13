@@ -40,6 +40,8 @@ scene.add(grid);
 
 let world = new THREE.Group(); scene.add(world);
 let droneMesh = null, slotMesh = null, shadowMesh = null, pathLine = null, windArrow = null;
+let targetMeshes = [], surveyBox = null;
+const TARGET_HIDDEN = new THREE.Color(0x5a4a3a), TARGET_FOUND = new THREE.Color(0xff5a1f);
 const COLORS = { 0: new THREE.Color(0x4fb3a9), 1: new THREE.Color(0xe5625c), 2: new THREE.Color(0xe5625c),
   3: new THREE.Color(0x9aa3ad), 4: new THREE.Color(0xe5625c) };
 const dummy = new THREE.Object3D();
@@ -72,6 +74,21 @@ function buildWorld(hello) {
       m.position.set((lx + hx) / 2, (lz + hz) / 2, -(ly + hy) / 2);
       world.add(m);
     }
+  }
+  // Targets to find (hotspots): dull discs that light up when a drone's camera has seen them.
+  targetMeshes = [];
+  for (const t of hello.targets || []) {
+    const m = new THREE.Mesh(new THREE.CircleGeometry(Math.max(t.radius_m, 1.5), 20),
+      new THREE.MeshBasicMaterial({ color: TARGET_HIDDEN.clone(), transparent: true, opacity: 0.9 }));
+    m.position.set(t.x, 0.12, -t.y); m.rotation.x = -Math.PI / 2;
+    world.add(m); targetMeshes.push(m);
+  }
+  surveyBox = null;
+  if (hello.sensor && hello.sensor.area) {
+    const [x0, y0, x1, y1] = hello.sensor.area;
+    const corners = [[x0, y0], [x1, y0], [x1, y1], [x0, y1], [x0, y0]].map((p) => new THREE.Vector3(p[0], 0.1, -p[1]));
+    surveyBox = new THREE.Line(new THREE.BufferGeometry().setFromPoints(corners), new THREE.LineBasicMaterial({ color: 0xe09a3a }));
+    world.add(surveyBox);
   }
   const pts = hello.path.map((p) => new THREE.Vector3(p[0], 0.15, -p[1]));
   pathLine = new THREE.Line(new THREE.BufferGeometry().setFromPoints(pts),
@@ -120,6 +137,7 @@ function drawFrame(f) {
   }
   for (const m of [droneMesh, slotMesh, shadowMesh]) m.instanceMatrix.needsUpdate = true;
   droneMesh.instanceColor.needsUpdate = true;
+  if (f.found) f.found.forEach((hit, i) => { const m = targetMeshes[i]; if (m) m.material.color.copy(hit ? TARGET_FOUND : TARGET_HIDDEN); });
   if (k) {
     c.multiplyScalar(1 / k);
     const w = new THREE.Vector3(f.wind[0], 0, -f.wind[1]);
@@ -191,6 +209,7 @@ function onEvent(e) {
     collision: () => `collision: drones ${e.drone} and ${e.other}`,
     obstacle_crash: () => `drone ${e.drone} hit an obstacle`, ground_crash: () => `drone ${e.drone} hit the ground`,
     retired_low_battery: () => `drone ${e.drone} left at ${e.battery_pct}% battery`, mission_complete: () => "mission complete",
+    target_found: () => `drone ${e.drone} found ${e.what || "target"} ${e.target + 1} at (${fmt(e.x, 0)}, ${fmt(e.y, 0)}) m`,
     directive_rejected: () => "a directive was rejected" }[e.kind];
   const what = text ? text() : e.kind;
   logItem("event", `t=${fmt(e.t)} s ${esc(what)}`);
@@ -221,7 +240,8 @@ function onFrame(f) {
   $("#m-batt").textContent = fmt(m.battery_mean, 0, "%");
   $("#m-speed").textContent = fmt(m.leader_speed, 1, " m/s");
   $("#m-progress").style.width = `${Math.min(100, (100 * m.progress_m) / Math.max(1, m.path_m))}%`;
-  setHud(`${run.scenario.title}, t = ${fmt(f.t)} s`, f.directive);
+  const scout = m.targets_total != null ? `, hotspots ${m.targets_found}/${m.targets_total}, area ${fmt(m.coverage_pct, 0)}%` : "";
+  setHud(`${run.scenario.title}, t = ${fmt(f.t)} s${scout}`, f.directive);
   $("#ai-wait").textContent = f.ai_pending ? "Nemotron is thinking…" : "";
   spark.push([f.t, m.formation_error_m]);
   if (spark.length > 600) spark.shift();

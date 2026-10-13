@@ -33,7 +33,16 @@ METRICS = {
     "ai_calls": ("Model calls", 0),
     "ai_fallbacks": ("Fallbacks to rules", -1),
     "ai_latency_mean_s": ("Model latency, mean (s)", -1),
+    # Scouting scenarios (a ground sensor and targets to find).
+    "targets_found_pct": ("Targets found (%)", +1),
+    "first_find_s": ("Time to first find (s)", -1),
+    "all_found_s": ("Time to find all (s)", -1),
+    "area_covered_pct": ("Area covered (%)", +1),
+    "coverage_90pct_s": ("Time to 90% coverage (s)", -1),
+    "coverage_ha_per_min": ("Coverage rate (ha/min)", +1),
 }
+SCOUT_METRICS = ("targets_found_pct", "first_find_s", "all_found_s", "area_covered_pct", "coverage_90pct_s",
+                 "coverage_ha_per_min")
 
 
 def value(row: dict, metric: str):
