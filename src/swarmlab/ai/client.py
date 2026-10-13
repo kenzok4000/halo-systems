@@ -253,6 +253,10 @@ class NebiusClient:
                     choice = data["choices"][0]
                     content = choice["message"].get("content") or ""
                     last_error = "" if content.strip() else "empty message content"
+                    if not content.strip() and choice.get("finish_reason") == "length":
+                        # The token limit ran out (usually spent on reasoning): the same request would
+                        # be cut off again, so do not pay for retries.
+                        last_error = "reply cut off at max_tokens before any answer (reasoning used the budget)"
                 except (ValueError, KeyError, IndexError, TypeError) as exc:
                     last_error = f"malformed response: {type(exc).__name__}"
                 # A 200 is billed even when the reply turns out empty or malformed (a reasoning model can
@@ -269,7 +273,7 @@ class NebiusClient:
                                 status="ok" if not last_error else "unusable", call_id=record.call_id,
                                 pricing=pricing.source, note="" if usage else "no usage in response; counted at worst case")
                 if last_error:
-                    if attempt <= self.max_retries:
+                    if attempt <= self.max_retries and "cut off" not in last_error:
                         self.sleep(self._backoff(attempt, None))
                         continue
                     break

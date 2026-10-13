@@ -215,6 +215,16 @@ class ClientTest(unittest.TestCase):
         c, _ = self.client([(200, {}, b"not json"), ok("   "), ok(DIRECTIVE_JSON)])
         self.assertEqual(c.chat("m", []).record.attempts, 3)
 
+    def test_reply_cut_off_by_the_token_limit_is_not_retried(self):
+        cut = (200, {}, json.dumps({"choices": [{"message": {"content": None, "reasoning": "thinking..."},
+                                                 "finish_reason": "length"}],
+                                    "usage": {"prompt_tokens": 100, "completion_tokens": 1200}}).encode())
+        c, t = self.client([cut, ok(DIRECTIVE_JSON)])
+        with self.assertRaises(NebiusError) as ctx:
+            c.chat("m", [])
+        self.assertIn("cut off", ctx.exception.reason)
+        self.assertEqual(len(t.calls), 1)
+
     def test_json_mode_fallback(self):
         c, t = self.client([(400, {}, b'{"error":"response_format not supported"}'), ok(DIRECTIVE_JSON)])
         r = c.chat("m", [])
