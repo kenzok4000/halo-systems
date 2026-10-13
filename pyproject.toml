@@ -3,9 +3,9 @@ requires = ["setuptools>=68"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "swarmlab"
+name = "halo-systems"
 version = "0.1.0"
-description = "Supervised drone-swarm formation testbed: a 50 Hz safety-filtered controller with an NVIDIA Nemotron supervisor on Nebius Token Factory."
+description = "Halo Systems: supervised drone-swarm formation testbed. A 50 Hz safety-filtered controller with NVIDIA Nemotron on Nebius Token Factory as supervisor, mission compiler and test engineer."
 readme = "README.md"
 requires-python = ">=3.10"
 dependencies = ["numpy>=1.24"]
@@ -14,10 +14,10 @@ dependencies = ["numpy>=1.24"]
 report = ["matplotlib>=3.7"]
 
 [project.scripts]
-swarmlab = "swarmlab.cli:main"
+halo = "halo_systems.cli:main"
 
 [tool.setuptools.packages.find]
 where = ["src"]
 
 [tool.setuptools.package-data]
-swarmlab = ["dashboard/static/*", "dashboard/static/vendor/*", "ai/*.json"]
+halo_systems = ["dashboard/static/*", "dashboard/static/vendor/*", "ai/*.json"]

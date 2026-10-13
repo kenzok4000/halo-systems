@@ -7,16 +7,16 @@ import unittest
 
 import numpy as np
 
-from swarmlab.control.assignment import hungarian
-from swarmlab.control.formations import SHAPES, Path, formation_offsets
-from swarmlab.control.improved import ImprovedController
-from swarmlab.control.original import OriginalController
-from swarmlab.eval.metrics import _first_formed
-from swarmlab.eval.scenarios import SCENARIOS, make
-from swarmlab.sim.body import GRAVITY, DroneBody
-from swarmlab.sim.engine import Simulation
-from swarmlab.sim.physics import closest_approach, integrate
-from swarmlab.sim.world import Box, Cylinder, World
+from halo_systems.control.assignment import hungarian
+from halo_systems.control.formations import SHAPES, Path, formation_offsets
+from halo_systems.control.improved import ImprovedController
+from halo_systems.control.original import OriginalController
+from halo_systems.eval.metrics import _first_formed
+from halo_systems.eval.scenarios import SCENARIOS, make
+from halo_systems.sim.body import GRAVITY, DroneBody
+from halo_systems.sim.engine import Simulation
+from halo_systems.sim.physics import closest_approach, integrate
+from halo_systems.sim.world import Box, Cylinder, World
 
 
 class PhysicsTest(unittest.TestCase):
@@ -158,13 +158,13 @@ class EngineTest(unittest.TestCase):
             self.assertLess(m["formation_error_steady_m"], 1.0, cls.name)
 
     def test_motor_failure_is_counted_and_drone_falls(self):
-        sc = dataclasses.replace(short(duration=8.0), failures=[__import__("swarmlab.sim.scenario", fromlist=["x"]).MotorFailure(1.0, 2)])
+        sc = dataclasses.replace(short(duration=8.0), failures=[__import__("halo_systems.sim.scenario", fromlist=["x"]).MotorFailure(1.0, 2)])
         r = self.run_sim(ImprovedController, scenario=sc)
         self.assertEqual(r.metrics["drones_lost"], 1)
         self.assertTrue(any(e["kind"] == "motor_failure" for e in r.events))
 
     def test_slow_supervisor_has_one_request_in_flight(self):
-        from swarmlab.supervisor.base import Decision, Supervisor
+        from halo_systems.supervisor.base import Decision, Supervisor
 
         class Slow(Supervisor):
             name = "slow"

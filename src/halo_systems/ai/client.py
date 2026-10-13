@@ -188,7 +188,7 @@ class NebiusClient:
 
     def _headers(self) -> dict:
         return {"Authorization": f"Bearer {self.api_key}", "Content-Type": "application/json",
-                "Accept": "application/json", "User-Agent": "swarmlab/0.1"}
+                "Accept": "application/json", "User-Agent": "halo-systems/0.1"}
 
     def _log(self, record: CallRecord, request: dict | None = None, response_text: str | None = None) -> None:
         with self._lock:

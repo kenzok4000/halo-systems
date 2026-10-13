@@ -1,4 +1,4 @@
-"""End-to-end check of the Nebius Token Factory integration (``swarmlab doctor``).
+"""End-to-end check of the Nebius Token Factory integration (``halo doctor``).
 
 Steps, each recorded in ``evidence/``:
 
@@ -15,7 +15,6 @@ The command exits non-zero if any step fails. Nothing here is mocked.
 from __future__ import annotations
 
 import json
-import os
 import platform
 import time
 from datetime import datetime, timezone
@@ -25,6 +24,7 @@ from ..control.improved import ImprovedController
 from ..eval.scenarios import make
 from ..safety.validator import SafetyValidator
 from ..sim.body import DroneBody
+from ..settings import env
 from ..sim.engine import Simulation
 from .cache import CallCache
 from .client import NebiusClient, NebiusError
@@ -88,7 +88,7 @@ def run(evidence_dir: str = "evidence", model: str | None = None, flight: bool =
         return finish(3)
     nemotron = [m for m in models if "nemotron" in m.lower()]
     step("list models", True, note=f"{len(models)} models, {len(nemotron)} Nemotron", nemotron_models=nemotron)
-    chosen = model or os.environ.get("SWARMLAB_SUPERVISOR_MODEL") or pick_model(models)
+    chosen = model or env("SUPERVISOR_MODEL") or pick_model(models)
     if not step("choose a Nemotron model", bool(chosen) and "nemotron" in (chosen or "").lower(), note=chosen,
                 model=chosen):
         return finish(4)

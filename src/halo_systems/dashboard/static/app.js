@@ -1,4 +1,4 @@
-// SwarmLab dashboard: 3D view, live controls and logs. Talks to the local Python server.
+// Halo Systems dashboard: 3D view, live controls and logs. Talks to the local Python server.
 import * as THREE from "three";
 import { OrbitControls } from "/static/vendor/OrbitControls.js";
 
@@ -296,7 +296,7 @@ $("#export").addEventListener("click", async () => {
   const data = await api(`/api/runs/${run.id}/export`);
   const a = document.createElement("a");
   a.href = URL.createObjectURL(new Blob([JSON.stringify(data)], { type: "application/json" }));
-  a.download = `swarmlab_${run.scenario.name}_${run.config.replace(/[^a-z0-9]+/gi, "-")}_seed${run.seed}.json`;
+  a.download = `halo_${run.scenario.name}_${run.config.replace(/[^a-z0-9]+/gi, "-")}_seed${run.seed}.json`;
   a.click();
 });
 $("#scenario").addEventListener("change", () => {
@@ -351,7 +351,7 @@ function headline(r) {
 
 async function loadResults() {
   const r = await api("/api/results").catch(() => ({ available: false }));
-  if (!r.available) { $("#results").innerHTML = '<p class="muted">No benchmark results yet. Run <code>swarmlab bench</code> then <code>swarmlab report</code>.</p>'; return; }
+  if (!r.available) { $("#results").innerHTML = '<p class="muted">No benchmark results yet. Run <code>halo bench</code> then <code>halo report</code>.</p>'; return; }
   let html = headline(r) + "<h3>Charts</h3>" + r.charts.map((c) => `<img src="/results/${encodeURIComponent(c)}" alt="${esc(c)}">`).join("");
   if (r.mission_eval) {
     html += "<h3>Mission compiler accuracy</h3><table><tr><th>Prompt set</th><th>Parser</th><th>Fields right</th><th>All right</th></tr>";
@@ -366,7 +366,7 @@ async function loadResults() {
 
 async function loadEvidence() {
   const e = await api("/api/evidence").catch(() => ({ available: false }));
-  if (!e.available) { $("#evidence").textContent = "No end-to-end evidence in this folder yet (run swarmlab doctor)."; return; }
+  if (!e.available) { $("#evidence").textContent = "No end-to-end evidence in this folder yet (run halo doctor)."; return; }
   $("#evidence").innerHTML = `<p>Last check ${esc(e.finished_utc)}: <b>${e.passed ? "passed" : "failed"}</b></p><ul>` +
     e.steps.map((s) => `<li>${s.ok ? "✓" : "✗"} ${esc(s.step)}${s.note ? `: ${esc(s.note)}` : ""}</li>`).join("") + "</ul>" +
     (e.usage ? `<p class="small">${e.usage.calls} calls, ${e.usage.prompt_tokens + e.usage.completion_tokens} tokens</p>` : "");

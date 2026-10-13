@@ -352,7 +352,7 @@ def compare_replays(named: dict[str, dict]) -> str:
 
 
 def compare_searches(results: list[dict]) -> str:
-    """Markdown table comparing searchers over several saved searches (the JSON `swarmlab stress` writes)."""
+    """Markdown table comparing searchers over several saved searches (the JSON `halo stress` writes)."""
     by: dict[str, list[dict]] = {}
     for r in results:
         name = r["searcher"].split(":")[0] + (f" (tests re-flown on {r['config']})" if r.get("config") else "")

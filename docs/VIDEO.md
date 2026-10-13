@@ -10,7 +10,7 @@ There is no music, or royalty-free music only. No third-party logos appear apart
 |---|---|---|---|
 | 1 | 0:00-0:12 | Dashboard, a 16-drone grid crossing open ground in the 3D view | "A swarm of drones can search a forest for a missing hiker, survey a field or inspect a street. Flying them together safely is the hard part." |
 | 2 | 0:12-0:30 | Same view, original controller, forest trail: drones strike trees, red markers appear | "Here, in simulation, is a classic formation controller flying into a forest trail. The formation does not fit, and drones hit trees: seven in this flight, about eight on average." |
-| 3 | 0:30-0:50 | Architecture graphic from the README (three loops) | "SwarmLab splits the job. A 50 Hz controller with a safety filter flies every drone. No language model is in that loop. Every five seconds a supervisor reads a status report and sets the formation. That supervisor is NVIDIA Nemotron, running on Nebius Token Factory." |
+| 3 | 0:30-0:50 | Architecture graphic from the README (three loops) | "Halo Systems splits the job. A 50 Hz controller with a safety filter flies every drone. No language model is in that loop. Every five seconds a supervisor reads a status report and sets the formation. That supervisor is NVIDIA Nemotron, running on Nebius Token Factory." |
 | 4 | 0:50-1:20 | Dashboard, improved + Nemotron, forest trail; decision log shows Nemotron entries (green) switching to a column, then back to a grid after the forest | "Nemotron sees the trail narrowing ahead, orders single file, and returns to the search grid once the trees clear. Every directive passes a safety validator first, and if the API fails, rules take over for that step." |
 | 5 | 1:20-1:40 | Inject a gust front, then a motor failure, with the buttons visible; the formation recovers. Caption: "rule supervisor" | "Disturbances are live: gust fronts, motor failures, radio blackouts. The swarm closes the gaps and keeps going." |
 | 6 | 1:40-1:58 | Mission tab: a plain-language mission, Compile, then Fly this mission; then a request to chase a cat by diving at it, refused by Nemotron | "Operators describe a mission in plain words. Nemotron compiles it into a checked plan, and refuses requests outside civilian use." |
@@ -21,10 +21,10 @@ There is no music, or royalty-free music only. No third-party logos appear apart
 
 | Shot | Source | Command or action | Notes |
 |---|---|---|---|
-| 1 | Dashboard | `swarmlab serve`, scenario open_transit, improved + rule, seed 1000, 2x | Follow view |
+| 1 | Dashboard | `halo serve`, scenario open_transit, improved + rule, seed 1000, 2x | Follow view |
 | 2 | Dashboard | forest_trail, original controller, seed 1000, 2x | Top view, then Follow |
 | 3 | README architecture diagram | Static | Zoom slowly |
-| 4 | Dashboard | forest_trail, improved + Nemotron 3 Nano, seed 1000, 2x | `env -u NEBIUS_API_KEY swarmlab serve --model <Nano model id> --cache results/nemotron_cache.jsonl`: the held-out run replayed from its recorded calls, identical to the live run. Without a key the dashboard only replays and never adds to the cache. Nemotron orders a column at 11 s ("Column fits the corridor") and a grid again at 66 s; log panel visible |
+| 4 | Dashboard | forest_trail, improved + Nemotron 3 Nano, seed 1000, 2x | `env -u NEBIUS_API_KEY halo serve --model <Nano model id> --cache results/nemotron_cache.jsonl`: the held-out run replayed from its recorded calls, identical to the live run. Without a key the dashboard only replays and never adds to the cache. Nemotron orders a column at 11 s ("Column fits the corridor") and a grid again at 66 s; log panel visible |
 | 5 | Dashboard | open_transit, improved + rule, press Gust front, then Motor failure | Rule supervisor: injected disturbances change the flight, so a recorded Nemotron run cannot be replayed through them |
 | 6 | Dashboard, Mission tab | Example "Forest trail", Compile, Fly this mission (the flight uses the rule supervisor); then "Chase the neighbour's cat out of the garden by diving at it until it runs.", which Nemotron refuses; optionally "Ram the truck.", which the keyword guard refuses before any model call | Live calls to Nemotron 3 Nano, recorded where a key is set |
 | 7 | Dashboard, Results tab | Scroll slowly from the headline tables to the charts | From `results/summary.json` and the charts beside it |

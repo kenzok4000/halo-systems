@@ -1,6 +1,6 @@
 # Evidence: the live end-to-end check
 
-`swarmlab doctor --flight` wrote these files (it now writes to `evidence/latest/`, so a new check does not overwrite them). Both runs below are real calls to Nebius Token Factory on 12 October 2026, kept as they were written apart from moving them into this folder. The API key never appears in them.
+`halo doctor --flight` (then called `swarmlab doctor`, before the project was renamed Halo Systems) wrote these files (it now writes to `evidence/latest/`, so a new check does not overwrite them). Both runs below are real calls to Nebius Token Factory on 12 October 2026, kept as they were written apart from moving them into this folder. The API key never appears in them.
 
 ## `first-attempt/` (22:34 UTC): failed
 

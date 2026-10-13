@@ -1,6 +1,6 @@
 # Architecture
 
-SwarmLab has three loops that run at very different speeds. Only the fastest one touches the motors, and no language model is in it.
+Halo Systems has three loops that run at very different speeds. Only the fastest one touches the motors, and no language model is in it.
 
 | Loop | Rate | Who decides | What it decides |
 |---|---|---|---|

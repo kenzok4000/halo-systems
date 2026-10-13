@@ -1,7 +1,7 @@
 """Safety validator, CBF filter, rule supervisor, Nebius client and Nemotron supervisor.
 
 The client tests use a fake HTTP transport defined here; they test retry,
-parsing and logging logic only. Real calls are made by ``swarmlab doctor``.
+parsing and logging logic only. Real calls are made by ``halo doctor``.
 """
 
 import json
@@ -13,15 +13,15 @@ from pathlib import Path
 
 import numpy as np
 
-from swarmlab.ai.budget import Budget, Pricing
-from swarmlab.ai.cache import CallCache
-from swarmlab.ai.client import NebiusClient, NebiusError, extract_json
-from swarmlab.ai.prompts import supervisor_user
-from swarmlab.control.cbf import build_constraints, project
-from swarmlab.control.directive import Directive
-from swarmlab.safety.validator import SafetyValidator
-from swarmlab.supervisor.nemotron import NemotronSupervisor, parse_directive
-from swarmlab.supervisor.rule import RuleSupervisor
+from halo_systems.ai.budget import Budget, Pricing
+from halo_systems.ai.cache import CallCache
+from halo_systems.ai.client import NebiusClient, NebiusError, extract_json
+from halo_systems.ai.prompts import supervisor_user
+from halo_systems.control.cbf import build_constraints, project
+from halo_systems.control.directive import Directive
+from halo_systems.safety.validator import SafetyValidator
+from halo_systems.supervisor.nemotron import NemotronSupervisor, parse_directive
+from halo_systems.supervisor.rule import RuleSupervisor
 
 FAKE_KEY = "test-key-0123456789abcdefghijklmnop"
 _LEDGER_DIR = tempfile.TemporaryDirectory()
@@ -30,9 +30,10 @@ _SAVED_ENV = {}
 
 def setUpModule():
     # Fake calls must never reach the real spend ledger.
-    for k in ("SWARMLAB_LEDGER", "SWARMLAB_BUDGET_USD", "NEBIUS_PRICE_INPUT_PER_M", "NEBIUS_PRICE_OUTPUT_PER_M"):
+    for k in ("HALO_LEDGER", "HALO_BUDGET_USD", "SWARMLAB_LEDGER", "SWARMLAB_BUDGET_USD",
+              "NEBIUS_PRICE_INPUT_PER_M", "NEBIUS_PRICE_OUTPUT_PER_M"):
         _SAVED_ENV[k] = os.environ.pop(k, None)
-    os.environ["SWARMLAB_LEDGER"] = str(Path(_LEDGER_DIR.name) / "ledger.jsonl")
+    os.environ["HALO_LEDGER"] = str(Path(_LEDGER_DIR.name) / "ledger.jsonl")
 
 
 def tearDownModule():
@@ -101,9 +102,9 @@ class CbfTest(unittest.TestCase):
 class SensingLimitedSpeedTest(unittest.TestCase):
     def test_leader_is_capped_only_when_obstacles_are_near(self):
         from types import SimpleNamespace
-        from swarmlab.control.improved import ImprovedController
-        from swarmlab.sim.body import DroneBody
-        from swarmlab.sim.world import Cylinder, World
+        from halo_systems.control.improved import ImprovedController
+        from halo_systems.sim.body import DroneBody
+        from halo_systems.sim.world import Cylinder, World
         ctrl = ImprovedController(DroneBody(), World(cylinders=[Cylinder(30.0, 0.0, 0.3, 30.0)]))
         plan = SimpleNamespace(directive=Directive(speed_mps=12.0), speed_now=12.0)
         v_sense = ctrl._sensing_limited_speed(plan, np.array([[0.0, 0.0, 15.0]]))
@@ -280,7 +281,7 @@ class ClientTest(unittest.TestCase):
     def test_redirects_are_not_followed_so_the_key_stays_put(self):
         import threading
         from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
-        from swarmlab.ai.client import _http_post
+        from halo_systems.ai.client import _http_post
         seen = []
 
         class Elsewhere(BaseHTTPRequestHandler):
@@ -475,7 +476,7 @@ class NemotronSupervisorTest(unittest.TestCase):
 
 
 def _append_many(args):
-    from swarmlab import jsonl
+    from halo_systems import jsonl
     path, who = args
     for i in range(200):
         jsonl.append(path, {"who": who, "i": i, "pad": "x" * 900})
@@ -484,7 +485,7 @@ def _append_many(args):
 class JsonlTest(unittest.TestCase):
     def test_concurrent_appends_stay_whole_and_junk_is_skipped(self):
         from concurrent.futures import ProcessPoolExecutor
-        from swarmlab import jsonl
+        from halo_systems import jsonl
         with tempfile.TemporaryDirectory() as tmp:
             path = Path(tmp) / "shared.jsonl"
             with ProcessPoolExecutor(4) as ex:
@@ -502,7 +503,7 @@ class JsonlTest(unittest.TestCase):
 
 class StressSearchTest(unittest.TestCase):
     def test_model_tests_are_used_and_a_dead_key_stops_a_strict_search(self):
-        from swarmlab.ai.tester import NemotronSearch, summarise_search
+        from halo_systems.ai.tester import NemotronSearch, summarise_search
         reply = json.dumps({"tests": [{"params": {"tree_density": 9, "trail_width_m": 10}, "why": "narrow forest"}]})
         c = NebiusClient(api_key=FAKE_KEY, transport=FakeTransport([ok(reply)]), sleep=lambda s: None,
                          rate_per_s=1000, burst=1000)
@@ -518,7 +519,7 @@ class StressSearchTest(unittest.TestCase):
             NemotronSearch(dead, "m", strict=True).propose([], 2)
 
     def test_corner_search_stress_level_and_repeats(self):
-        from swarmlab.ai.tester import SPACE, CornerSearch, compare_replays, compare_searches, stress_level, summarise_search
+        from halo_systems.ai.tester import SPACE, CornerSearch, compare_replays, compare_searches, stress_level, summarise_search
         for prop in CornerSearch(0).propose([], 8):
             self.assertTrue(all(prop["params"][k] in (lo, hi) for k, (lo, hi, _, _) in SPACE.items()))
         easy = {k: (hi if k in ("spacing_m", "trail_width_m") else lo) for k, (lo, hi, _, _) in SPACE.items()}
@@ -542,7 +543,7 @@ class StressSearchTest(unittest.TestCase):
         self.assertIn("| corners | improved-no-cbf+rule | 3 | 1 | 2 | 1 | 0 | 1 | 2 |", paired)
 
     def test_replay_flies_the_same_tests_with_another_configuration(self):
-        from swarmlab.ai.tester import SPACE, replay
+        from halo_systems.ai.tester import SPACE, replay
         easy = {k: (hi if k in ("spacing_m", "trail_width_m") else lo) for k, (lo, hi, _, _) in SPACE.items()}
         history = [{"i": 0, "why": "", "params": easy, "seed": 3, "outcome": {"failed": True}}]
         again = replay(history, "improved-no-cbf+rule", workers=1)

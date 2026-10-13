@@ -1,6 +1,6 @@
 """Benchmark report: markdown tables and charts from runner rows.
 
-``swarmlab report runs.jsonl --out results/`` writes ``results/REPORT.md``,
+``halo report runs.jsonl --out results/`` writes ``results/REPORT.md``,
 ``results/summary.json`` and PNG charts (charts need the optional
 ``matplotlib`` extra; tables do not). Every number comes from the rows
 file; nothing is typed in by hand.

@@ -19,12 +19,11 @@ was really flown by the rules is never reported as a Nemotron result.
 
 from __future__ import annotations
 
-import os
-
 from ..ai.cache import CallCache, request_key
 from ..ai.client import NebiusClient, NebiusError, extract_json, reasoning
 from ..ai.prompts import PROMPT_VERSION, SUPERVISOR_SYSTEM, supervisor_user
 from ..control.directive import DIRECTIVE_FIELDS, Directive
+from ..settings import env
 from .base import Decision, Supervisor
 from .rule import RuleSupervisor
 
@@ -50,9 +49,9 @@ class NemotronSupervisor(Supervisor):
         t = TIMEOUTS[bool(think)]
         self.client = client or NebiusClient(timeout_s=t["timeout_s"], max_retries=t["max_retries"])
         self.deadline_s = deadline_s if deadline_s is not None else t["deadline_s"]
-        self.model = model or os.environ.get("SWARMLAB_SUPERVISOR_MODEL", "")
+        self.model = model or env("SUPERVISOR_MODEL", "")
         if not self.model:
-            raise ValueError("no model id: pass model= or set SWARMLAB_SUPERVISOR_MODEL (see `swarmlab doctor`)")
+            raise ValueError("no model id: pass model= or set HALO_SUPERVISOR_MODEL (see `halo doctor`)")
         self.cache = cache
         self.fallback = RuleSupervisor() if fallback == "rule" else None
         self.temperature = temperature

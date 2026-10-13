@@ -1,11 +1,11 @@
 // Screen-record one shot of the live dashboard with headless Chromium, for the demo video.
-// The dashboard must already be running (`swarmlab serve`); this only drives the page and
+// The dashboard must already be running (`halo serve`); this only drives the page and
 // films it, so every frame is the real dashboard flying a real simulation.
 //
 //   node tools/record_shot.cjs --scenario forest_trail --config original+fixed --seed 1000 \
 //        --speed 2 --seconds 20 --view top --out video/shot2.webm
 //
-// Options: --url (default http://127.0.0.1:8765, where swarmlab serve listens), --tab fly|mission|results|about,
+// Options: --url (default http://127.0.0.1:8765, where halo serve listens), --tab fly|mission|results|about,
 // --inject gust@6,motor_failure@12 (seconds after the start), --mission "text" (Mission tab:
 // compile, then fly it), --scroll (scroll the side panel while recording).
 // Needs Playwright (`npm install playwright`, or a global install with NODE_PATH set).

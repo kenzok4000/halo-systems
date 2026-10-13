@@ -1,8 +1,8 @@
-# SwarmLab
+# Halo Systems
 
 **Supervised drone-swarm formation flight: a 50 Hz safety-filtered controller, with NVIDIA Nemotron on Nebius Token Factory as the slow-loop supervisor, mission compiler and test engineer.**
 
-SwarmLab is a reproducible simulation testbed for civilian drone swarms: search and rescue under a forest canopy, field and solar-farm surveys, facade inspection in a street canyon, delivery convoys and light shows. A language model never flies the drones. The drones fly themselves at 50 Hz, and Nemotron works where a model's judgement helps and its latency doesn't hurt:
+Halo Systems is a reproducible simulation testbed for civilian drone swarms: search and rescue under a forest canopy, field and solar-farm surveys, facade inspection in a street canyon, delivery convoys and light shows. A language model never flies the drones. The drones fly themselves at 50 Hz, and Nemotron works where a model's judgement helps and its latency doesn't hurt:
 
 | Role | What Nemotron does | What it is compared with |
 |---|---|---|
@@ -83,12 +83,12 @@ Nemotron found 2.6 times as many distinct failing conditions as the best baselin
 ## Quick start
 
 ```bash
-git clone <repo-url> swarmlab && cd swarmlab
+git clone <repo-url> halo-systems && cd halo-systems
 python3 -m venv .venv && . .venv/bin/activate
 python3 -m pip install -e '.[report]'   # numpy, plus matplotlib for charts
-swarmlab list                           # the nine scenarios
-swarmlab run forest_trail --config improved+rule --seed 1000   # one flight, about 30 s
-swarmlab serve --open                   # live 3D dashboard on http://127.0.0.1:8765
+halo list                           # the nine scenarios
+halo run forest_trail --config improved+rule --seed 1000   # one flight, about 30 s
+halo serve --open                   # live 3D dashboard on http://127.0.0.1:8765
 python3 -m unittest discover -s tests   # no network needed
 ```
 
@@ -98,9 +98,9 @@ To use Nemotron, put your Nebius Token Factory key in the environment (never in 
 
 ```bash
 export NEBIUS_API_KEY=...               # from tokenfactory.nebius.com
-swarmlab doctor --flight                # end-to-end check; writes evidence/latest/
-export SWARMLAB_SUPERVISOR_MODEL=<model id printed by doctor>
-swarmlab serve                          # the dashboard now offers the Nemotron supervisor
+halo doctor --flight                # end-to-end check; writes evidence/latest/
+export HALO_SUPERVISOR_MODEL=<model id printed by doctor>
+halo serve                          # the dashboard now offers the Nemotron supervisor
 ```
 
 ## How it works
@@ -122,10 +122,10 @@ See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md), [docs/BENCHMARKS.md](docs/BENC
 ## Reproducing the results
 
 ```bash
-swarmlab bench --scenarios open_transit,formation_changes,forest_trail,urban_canyon,gusty_day,comms_degraded,motor_failures,low_battery,field_survey \
+halo bench --scenarios open_transit,formation_changes,forest_trail,urban_canyon,gusty_day,comms_degraded,motor_failures,low_battery,field_survey \
   --configs original+fixed,improved+fixed,improved+rule --seeds heldout --out results/runs.jsonl
-swarmlab report results/runs.jsonl --out results
-swarmlab mission-eval --sets heldout --out results/mission_eval_baseline.json   # regex baseline; add --model <id> for Nemotron
+halo report results/runs.jsonl --out results
+halo mission-eval --sets heldout --out results/mission_eval_baseline.json   # regex baseline; add --model <id> for Nemotron
 ```
 
 Seeds 0-9 were used for tuning; every headline number uses held-out seeds 1000-1019. The supervisor flights with Nemotron were recorded to a cache and can be replayed exactly without a key (`--cache results/nemotron_cache.jsonl --cache-mode replay`); the mission-compiler and stress-search calls are kept in call logs instead. [docs/REPRODUCE.md](docs/REPRODUCE.md) lists every command behind `results/`.

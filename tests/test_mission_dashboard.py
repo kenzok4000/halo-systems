@@ -9,24 +9,26 @@ import unittest
 import urllib.error
 import urllib.request
 
-from swarmlab.ai.mission import (empty_spec, flatten, harmful, load_eval_set, normalise, regex_baseline, score)
-from swarmlab.eval.scenarios import from_mission
-from swarmlab.eval.stats import bootstrap_ci, paired, value
+from halo_systems.ai.mission import (empty_spec, flatten, harmful, load_eval_set, normalise, regex_baseline, score)
+from halo_systems.eval.scenarios import from_mission
+from halo_systems.eval.stats import bootstrap_ci, paired, value
 
 _LEDGER_DIR = tempfile.TemporaryDirectory()
-_SAVED = None
+_SAVED = {}
 
 
 def setUpModule():
-    global _SAVED
-    _SAVED = os.environ.get("SWARMLAB_LEDGER")
-    os.environ["SWARMLAB_LEDGER"] = os.path.join(_LEDGER_DIR.name, "ledger.jsonl")
+    # Point the spend guard at a scratch ledger, under the current and the pre-rename variable names.
+    for k in ("HALO_LEDGER", "SWARMLAB_LEDGER"):
+        _SAVED[k] = os.environ.pop(k, None)
+    os.environ["HALO_LEDGER"] = os.path.join(_LEDGER_DIR.name, "ledger.jsonl")
 
 
 def tearDownModule():
-    os.environ.pop("SWARMLAB_LEDGER", None)
-    if _SAVED is not None:
-        os.environ["SWARMLAB_LEDGER"] = _SAVED
+    for k, v in _SAVED.items():
+        os.environ.pop(k, None)
+        if v is not None:
+            os.environ[k] = v
     _LEDGER_DIR.cleanup()
 
 
@@ -96,7 +98,7 @@ class StatsTest(unittest.TestCase):
 class DashboardSmokeTest(unittest.TestCase):
     def test_recorded_calls_make_nemotron_replayable_without_a_key(self):
         from pathlib import Path
-        from swarmlab.dashboard.server import State
+        from halo_systems.dashboard.server import State
         with tempfile.TemporaryDirectory() as tmp:
             cache = Path(tmp) / "cache.jsonl"
             saved = os.environ.pop("NEBIUS_API_KEY", None)
@@ -111,7 +113,7 @@ class DashboardSmokeTest(unittest.TestCase):
 
     def test_results_list_every_models_mission_scores_once_with_the_baseline(self):
         from pathlib import Path
-        from swarmlab.dashboard.server import _results
+        from halo_systems.dashboard.server import _results
         summ = lambda pct: {"field_accuracy_pct": pct, "exact": 1, "prompts": 2}
         with tempfile.TemporaryDirectory() as tmp:
             for name, model, think, pct in (("nano", "nvidia/Nano", False, 90), ("think", "nvidia/Nano", True, 95)):
@@ -124,7 +126,7 @@ class DashboardSmokeTest(unittest.TestCase):
 
     def test_results_give_headline_tables_in_report_order(self):
         from pathlib import Path
-        from swarmlab.dashboard.server import _results
+        from halo_systems.dashboard.server import _results
         cell = {"completed": {"mean": 100.0, "lo": 100.0, "hi": 100.0, "n": 20}}
         summary = {f"{sc}|{cfg}": cell for sc in ("low_battery", "open_transit")
                    for cfg in ("improved+nemotron:nvidia/Nano", "improved+rule", "original+fixed")}
@@ -139,7 +141,7 @@ class DashboardSmokeTest(unittest.TestCase):
         from http.server import ThreadingHTTPServer
         from pathlib import Path
         import tempfile
-        from swarmlab.dashboard.server import State, make_handler
+        from halo_systems.dashboard.server import State, make_handler
         tmp = tempfile.TemporaryDirectory()
         state = State(Path(tmp.name), Path(tmp.name), None, None)
         httpd = ThreadingHTTPServer(("127.0.0.1", 0), make_handler(state))
@@ -151,7 +153,7 @@ class DashboardSmokeTest(unittest.TestCase):
                 req = urllib.request.Request(base + path, data=json.dumps(body).encode(), method="POST",
                                              headers={"Content-Type": "application/json"})
                 return json.loads(urllib.request.urlopen(req, timeout=10).read())
-            self.assertIn("SwarmLab", urllib.request.urlopen(base + "/", timeout=10).read().decode())
+            self.assertIn("Halo Systems", urllib.request.urlopen(base + "/", timeout=10).read().decode())
             status = json.loads(urllib.request.urlopen(base + "/api/status", timeout=10).read())
             self.assertIn("ai_available", status)
             run = post("/api/runs", {"scenario": "open_transit", "config": "improved+rule", "seed": 1, "speed": 10})

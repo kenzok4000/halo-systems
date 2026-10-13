@@ -1,13 +1,14 @@
 """Spend guard for paid model calls.
 
 Every call's tokens and estimated cost are appended to a JSON-lines ledger
-(``SWARMLAB_LEDGER``, default ``~/.swarmlab/nebius_ledger.jsonl``). All
+(``HALO_LEDGER``, default ``~/.halo-systems/nebius_ledger.jsonl``). All
 processes and sessions that point at the same file share one running total.
 Before each request the guard adds a pessimistic estimate of that request
 (prompt length at three characters per token, plus the full ``max_tokens``)
-to the total, and refuses the call if the cap (``SWARMLAB_BUDGET_USD``,
+to the total, and refuses the call if the cap (``HALO_BUDGET_USD``,
 default 18) would be crossed. A benchmark then stops itself instead of
-running up a bill.
+running up a bill. The older names ``SWARMLAB_LEDGER`` and
+``SWARMLAB_BUDGET_USD`` are still read (see ``settings.py``).
 
 Costs are estimates. Unless real prices are set with
 ``NEBIUS_PRICE_INPUT_PER_M`` and ``NEBIUS_PRICE_OUTPUT_PER_M``, they use the
@@ -26,9 +27,18 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from .. import jsonl
+from ..settings import env
 
 DEFAULT_CAP_USD = 18.0
-DEFAULT_LEDGER = Path.home() / ".swarmlab" / "nebius_ledger.jsonl"
+DEFAULT_LEDGER = Path.home() / ".halo-systems" / "nebius_ledger.jsonl"
+LEGACY_LEDGER = Path.home() / ".swarmlab" / "nebius_ledger.jsonl"  # default before the rename
+
+
+def default_ledger() -> Path:
+    """The default ledger, or the pre-rename one if only that exists, so past spend is never forgotten."""
+    if not DEFAULT_LEDGER.exists() and LEGACY_LEDGER.exists():
+        return LEGACY_LEDGER
+    return DEFAULT_LEDGER
 
 # USD per million tokens (input, output), matched on the model id. Deliberately high: see the module docstring.
 PRICE_CEILINGS = (("nano", 0.10, 0.40), ("super", 0.50, 1.50))
@@ -73,8 +83,8 @@ class Budget:
     """A running total over a shared ledger file, with a hard cap checked before every request."""
 
     def __init__(self, path: str | os.PathLike | None = None, cap_usd: float | None = None):
-        self.path = Path(path or os.environ.get("SWARMLAB_LEDGER") or DEFAULT_LEDGER).expanduser()
-        cap = cap_usd if cap_usd is not None else os.environ.get("SWARMLAB_BUDGET_USD")
+        self.path = Path(path or env("LEDGER") or default_ledger()).expanduser()
+        cap = cap_usd if cap_usd is not None else env("BUDGET_USD")
         self.cap_usd = float(cap) if cap not in (None, "") else DEFAULT_CAP_USD
         self._offset = 0
         self._spent = 0.0

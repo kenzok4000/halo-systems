@@ -10,7 +10,7 @@ jamming) are refused by the compiler and by a keyword guard, and never
 become a flight.
 
 A deterministic regex/keyword parser is the baseline it is scored against
-(``swarmlab mission-eval``).
+(``halo mission-eval``).
 """
 
 from __future__ import annotations

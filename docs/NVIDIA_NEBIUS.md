@@ -1,6 +1,6 @@
 # NVIDIA Nemotron on Nebius Token Factory
 
-SwarmLab uses NVIDIA Nemotron models, served by Nebius Token Factory's OpenAI-compatible API, in three roles. Each role has a conventional baseline that gets the same inputs, so every claim about the model is a measured comparison.
+Halo Systems uses NVIDIA Nemotron models, served by Nebius Token Factory's OpenAI-compatible API, in three roles. Each role has a conventional baseline that gets the same inputs, so every claim about the model is a measured comparison.
 
 | Role | Input | Output | Baseline |
 |---|---|---|---|
@@ -31,32 +31,32 @@ Nothing the model says reaches the motors directly. Every directive passes the s
 
 ## Reasoning on or off
 
-Nemotron 3 models reason before they answer unless told not to. The reasoning comes back in `message.reasoning` and counts against `max_tokens`; if it uses them all, `content` is empty and `finish_reason` is `length`. SwarmLab sends `chat_template_kwargs: {"enable_thinking": false}` unless a role asks for reasoning (`nemotron-think:<model>` in a config), in which case `max_tokens` is at least 4096. A reply cut off at the limit is not retried, because the same request would be cut off again.
+Nemotron 3 models reason before they answer unless told not to. The reasoning comes back in `message.reasoning` and counts against `max_tokens`; if it uses them all, `content` is empty and `finish_reason` is `length`. Halo Systems sends `chat_template_kwargs: {"enable_thinking": false}` unless a role asks for reasoning (`nemotron-think:<model>` in a config), in which case `max_tokens` is at least 4096. A reply cut off at the limit is not retried, because the same request would be cut off again.
 
 With reasoning off, Nemotron 3 Nano answered in about 1 s but, before the status report spelled out its corridor and energy checks in words, it ignored them: it kept a grid formation that the report said did not fit. With reasoning on, it used those checks, but answers took several seconds each, the slowest over 100 s before the 60 s deadline was added, and in the last tuning round it completed only 3 of 5 forest flights. Once the report spelled the checks out, reasoning off did as well or better in eight of nine scenarios in that round. The exception was degraded radio, where 12 reasoning-off calls timed out within two and a half minutes, a pattern that suggests a short slowdown at the provider, and the rules took those steps. So the supervisor runs with reasoning off. The mission compiler is different: a plan is a one-off answer, and reasoning on took Nano from 18 to 20 of 20 held-out requests fully right, at a median of 12 s instead of 5 s. The tuning rounds are in `results/tuning/`.
 
 ## Spend guard
 
-`ai/budget.py` keeps a ledger of every call's tokens and estimated cost in a JSON-lines file (`SWARMLAB_LEDGER`), shared by all processes and sessions that use the same file. Before each request, the guard adds a pessimistic estimate of that request to the total: about three characters per token for the prompt, plus the full `max_tokens` for the reply. If the total would pass the cap (`SWARMLAB_BUDGET_USD`, default 18), the call is refused. A benchmark then stops instead of running up a bill.
+`ai/budget.py` keeps a ledger of every call's tokens and estimated cost in a JSON-lines file (`HALO_LEDGER`), shared by all processes and sessions that use the same file. Before each request, the guard adds a pessimistic estimate of that request to the total: about three characters per token for the prompt, plus the full `max_tokens` for the reply. If the total would pass the cap (`HALO_BUDGET_USD`, default 18), the call is refused. A benchmark then stops instead of running up a bill.
 
 * Some requests are billed even though they give no usable answer. A reply that turns out empty or malformed is counted at its reported usage. A connection that drops after sending is counted at the worst case.
 * Unless real prices are given in `NEBIUS_PRICE_INPUT_PER_M` and `NEBIUS_PRICE_OUTPUT_PER_M`, costs use built-in price ceilings set above the prices listed for these models, so the ledger over-counts.
 * The provider's billing page is the authority on actual charges.
-* `swarmlab budget` prints the total. `swarmlab budget --add-usd X --note "..."` records spend made outside the tool.
+* `halo budget` prints the total. `halo budget --add-usd X --note "..."` records spend made outside the tool.
 
 ## Reproducibility
 
 Every Nemotron call in a benchmark can be recorded to a cache keyed on the model, the messages, the temperature and the request options (reasoning switch, token limit). Failed calls are stored too, with their error and latency, so a replayed run falls back at exactly the moments the live run did. Anyone can then replay the run exactly, with no key and no cost:
 
 ```bash
-swarmlab bench ... --configs improved+nemotron:<model> --cache results/nemotron_cache.jsonl --cache-mode replay
+halo bench ... --configs improved+nemotron:<model> --cache results/nemotron_cache.jsonl --cache-mode replay
 ```
 
 A replay that misses the cache is reported as a fallback, never silently filled.
 
 ## Evidence
 
-`swarmlab doctor --flight` runs the end-to-end check:
+`halo doctor --flight` runs the end-to-end check:
 
 1. It lists models and picks a Nemotron model.
 2. It sends a real supervisor request built from a real simulation state.

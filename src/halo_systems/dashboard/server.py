@@ -1,6 +1,6 @@
 """Live dashboard: a small standard-library web server streaming a running simulation.
 
-``swarmlab serve`` starts it (default http://127.0.0.1:8765). The browser
+``halo serve`` starts it (default http://127.0.0.1:8765). The browser
 gets frames over Server-Sent Events and can start runs, inject gusts,
 motor failures and radio blackouts, order formation changes, type a
 mission for the mission compiler, and browse benchmark results.
@@ -31,6 +31,7 @@ import numpy as np
 from ..eval.report import _config_order, _scenario_order, short_label
 from ..eval.runner import make_controller, make_supervisor, split_config
 from ..eval.scenarios import SCENARIOS, from_mission, make
+from ..settings import env
 from ..sim.body import DroneBody
 from ..sim.engine import STATUS_NAMES, Simulation
 from ..supervisor.base import Decision, Supervisor
@@ -200,7 +201,7 @@ class State:
         self.runs: dict[str, LiveRun] = {}
         self.results_dir = results_dir
         self.evidence_dir = evidence_dir
-        self.model = model or os.environ.get("SWARMLAB_SUPERVISOR_MODEL") or None
+        self.model = model or env("SUPERVISOR_MODEL") or None
         self.cache_path = cache_path
         self.lock = threading.Lock()
 
@@ -217,7 +218,7 @@ class State:
         config = str(body.get("config", "improved+rule"))
         if "nemotron" in config:
             if not self.ai_status()["ai_available"]:
-                raise ValueError("Nemotron is not available: set NEBIUS_API_KEY and SWARMLAB_SUPERVISOR_MODEL")
+                raise ValueError("Nemotron is not available: set NEBIUS_API_KEY and HALO_SUPERVISOR_MODEL")
             # --model takes a model id (reasoning off) or a full spec such as nemotron-think:<model id>.
             spec = self.model if self.model.startswith("nemotron") else f"nemotron:{self.model}"
             config = f"{split_config(config)[0]}+{spec}"
@@ -255,7 +256,7 @@ def make_handler(state: State, host: str = "127.0.0.1"):
     hosts = LOCAL_HOSTS | {host}
 
     class Handler(BaseHTTPRequestHandler):
-        server_version = "swarmlab"
+        server_version = "halo-systems"
 
         def _not_from_this_page(self) -> str | None:
             """A POST can spend model credits, so only the dashboard's own page may send one. Another web
@@ -487,7 +488,7 @@ def serve(host: str = "127.0.0.1", port: int = 8765, results_dir: str = "results
     httpd = ThreadingHTTPServer((host, port), make_handler(state, host))
     httpd.daemon_threads = True
     url = f"http://{host}:{port}/"
-    print(f"SwarmLab dashboard on {url} (Ctrl+C to stop)")
+    print(f"Halo Systems dashboard on {url} (Ctrl+C to stop)")
     st = state.ai_status()
     print(f"Nemotron: {st['mode'] + ', model ' + st['model'] if st['ai_available'] else 'not configured (rule supervisor and regex compiler only)'}")
     if open_browser:

@@ -5,7 +5,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from swarmlab.eval.report import build, label, short_label, split_variants
+from halo_systems.eval.report import build, label, short_label, split_variants
 
 
 def row(scenario, config, seed, **kw):
@@ -32,7 +32,7 @@ class ReportTest(unittest.TestCase):
         self.assertEqual(short_label("original+fixed"), "Original + fixed plan")
 
     def test_bench_resume_tells_gps_scales_apart(self):
-        from swarmlab.eval.runner import run_grid
+        from halo_systems.eval.runner import run_grid
         with tempfile.TemporaryDirectory() as tmp:
             out = Path(tmp) / "gps.jsonl"
             out.write_text(json.dumps({"scenario": "open_transit", "seed": 1, "config": "improved+rule", "n": 16,

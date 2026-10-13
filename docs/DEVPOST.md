@@ -4,7 +4,7 @@ Text for the Devpost form, one section per field. The numbers come from the repo
 
 ## Project name
 
-SwarmLab: supervised drone-swarm formation flight with NVIDIA Nemotron
+Halo Systems: supervised drone-swarm formation flight with NVIDIA Nemotron
 
 ## Tagline
 
@@ -89,7 +89,7 @@ Python, numpy, matplotlib, three.js, NVIDIA Nemotron 3, Nebius Token Factory
 
 ## Updates during the submission period
 
-SwarmLab was written during the submission period: its first commit is dated 12 October 2026. It reuses two things from the entrant's earlier private drone simulator:
+Halo Systems was written during the submission period: its first commit is dated 12 October 2026. It reuses two things from the entrant's earlier private drone simulator:
 
 * the airframe parameters (mass, thrust-to-weight, drag area, body radius, top speed) and its 17-minute hover endurance, which the power model is tuned to match;
 * the passive formation law, ported as the "original" baseline controller.

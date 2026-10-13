@@ -16,7 +16,7 @@ results/raw/
 cache/
 *.log
 *ledger*.jsonl
-# written by swarmlab doctor and the dashboard; the committed check lives in evidence/
+# written by halo doctor and the dashboard; the committed check lives in evidence/
 evidence/latest/
 evidence/dashboard_calls.jsonl
 # screen recordings and the recorder's node packages

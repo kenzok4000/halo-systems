@@ -1,4 +1,4 @@
-"""Command line: ``swarmlab <command>``. Run ``swarmlab -h`` for the list."""
+"""Command line: ``halo <command>``. Run ``halo -h`` for the list."""
 
 from __future__ import annotations
 
@@ -142,11 +142,11 @@ def cmd_stress(args) -> int:
     elif kind == "cem":
         searcher = tester.CrossEntropySearch(args.seed)
     elif kind in ("nemotron", "nemotron-think"):
-        import os
         from .ai.client import NebiusClient
-        model = model or os.environ.get("SWARMLAB_SUPERVISOR_MODEL", "")
+        from .settings import env
+        model = model or env("SUPERVISOR_MODEL", "")
         if not model:
-            print("give a model: --searcher nemotron:<model id> (see `swarmlab doctor`)", file=sys.stderr)
+            print("give a model: --searcher nemotron:<model id> (see `halo doctor`)", file=sys.stderr)
             return 2
         searcher = tester.NemotronSearch(NebiusClient(timeout_s=180.0, max_retries=2, log_path=args.ai_log), model,
                                          args.seed, think=kind == "nemotron-think", strict=True)
@@ -235,7 +235,7 @@ def cmd_serve(args) -> int:
 
 
 def main(argv=None) -> int:
-    p = argparse.ArgumentParser(prog="swarmlab", description="Supervised drone-swarm formation testbed.")
+    p = argparse.ArgumentParser(prog="halo", description="Halo Systems: supervised drone-swarm formation testbed.")
     sub = p.add_subparsers(dest="cmd", required=True)
 
     s = sub.add_parser("list", help="list the scenarios")
@@ -299,8 +299,8 @@ def main(argv=None) -> int:
     s.set_defaults(fn=cmd_stress_report)
 
     s = sub.add_parser("budget", help="show model spend against the cap, or record spend made elsewhere")
-    s.add_argument("--ledger", default=None, help="ledger file (default SWARMLAB_LEDGER or ~/.swarmlab/nebius_ledger.jsonl)")
-    s.add_argument("--cap", type=float, default=None, help="cap in USD (default SWARMLAB_BUDGET_USD or 18)")
+    s.add_argument("--ledger", default=None, help="ledger file (default HALO_LEDGER or ~/.halo-systems/nebius_ledger.jsonl)")
+    s.add_argument("--cap", type=float, default=None, help="cap in USD (default HALO_BUDGET_USD or 18)")
     s.add_argument("--add-usd", type=float, default=None, help="record spend made outside this tool")
     s.add_argument("--prompt-tokens", type=int, default=0)
     s.add_argument("--completion-tokens", type=int, default=0)
@@ -314,7 +314,7 @@ def main(argv=None) -> int:
     s.add_argument("--results", default="results")
     s.add_argument("--evidence", default="evidence")
     s.add_argument("--model", default=None, help="Nemotron model id, or nemotron-think:<model id> for reasoning on "
-                                                  "(default SWARMLAB_SUPERVISOR_MODEL)")
+                                                  "(default HALO_SUPERVISOR_MODEL)")
     s.add_argument("--cache", default=None, help="Nemotron call cache: replays recorded runs without a key, records with one")
     s.add_argument("--open", action="store_true", help="open a browser")
     s.set_defaults(fn=cmd_serve)
