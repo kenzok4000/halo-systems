@@ -163,6 +163,8 @@ def separation(rows, pairs) -> str:
     continuous metrics, the mean difference is over 1% of the baseline (so 0.01 Wh/km does not count).
     """
     scenarios = sorted({r["scenario"] for r in rows}, key=_scenario_order)
+    if not pairs:
+        return "No two configurations in this file are compared."
     out = []
     for sc in scenarios:
         lines = []
@@ -230,6 +232,8 @@ def build(rows_path, out_dir, pairs=None) -> Path:
     summary = summarise(good)
     pairs = pairs or [("original+fixed", "improved+fixed"), ("improved+fixed", "improved+rule")]
     configs = {r["config"] for r in good}
+    if "improved+fixed" not in configs and ("original+fixed", "improved+rule") not in pairs:
+        pairs.append(("original+fixed", "improved+rule"))   # e.g. noise and scaling sweeps that skip improved+fixed
     for c in sorted(configs):
         if ("nemotron" in c or c.startswith("improved-no-")) and ("improved+rule", c) not in pairs:
             pairs.append(("improved+rule", c))

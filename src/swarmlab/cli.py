@@ -137,6 +137,8 @@ def cmd_stress(args) -> int:
     kind, _, model = args.searcher.partition(":")
     if kind == "random":
         searcher = tester.RandomSearch(args.seed)
+    elif kind == "corners":
+        searcher = tester.CornerSearch(args.seed)
     elif kind == "cem":
         searcher = tester.CrossEntropySearch(args.seed)
     elif kind in ("nemotron", "nemotron-think"):
@@ -149,7 +151,7 @@ def cmd_stress(args) -> int:
         searcher = tester.NemotronSearch(NebiusClient(timeout_s=180.0, max_retries=2, log_path=args.ai_log), model,
                                          args.seed, think=kind == "nemotron-think", strict=True)
     else:
-        print(f"unknown searcher {args.searcher!r}: random, cem or nemotron:<model>", file=sys.stderr)
+        print(f"unknown searcher {args.searcher!r}: random, corners, cem or nemotron:<model>", file=sys.stderr)
         return 2
     from .ai.client import NebiusError
     try:
@@ -165,6 +167,29 @@ def cmd_stress(args) -> int:
     Path(args.out).parent.mkdir(parents=True, exist_ok=True)
     Path(args.out).write_text(json.dumps(out, indent=1))
     print(json.dumps(out["summary"]))
+    return 0
+
+
+def cmd_stress_report(args) -> int:
+    from pathlib import Path
+    from .ai import tester
+    results = [json.loads(Path(f).read_text()) for f in args.files]
+    rows = ["| File | Searcher | Failures | Distinct failing conditions | Failure kinds | Mildest failure | Random top-ups |",
+            "|---|---|---|---|---|---|---|"]
+    for f, r in zip(args.files, results):
+        s = tester.summarise_search(r["history"])
+        mild = "n/a" if s["mildest_failure_stress"] is None else f"{s['mildest_failure_stress']:.2f}"
+        rows.append(f"| {Path(f).name} | {r['searcher']} | {s['failures']} | {s['distinct_failing_conditions']} "
+                    f"| {s['distinct_failure_kinds']} | {mild} | {s['random_top_ups']} |")
+    text = ("# Stress-test search\n\n"
+            "Each search spends the same number of simulated flights. A failure is any crash or near miss. "
+            "Distinct failing conditions count the same test conditions once, however often they were re-flown. "
+            "The stress level runs from 0 (every parameter at its easy end) to 1 (every parameter at its hard end); "
+            "a failure at a low stress level is the more useful find.\n\n"
+            "## By searcher\n\n" + tester.compare_searches(results) + "\n## By search\n\n" + "\n".join(rows) + "\n")
+    Path(args.out).parent.mkdir(parents=True, exist_ok=True)
+    Path(args.out).write_text(text)
+    print(f"wrote {args.out}")
     return 0
 
 
@@ -229,7 +254,7 @@ def main(argv=None) -> int:
     s.set_defaults(fn=cmd_doctor)
 
     s = sub.add_parser("stress", help="search for conditions that make the swarm fail")
-    s.add_argument("--searcher", default="cem", help="random, cem, nemotron:<model id> or nemotron-think:<model id>")
+    s.add_argument("--searcher", default="cem", help="random, corners, cem, nemotron:<model id> or nemotron-think:<model id>")
     s.add_argument("--budget", type=int, default=40, help="simulated flights to spend")
     s.add_argument("--batch", type=int, default=4)
     s.add_argument("--seed", type=int, default=0)
@@ -237,6 +262,11 @@ def main(argv=None) -> int:
     s.add_argument("--out", required=True)
     s.add_argument("--ai-log", default=None)
     s.set_defaults(fn=cmd_stress)
+
+    s = sub.add_parser("stress-report", help="compare saved stress searches")
+    s.add_argument("files", nargs="+")
+    s.add_argument("--out", default="results/STRESS.md")
+    s.set_defaults(fn=cmd_stress_report)
 
     s = sub.add_parser("budget", help="show model spend against the cap, or record spend made elsewhere")
     s.add_argument("--ledger", default=None, help="ledger file (default SWARMLAB_LEDGER or ~/.swarmlab/nebius_ledger.jsonl)")

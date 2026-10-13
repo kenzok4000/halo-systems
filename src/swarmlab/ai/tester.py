@@ -1,8 +1,10 @@
 """Stress testing: search a space of hard conditions for ones that make the swarm fail.
 
-Three searchers share one budget of simulated flights and one scoring rule:
+Four searchers share one budget of simulated flights and one scoring rule:
 
 * random search (the usual baseline),
+* corner search: random corners of the parameter box, each parameter at its
+  lowest or highest value (boundary-value testing),
 * the cross-entropy method (a standard optimiser for this kind of search),
 * Nemotron as a test engineer: it sees every test so far (parameters and
   outcome) and proposes the next batch, with a reason for each.
@@ -47,6 +49,8 @@ SPACE = {
     "trail_width_m": (6.0, 40.0, "float", "width of the clear trail through the forest"),
 }
 NAMES = list(SPACE)
+# Parameters where the low end is the harder condition; for all others the high end is.
+LOW_IS_HARDER = {"spacing_m", "trail_width_m"}
 
 
 def clip_params(p: dict) -> dict:
@@ -62,6 +66,20 @@ def clip_params(p: dict) -> dict:
         v = min(max(v, lo), hi)
         out[k] = int(round(v)) if kind == "int" else round(v, 3)
     return out
+
+
+def stress_level(params: dict) -> float:
+    """How hard a test's conditions are, from 0 (every parameter at its easy end) to 1 (all at the hard end).
+
+    A failure found at a low stress level tells an engineer more than one found with every
+    parameter at its limit, so searches are also compared on their mildest failure.
+    """
+    p = clip_params(params)
+    h = []
+    for k, (lo, hi, _, _) in SPACE.items():
+        u = (p[k] - lo) / (hi - lo)
+        h.append(1.0 - u if k in LOW_IS_HARDER else u)
+    return round(float(np.mean(h)), 3)
 
 
 def build(params: dict, seed: int) -> Scenario:
@@ -144,6 +162,17 @@ class RandomSearch:
 
     def propose(self, history: list[dict], k: int) -> list[dict]:
         return [{"params": _unit_to_params(self.rng.uniform(0, 1, len(NAMES))), "why": "uniform random"} for _ in range(k)]
+
+
+class CornerSearch:
+    name = "corners"
+
+    def __init__(self, seed: int):
+        self.rng = np.random.default_rng(seed)
+
+    def propose(self, history: list[dict], k: int) -> list[dict]:
+        return [{"params": _unit_to_params(self.rng.integers(0, 2, len(NAMES)).astype(float)), "why": "random corner"}
+                for _ in range(k)]
 
 
 class CrossEntropySearch:
@@ -267,7 +296,33 @@ def failure_kinds(history: list[dict]) -> set:
 def summarise_search(history: list[dict]) -> dict:
     sev = [h["outcome"]["severity"] for h in history]
     first = next((h["i"] + 1 for h in history if h["outcome"]["failed"]), None)
+    fails = [h for h in history if h["outcome"]["failed"]]
+    levels = [stress_level(h["params"]) for h in fails]
     return {"tests": len(history), "random_top_ups": sum(h["why"].startswith("random top-up") for h in history),
-            "failures": sum(h["outcome"]["failed"] for h in history),
+            "failures": len(fails),
+            # the same conditions re-flown with another seed count once
+            "distinct_failing_conditions": len({json.dumps(clip_params(h["params"]), sort_keys=True) for h in fails}),
             "distinct_failure_kinds": len(failure_kinds(history)), "first_failure_at": first,
+            "mildest_failure_stress": min(levels) if levels else None,
+            "mean_failure_stress": round(float(np.mean(levels)), 3) if levels else None,
             "max_severity": max(sev) if sev else None, "mean_severity": float(np.mean(sev)) if sev else None}
+
+
+def compare_searches(results: list[dict]) -> str:
+    """Markdown table comparing searchers over several saved searches (the JSON `swarmlab stress` writes)."""
+    by: dict[str, list[dict]] = {}
+    for r in results:
+        by.setdefault(r["searcher"].split(":")[0], []).append(r)
+    lines = ["| Searcher | Searches | Flights | Failures | Distinct failing conditions | Failure kinds (all searches) "
+             "| Mildest failure (stress level) | Mean stress level of failures | Random top-ups |",
+             "|---|---|---|---|---|---|---|---|---|"]
+    for name, rs in by.items():
+        hist = [h for r in rs for h in r["history"]]
+        sums = [summarise_search(r["history"]) for r in rs]
+        fails = [h for h in hist if h["outcome"]["failed"]]
+        levels = [stress_level(h["params"]) for h in fails]
+        mild = f"{min(levels):.2f}" if levels else "n/a"
+        mean = f"{np.mean(levels):.2f}" if levels else "n/a"
+        lines.append(f"| {name} | {len(rs)} | {len(hist)} | {len(fails)} | {sum(s['distinct_failing_conditions'] for s in sums)} "
+                     f"| {len(failure_kinds(hist))} | {mild} | {mean} | {sum(s['random_top_ups'] for s in sums)} |")
+    return "\n".join(lines) + "\n"

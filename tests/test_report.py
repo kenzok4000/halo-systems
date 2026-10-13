@@ -47,6 +47,15 @@ class ReportTest(unittest.TestCase):
         self.assertIn("better on Completion time (s) 139.4 → 125.4", text)
         self.assertIn("boom", text)
 
+    def test_sweep_without_the_middle_config_is_still_compared(self):
+        rows = [row("forest_trail", "original+fixed", s, obstacle_crashes=8) for s in range(5)]
+        rows += [row("forest_trail", "improved+rule", s) for s in range(5)]
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "rows.jsonl"
+            path.write_text("".join(json.dumps(r) + "\n" for r in rows))
+            text = build(path, Path(tmp) / "out").read_text()
+        self.assertIn("Improved + rule supervisor vs Original controller: better on Crashes per run 8 → 0", text)
+
 
 if __name__ == "__main__":
     unittest.main()

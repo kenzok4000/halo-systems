@@ -466,6 +466,22 @@ class StressSearchTest(unittest.TestCase):
         with self.assertRaises(NebiusError):
             NemotronSearch(dead, "m", strict=True).propose([], 2)
 
+    def test_corner_search_stress_level_and_repeats(self):
+        from swarmlab.ai.tester import SPACE, CornerSearch, compare_searches, stress_level, summarise_search
+        for prop in CornerSearch(0).propose([], 8):
+            self.assertTrue(all(prop["params"][k] in (lo, hi) for k, (lo, hi, _, _) in SPACE.items()))
+        easy = {k: (hi if k in ("spacing_m", "trail_width_m") else lo) for k, (lo, hi, _, _) in SPACE.items()}
+        hard = {k: (lo if k in ("spacing_m", "trail_width_m") else hi) for k, (lo, hi, _, _) in SPACE.items()}
+        self.assertEqual(stress_level(easy), 0.0)
+        self.assertEqual(stress_level(hard), 1.0)
+        out = {"collisions": 0, "obstacle_crashes": 1, "ground_crashes": 0, "near_misses": 0, "severity": 10, "failed": True}
+        history = [{"i": i, "why": "", "params": p, "outcome": out} for i, p in enumerate([hard, hard, easy])]
+        s = summarise_search(history)
+        self.assertEqual((s["failures"], s["distinct_failing_conditions"]), (3, 2))   # a re-flown test counts once
+        self.assertEqual(s["mildest_failure_stress"], 0.0)
+        table = compare_searches([{"searcher": "corners", "history": history}])
+        self.assertIn("| corners | 1 | 3 | 3 | 2 |", table)
+
 
 if __name__ == "__main__":
     unittest.main()
