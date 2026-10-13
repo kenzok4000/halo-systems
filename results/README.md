@@ -14,6 +14,7 @@ Everything here was produced by the commands in [docs/REPRODUCE.md](../docs/REPR
 | `ablation/` | The improved controller with one technique removed at a time, with the rule supervisor | fbdf402, and the safety filter on the other five scenarios later with the same simulator and controllers |
 | `gps/` | GPS error scaled by 0.5, 1, 2 and 3 on forest_trail and gusty_day | fbdf402 |
 | `scaling/` | 8, 16, 32 and 64 drones on open_transit and motor_failures | fbdf402 |
+| `replay_check/runs.jsonl` | 24 held-out Nemotron flights (forest trail, degraded radio and low battery, seeds 1000-1003, Nano and Super) replayed from `nemotron_cache.jsonl` with no key; every metric matches the original rows apart from compute time | 2ec7c41 |
 
 The conventional rows (original controller, improved controller, rule supervisor) were flown at commit fbdf402, before the Nemotron setup was chosen; that choice used only the tuning seeds. The Nemotron flights started at dccae5b, which records the setup, and two commits (7bddbc3 and 2ec7c41) landed while they ran. The mission compiler was scored at 2ec7c41. None of the commits from fbdf402 to 2ec7c41 changed the simulator, controllers, rule supervisor, validator, prompts or mission compiler; they changed the stress-test tools, the report, the dashboard, tests and docs.
 
@@ -27,6 +28,6 @@ The conventional rows (original controller, improved controller, rule supervisor
 
 | Round | Commit | Seeds | Notes |
 |---|---|---|---|
-| 1 | dc6cf0d | 0-4 | 30 of 105 rows failed on a torn line in the shared call cache (fixed in 0548b83); the failed rows are kept with their error |
+| 1 | dc6cf0d | 0-4 | 30 of 105 rows failed on a torn line in the shared call cache (fixed in 0548b83); the failed rows are kept with their error. `calls.jsonl.gz` is the round's call log, slow Super calls included |
 | 2 | bcfc174 | 0-4 | Status report states the corridor and energy checks in words; whole-call deadline |
 | 3 | eb5ef30 | 5-9 | Final prompt; picked the Nemotron setup recorded in [docs/BENCHMARKS.md](../docs/BENCHMARKS.md). `conventional_runs.jsonl` holds the rule and fixed-plan flights on the same seeds |
