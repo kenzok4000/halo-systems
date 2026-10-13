@@ -1,0 +1,128 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1600" height="900" viewBox="0 0 1600 900" font-family="Inter, Helvetica, Arial, sans-serif">
+  <defs>
+    <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="9" markerHeight="9" orient="auto-start-reverse">
+      <path d="M 0 0 L 10 5 L 0 10 z" fill="#4b5563"/>
+    </marker>
+    <marker id="arrow-teal" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="9" markerHeight="9" orient="auto-start-reverse">
+      <path d="M 0 0 L 10 5 L 0 10 z" fill="#0f766e"/>
+    </marker>
+  </defs>
+  <rect width="1600" height="900" fill="#ffffff"/>
+
+  <!-- title -->
+  <text x="60" y="64" font-size="34" font-weight="700" fill="#111827">Halo Systems: three loops, and no language model in the fast one</text>
+  <text x="60" y="98" font-size="20" fill="#4b5563">NVIDIA Nemotron on Nebius Token Factory decides slowly; a 50 Hz controller with a safety filter flies every drone.</text>
+
+  <!-- ===== Loop 1: Mission (once) ===== -->
+  <rect x="60" y="140" width="1480" height="150" rx="14" fill="#f5f3ff" stroke="#c4b5fd" stroke-width="2"/>
+  <text x="84" y="172" font-size="16" font-weight="700" fill="#5b21b6" letter-spacing="1">MISSION LOOP · ONCE, BEFORE FLIGHT</text>
+
+  <rect x="84" y="192" width="250" height="72" rx="10" fill="#ffffff" stroke="#9ca3af" stroke-width="2"/>
+  <text x="209" y="222" font-size="18" font-weight="600" text-anchor="middle" fill="#111827">Operator request</text>
+  <text x="209" y="246" font-size="15" text-anchor="middle" fill="#4b5563">"search the trail in two rows"</text>
+
+  <line x1="334" y1="228" x2="420" y2="228" stroke="#4b5563" stroke-width="2.5" marker-end="url(#arrow)"/>
+
+  <rect x="422" y="186" width="330" height="84" rx="10" fill="#76b900" fill-opacity="0.12" stroke="#5a8f00" stroke-width="2.5"/>
+  <text x="587" y="214" font-size="18" font-weight="700" text-anchor="middle" fill="#2f4f00">Nemotron mission compiler</text>
+  <text x="587" y="238" font-size="15" text-anchor="middle" fill="#374151">Nebius Token Factory · JSON plan</text>
+  <text x="587" y="259" font-size="14" text-anchor="middle" fill="#6b7280">baseline: regex parser · refuses non-civilian use</text>
+
+  <line x1="752" y1="228" x2="838" y2="228" stroke="#4b5563" stroke-width="2.5" marker-end="url(#arrow)"/>
+
+  <rect x="840" y="192" width="230" height="72" rx="10" fill="#fff7ed" stroke="#f59e0b" stroke-width="2.5"/>
+  <text x="955" y="222" font-size="18" font-weight="700" text-anchor="middle" fill="#92400e">Safety validator</text>
+  <text x="955" y="246" font-size="15" text-anchor="middle" fill="#4b5563">schema · envelope · spacing floor</text>
+
+  <line x1="1070" y1="228" x2="1156" y2="228" stroke="#4b5563" stroke-width="2.5" marker-end="url(#arrow)"/>
+
+  <rect x="1158" y="192" width="300" height="72" rx="10" fill="#ffffff" stroke="#9ca3af" stroke-width="2"/>
+  <text x="1308" y="222" font-size="18" font-weight="600" text-anchor="middle" fill="#111827">Mission plan</text>
+  <text x="1308" y="246" font-size="15" text-anchor="middle" fill="#4b5563">route · formation · spacing · speed · altitude</text>
+
+  <!-- ===== Loop 2: Supervision (every 5 s) ===== -->
+  <rect x="60" y="330" width="1480" height="180" rx="14" fill="#ecfdf5" stroke="#6ee7b7" stroke-width="2"/>
+  <text x="84" y="362" font-size="16" font-weight="700" fill="#065f46" letter-spacing="1">SUPERVISION LOOP · EVERY 5 s OF SIMULATED TIME</text>
+
+  <rect x="84" y="384" width="250" height="100" rx="10" fill="#ffffff" stroke="#9ca3af" stroke-width="2"/>
+  <text x="209" y="412" font-size="18" font-weight="600" text-anchor="middle" fill="#111827">Status report</text>
+  <text x="209" y="436" font-size="14" text-anchor="middle" fill="#4b5563">formation error · closest pair · wind</text>
+  <text x="209" y="456" font-size="14" text-anchor="middle" fill="#4b5563">radio health · battery · corridor ahead</text>
+  <text x="209" y="476" font-size="14" text-anchor="middle" fill="#4b5563">energy and corridor checks, in words</text>
+
+  <line x1="334" y1="434" x2="420" y2="434" stroke="#4b5563" stroke-width="2.5" marker-end="url(#arrow)"/>
+
+  <rect x="422" y="378" width="330" height="112" rx="10" fill="#76b900" fill-opacity="0.12" stroke="#5a8f00" stroke-width="2.5"/>
+  <text x="587" y="406" font-size="18" font-weight="700" text-anchor="middle" fill="#2f4f00">Supervisor</text>
+  <text x="587" y="430" font-size="15" text-anchor="middle" fill="#374151">Nemotron 3 Nano (Token Factory)</text>
+  <text x="587" y="451" font-size="15" text-anchor="middle" fill="#374151">or tuned rules, same report, same answer format</text>
+  <text x="587" y="476" font-size="14" text-anchor="middle" fill="#6b7280">any failure → rules decide this step</text>
+
+  <line x1="752" y1="434" x2="838" y2="434" stroke="#4b5563" stroke-width="2.5" marker-end="url(#arrow)"/>
+
+  <rect x="840" y="384" width="230" height="100" rx="10" fill="#fff7ed" stroke="#f59e0b" stroke-width="2.5"/>
+  <text x="955" y="414" font-size="18" font-weight="700" text-anchor="middle" fill="#92400e">Safety validator</text>
+  <text x="955" y="438" font-size="14" text-anchor="middle" fill="#4b5563">clamp to the flight envelope</text>
+  <text x="955" y="458" font-size="14" text-anchor="middle" fill="#4b5563">spacing floor from body size,</text>
+  <text x="955" y="476" font-size="14" text-anchor="middle" fill="#4b5563">margin and navigation error</text>
+
+  <line x1="1070" y1="434" x2="1156" y2="434" stroke="#4b5563" stroke-width="2.5" marker-end="url(#arrow)"/>
+
+  <rect x="1158" y="384" width="300" height="100" rx="10" fill="#ffffff" stroke="#9ca3af" stroke-width="2"/>
+  <text x="1308" y="414" font-size="18" font-weight="600" text-anchor="middle" fill="#111827">Directive</text>
+  <text x="1308" y="438" font-size="14" text-anchor="middle" fill="#4b5563">formation · spacing · speed</text>
+  <text x="1308" y="458" font-size="14" text-anchor="middle" fill="#4b5563">altitude · safety margin</text>
+  <text x="1308" y="478" font-size="14" text-anchor="middle" fill="#6b7280">applied only after the call's real latency</text>
+
+  <!-- plan feeds the supervisor as the thing it returns to -->
+  <path d="M 1308 264 L 1308 300 L 587 300 L 587 378" fill="none" stroke="#7c3aed" stroke-width="2" stroke-dasharray="7 6" marker-end="url(#arrow)"/>
+  <text x="900" y="318" font-size="14" text-anchor="middle" fill="#5b21b6">the plan the supervisor returns to</text>
+
+  <!-- ===== Loop 3: Control (50 Hz) ===== -->
+  <rect x="60" y="550" width="1480" height="200" rx="14" fill="#f0f9ff" stroke="#7dd3fc" stroke-width="2"/>
+  <text x="84" y="582" font-size="16" font-weight="700" fill="#0c4a6e" letter-spacing="1">CONTROL LOOP · 50 Hz, EVERY DRONE, NO LANGUAGE MODEL</text>
+
+  <rect x="84" y="604" width="250" height="110" rx="10" fill="#ffffff" stroke="#9ca3af" stroke-width="2"/>
+  <text x="209" y="632" font-size="18" font-weight="600" text-anchor="middle" fill="#111827">Noisy observations</text>
+  <text x="209" y="656" font-size="14" text-anchor="middle" fill="#4b5563">GPS noise and drift</text>
+  <text x="209" y="676" font-size="14" text-anchor="middle" fill="#4b5563">radio latency, loss, blackouts</text>
+  <text x="209" y="696" font-size="14" text-anchor="middle" fill="#4b5563">obstacles seen out to 15 m</text>
+
+  <line x1="334" y1="659" x2="420" y2="659" stroke="#4b5563" stroke-width="2.5" marker-end="url(#arrow)"/>
+
+  <rect x="422" y="604" width="330" height="110" rx="10" fill="#ffffff" stroke="#0369a1" stroke-width="2.5"/>
+  <text x="587" y="632" font-size="18" font-weight="700" text-anchor="middle" fill="#0c4a6e">Formation controller</text>
+  <text x="587" y="656" font-size="14" text-anchor="middle" fill="#4b5563">Hungarian slot assignment · synchronised</text>
+  <text x="587" y="676" font-size="14" text-anchor="middle" fill="#4b5563">transitions · leader pacing · consensus</text>
+  <text x="587" y="696" font-size="14" text-anchor="middle" fill="#6b7280">baseline: the original passive formation law</text>
+
+  <line x1="752" y1="659" x2="838" y2="659" stroke="#4b5563" stroke-width="2.5" marker-end="url(#arrow)"/>
+
+  <rect x="840" y="604" width="230" height="110" rx="10" fill="#fff7ed" stroke="#f59e0b" stroke-width="2.5"/>
+  <text x="955" y="632" font-size="18" font-weight="700" text-anchor="middle" fill="#92400e">CBF safety filter</text>
+  <text x="955" y="656" font-size="14" text-anchor="middle" fill="#4b5563">drone-to-drone, obstacle and</text>
+  <text x="955" y="676" font-size="14" text-anchor="middle" fill="#4b5563">ground clearance, whatever</text>
+  <text x="955" y="696" font-size="14" text-anchor="middle" fill="#4b5563">the directive says</text>
+
+  <line x1="1070" y1="659" x2="1156" y2="659" stroke="#4b5563" stroke-width="2.5" marker-end="url(#arrow)"/>
+
+  <rect x="1158" y="604" width="300" height="110" rx="10" fill="#ffffff" stroke="#9ca3af" stroke-width="2"/>
+  <text x="1308" y="632" font-size="18" font-weight="600" text-anchor="middle" fill="#111827">Physics</text>
+  <text x="1308" y="656" font-size="14" text-anchor="middle" fill="#4b5563">1.2 kg quadcopters, motor lag, drag</text>
+  <text x="1308" y="676" font-size="14" text-anchor="middle" fill="#4b5563">forward-flight power, wind and gust fronts</text>
+  <text x="1308" y="696" font-size="14" text-anchor="middle" fill="#4b5563">motor failures, batteries, trees, buildings</text>
+
+  <!-- directive feeds the controller -->
+  <path d="M 1308 484 L 1308 520 L 587 520 L 587 604" fill="none" stroke="#0f766e" stroke-width="2.5" marker-end="url(#arrow-teal)"/>
+  <text x="900" y="538" font-size="14" text-anchor="middle" fill="#0f766e">directive → slot targets</text>
+
+  <!-- physics feeds the next status report: outer loop, right edge, bottom, left edge -->
+  <path d="M 1458 659 L 1568 659 L 1568 768 L 34 768 L 34 434 L 82 434" fill="none" stroke="#4b5563" stroke-width="2" stroke-dasharray="7 6" marker-end="url(#arrow)"/>
+  <text x="800" y="780" font-size="14" text-anchor="middle" fill="#4b5563">simulated state, summarised every 5 s, becomes the next status report</text>
+
+  <!-- ===== footer: evaluation ===== -->
+  <rect x="60" y="796" width="1480" height="84" rx="14" fill="#f9fafb" stroke="#d1d5db" stroke-width="2"/>
+  <text x="84" y="824" font-size="16" font-weight="700" fill="#374151" letter-spacing="1">EVALUATION</text>
+  <text x="84" y="848" font-size="15" fill="#4b5563">Nine civilian scenarios · 20 held-out seeds, each flown once · paired 95% intervals · every Nemotron call recorded, so any run replays exactly with no key</text>
+  <text x="84" y="870" font-size="15" fill="#4b5563">A Nemotron test engineer hunts for conditions that make the swarm fail, measured against random, corner and cross-entropy search</text>
+</svg>

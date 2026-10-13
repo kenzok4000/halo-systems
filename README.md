@@ -2,6 +2,8 @@
 
 **Supervised drone-swarm formation flight: a 50 Hz safety-filtered controller, with NVIDIA Nemotron on Nebius Token Factory as the slow-loop supervisor, mission compiler and test engineer.**
 
+![Nemotron orders a column as the swarm enters a forest trail; a replay of a recorded held-out run in the live dashboard](docs/demo.gif)
+
 SwarmLab is a reproducible simulation testbed for civilian drone swarms: search and rescue under a forest canopy, field and solar-farm surveys, facade inspection in a street canyon, delivery convoys and light shows. A language model never flies the drones. The drones fly themselves at 50 Hz, and Nemotron works where a model's judgement helps and its latency doesn't hurt:
 
 | Role | What Nemotron does | What it is compared with |
@@ -104,6 +106,8 @@ swarmlab serve                          # the dashboard now offers the Nemotron 
 ```
 
 ## How it works
+
+![Three loops: a mission compiler before flight, a supervisor every 5 s, and a 50 Hz controller with a safety filter. No language model in the fast loop.](docs/architecture.png)
 
 ```
  operator text ──► Nemotron mission compiler ──► validator ──► mission plan
