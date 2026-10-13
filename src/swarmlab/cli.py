@@ -147,12 +147,18 @@ def cmd_stress(args) -> int:
             print("give a model: --searcher nemotron:<model id> (see `swarmlab doctor`)", file=sys.stderr)
             return 2
         searcher = tester.NemotronSearch(NebiusClient(timeout_s=180.0, max_retries=2, log_path=args.ai_log), model,
-                                         args.seed, think=kind == "nemotron-think")
+                                         args.seed, think=kind == "nemotron-think", strict=True)
     else:
         print(f"unknown searcher {args.searcher!r}: random, cem or nemotron:<model>", file=sys.stderr)
         return 2
-    history = tester.run_search(searcher, budget=args.budget, batch=args.batch, seed=args.seed, workers=args.workers,
-                                progress=print)
+    from .ai.client import NebiusError
+    try:
+        history = tester.run_search(searcher, budget=args.budget, batch=args.batch, seed=args.seed,
+                                    workers=args.workers, progress=print)
+    except NebiusError as exc:
+        # A search the model could not take part in would be random search under another name.
+        print(f"stopped: {exc}", file=sys.stderr)
+        return 3
     out = {"searcher": args.searcher, "seed": args.seed, "budget": args.budget, "batch": args.batch,
            "summary": tester.summarise_search(history), "failure_kinds": sorted(tester.failure_kinds(history)),
            "history": history, "model_calls": getattr(searcher, "calls", [])}

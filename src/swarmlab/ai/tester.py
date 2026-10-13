@@ -183,8 +183,10 @@ and especially failures of different kinds than those already found. Reply with 
 class NemotronSearch:
     name = "nemotron"
 
-    def __init__(self, client, model: str, seed: int = 0, temperature: float = 0.7, think: bool = False):
+    def __init__(self, client, model: str, seed: int = 0, temperature: float = 0.7, think: bool = False,
+                 strict: bool = False):
         self.client = client
+        self.strict = strict      # stop on errors every later call would hit too (no key, rejected key, budget)
         self.model = model
         self.think = think
         self.temperature = temperature
@@ -210,6 +212,8 @@ class NemotronSearch:
             out = [{"params": clip_params(t.get("params") or {}), "why": str(t.get("why", ""))[:200]} for t in tests[:k]
                    if isinstance(t, dict)]
         except (NebiusError, ValueError) as exc:
+            if self.strict and getattr(exc, "fatal", False):
+                raise
             self.calls.append({"status": "error", "error": str(exc)[:200]})
             out = []
         while len(out) < k:  # top up with random tests if the model gave too few or failed
@@ -263,6 +267,7 @@ def failure_kinds(history: list[dict]) -> set:
 def summarise_search(history: list[dict]) -> dict:
     sev = [h["outcome"]["severity"] for h in history]
     first = next((h["i"] + 1 for h in history if h["outcome"]["failed"]), None)
-    return {"tests": len(history), "failures": sum(h["outcome"]["failed"] for h in history),
+    return {"tests": len(history), "random_top_ups": sum(h["why"].startswith("random top-up") for h in history),
+            "failures": sum(h["outcome"]["failed"] for h in history),
             "distinct_failure_kinds": len(failure_kinds(history)), "first_failure_at": first,
             "max_severity": max(sev) if sev else None, "mean_severity": float(np.mean(sev)) if sev else None}

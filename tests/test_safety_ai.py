@@ -408,5 +408,23 @@ class NemotronSupervisorTest(unittest.TestCase):
         self.assertIn("No obstacles", supervisor_user(summary(), []))
 
 
+class StressSearchTest(unittest.TestCase):
+    def test_model_tests_are_used_and_a_dead_key_stops_a_strict_search(self):
+        from swarmlab.ai.tester import NemotronSearch, summarise_search
+        reply = json.dumps({"tests": [{"params": {"tree_density": 9, "trail_width_m": 10}, "why": "narrow forest"}]})
+        c = NebiusClient(api_key=FAKE_KEY, transport=FakeTransport([ok(reply)]), sleep=lambda s: None,
+                         rate_per_s=1000, burst=1000)
+        props = NemotronSearch(c, "nvidia/nemotron-test").propose([], 2)
+        self.assertEqual(props[0]["why"], "narrow forest")
+        self.assertTrue(props[1]["why"].startswith("random top-up"))
+        history = [{"i": i, "why": p["why"], "params": p["params"], "outcome": {"severity": 0.1, "failed": False}}
+                   for i, p in enumerate(props)]
+        self.assertEqual(summarise_search(history)["random_top_ups"], 1)
+        dead = NebiusClient(api_key="", transport=FakeTransport([]))
+        self.assertEqual(len(NemotronSearch(dead, "m").propose([], 2)), 2)   # dashboard-style: tops up
+        with self.assertRaises(NebiusError):
+            NemotronSearch(dead, "m", strict=True).propose([], 2)
+
+
 if __name__ == "__main__":
     unittest.main()
