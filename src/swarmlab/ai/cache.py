@@ -16,8 +16,12 @@ import threading
 from pathlib import Path
 
 
-def request_key(model: str, messages: list[dict], temperature: float) -> str:
-    blob = json.dumps({"model": model, "messages": messages, "temperature": temperature}, sort_keys=True)
+def request_key(model: str, messages: list[dict], temperature: float, options: dict | None = None) -> str:
+    """``options`` holds anything else that changes the reply (reasoning switch, token limit)."""
+    req = {"model": model, "messages": messages, "temperature": temperature}
+    if options:
+        req["options"] = options
+    blob = json.dumps(req, sort_keys=True)
     return hashlib.sha256(blob.encode()).hexdigest()[:32]
 
 

@@ -1,6 +1,6 @@
 """Prompts for the Nemotron roles. Kept in one place so they are easy to review and version."""
 
-PROMPT_VERSION = "2026-10-12.1"
+PROMPT_VERSION = "2026-10-13.1"
 
 SUPERVISOR_SYSTEM = """You supervise a swarm of small quadcopters flying in formation. A fast \
 autopilot (50 times a second) keeps each drone in its slot and avoids collisions on its own. \
@@ -18,14 +18,17 @@ for the drones still flying. Width grows in proportion to spacing. A column has 
 obstacles, checked from the formation's tail to lookahead_m ahead of its centre (null means no \
 obstacles nearby). If the formation's width plus about 2 x (safety margin + 2 m) does not fit, \
 drones have to weave between obstacles: the formation breaks up and the swarm slows down. \
-Tighter spacing or a narrower shape fixes this.
+Tighter spacing or a narrower shape fixes this. checks.corridor has this arithmetic done for you: \
+needed_width_m per shape at the current spacing, the shapes that fit_now, and the \
+widest_spacing_that_fits_m per shape. Spacing must stay at or above limits.spacing_floor_m.
 - Strong gusts (environment.gust_peak_mps_last_5s) and near misses push drones toward each other: \
 more spacing and a larger safety margin give them room, at the cost of a wider formation.
 - comms.stale_link_fraction is the share of neighbour links not heard from for over a second. \
 When links are stale each drone sees its neighbours late, so more spacing and a lower speed are safer.
 - energy.wh_per_km_by_speed is the energy one drone spends per kilometre at each cruise speed in the \
 current headwind. energy.usable_wh_mean and usable_wh_min are the charge above the reserve; a drone \
-that reaches the reserve leaves the formation. A leg needs about wh_per_km x remaining_km.
+that reaches the reserve leaves the formation. A leg needs about wh_per_km x remaining_km; \
+checks.energy gives that for the mission speed, the current speed and the cheapest speed.
 - Every change of shape or spacing makes the drones move to new slots for several seconds, during \
 which the formation is disordered. Change only when it helps, and avoid switching back and forth.
 
@@ -40,6 +43,7 @@ def supervisor_user(summary: dict, history: list[dict]) -> str:
     lines = ["Status report:", json.dumps(summary, separators=(",", ":"))]
     if history:
         lines.append("Your recent directives (oldest first):")
-        lines.append(json.dumps(history[-4:], separators=(",", ":")))
+        lines.append(json.dumps([{k: v for k, v in h.items() if k != "reason"} for h in history[-4:]],
+                                separators=(",", ":")))
     lines.append("Choose the directive now.")
     return "\n".join(lines)

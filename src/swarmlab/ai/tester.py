@@ -183,9 +183,10 @@ and especially failures of different kinds than those already found. Reply with 
 class NemotronSearch:
     name = "nemotron"
 
-    def __init__(self, client, model: str, seed: int = 0, temperature: float = 0.7):
+    def __init__(self, client, model: str, seed: int = 0, temperature: float = 0.7, think: bool = False):
         self.client = client
         self.model = model
+        self.think = think
         self.temperature = temperature
         self.fallback = RandomSearch(seed)
         self.calls: list[dict] = []
@@ -193,7 +194,7 @@ class NemotronSearch:
         self.system = TESTER_SYSTEM.format(space=space)
 
     def propose(self, history: list[dict], k: int) -> list[dict]:
-        from .client import NebiusError, extract_json
+        from .client import NebiusError, extract_json, reasoning
         rows = [{"params": h["params"], "severity": h["outcome"]["severity"], "failed": h["outcome"]["failed"],
                  "crashes": 2 * h["outcome"]["collisions"] + h["outcome"]["obstacle_crashes"] + h["outcome"]["ground_crashes"],
                  "near_misses": h["outcome"]["near_misses"], "closest_m": h["outcome"]["min_separation_m"]} for h in history]
@@ -201,7 +202,8 @@ class NemotronSearch:
                 f"Propose exactly {k} new tests.")
         try:
             res = self.client.chat(self.model, [{"role": "system", "content": self.system}, {"role": "user", "content": user}],
-                                   role="test-engineer", temperature=self.temperature, max_tokens=2500)
+                                   role="test-engineer", temperature=self.temperature,
+                                   max_tokens=8000 if self.think else 2500, extra_body=reasoning(self.think))
             self.calls.append(res.record.to_dict())
             obj = extract_json(res.content)
             tests = obj.get("tests") or []

@@ -98,7 +98,8 @@ def run(evidence_dir: str = "evidence", model: str | None = None, flight: bool =
     sup = NemotronSupervisor(client=client, model=chosen, fallback="none")
     t0 = time.perf_counter()
     try:
-        result = client.chat(chosen, sup._messages(summary), role="doctor-supervisor", temperature=0.2, max_tokens=1200)
+        result = client.chat(chosen, sup._messages(summary), role="doctor-supervisor", temperature=0.2,
+                             max_tokens=sup.max_tokens, extra_body=sup.extra_body)
     except NebiusError as exc:
         step("supervisor call", False, note=exc.reason[:300], http_status=exc.status)
         return finish(5)

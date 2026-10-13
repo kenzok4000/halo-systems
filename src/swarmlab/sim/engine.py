@@ -22,6 +22,7 @@ from ..control.directive import Directive
 from ..control.formations import SHAPES, Path, formation_offsets, rotate
 from ..safety.validator import Limits, SafetyValidator
 from ..supervisor.base import Decision, FixedSupervisor, Supervisor
+from ..supervisor.rule import CORRIDOR_BUFFER_M, interp_table
 from .body import DroneBody
 from .physics import autopilot_thrust, closest_approach, integrate, power_draw
 from .scenario import Scenario
@@ -506,6 +507,8 @@ class Simulation:
         lost = sorted(int(d) for d in self.failed_at if self.t - self.failed_at[d] >= FAILURE_DETECTION_S)
         lost += [int(d) for d in np.nonzero(self.status == CRASHED)[0] if int(d) not in lost]
         width_now = plan.width()
+        headwind = float(-mean_wind[:2] @ heading[:2])
+        wh_table = energy_table(self.body, headwind, self.validator.limits.speed_mps)
         out = {
             "time_s": round(self.t, 1),
             "mission": {
@@ -546,8 +549,7 @@ class Simulation:
                 "usable_wh_mean": round(float(np.mean(self.battery_wh[act] - self.sc.battery_reserve * self.capacity_wh)), 2) if act.any() else 0.0,
                 "usable_wh_min": round(float(np.min(self.battery_wh[act] - self.sc.battery_reserve * self.capacity_wh)), 2) if act.any() else 0.0,
                 # Energy model applied to the current headwind: what each cruise speed would cost.
-                "wh_per_km_by_speed": energy_table(self.body, float(-mean_wind[:2] @ heading[:2]),
-                                                   self.validator.limits.speed_mps),
+                "wh_per_km_by_speed": wh_table,
             },
             "limits": {
                 "formations": list(SHAPES),
@@ -562,7 +564,35 @@ class Simulation:
                 for shape in SHAPES
             },
         }
+        out["checks"] = self._checks(int(act.sum()), width_free, wh_table, remaining, out["energy"]["usable_wh_mean"])
         return out
+
+    def _checks(self, flying: int, free: float | None, wh_table: dict, remaining: float | None, usable: float) -> dict:
+        """Arithmetic both supervisors would otherwise each redo: what fits the corridor, what the leg costs."""
+        d, m = self.directive, self.mission_directive
+        checks = {}
+        if free is not None:
+            # Width scales with spacing, so a unit-spacing width converts any spacing to a width.
+            per_m = {s: float(np.ptp(formation_offsets(s, max(flying, 1), 1.0)[:, 1])) for s in SHAPES}
+            buffer = 2 * (d.safety_margin_m + CORRIDOR_BUFFER_M)
+            checks["corridor"] = {
+                "free_width_m": round(free, 1),
+                "needed_width_m": {s: round(per_m[s] * d.spacing_m + buffer, 1) for s in SHAPES},
+                "fits_now": [s for s in SHAPES if per_m[s] * d.spacing_m + buffer <= free],
+                "widest_spacing_that_fits_m": {s: (round((free - buffer) / per_m[s], 1) if per_m[s] > 0 else None)
+                                               for s in SHAPES},
+            }
+        if remaining is not None and remaining > 0 and wh_table:
+            km = remaining / 1000.0
+            cheapest = min(wh_table, key=lambda k: (wh_table[k], float(k)))
+            checks["energy"] = {
+                "usable_wh_mean": usable,
+                "wh_needed_at_mission_speed": round(interp_table(wh_table, m.speed_mps) * km, 2),
+                "wh_needed_at_current_speed": round(interp_table(wh_table, d.speed_mps) * km, 2),
+                "cheapest_speed_mps": float(cheapest),
+                "wh_needed_at_cheapest_speed": round(wh_table[cheapest] * km, 2),
+            }
+        return checks
 
     # ------------------------------------------------------------------------
     def run(self, max_wall_s: float | None = None) -> RunResult:

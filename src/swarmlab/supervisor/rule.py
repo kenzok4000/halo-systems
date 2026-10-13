@@ -70,7 +70,7 @@ class RuleSupervisor(Supervisor):
         remaining_km = (summary["mission"].get("remaining_m") or 0.0) / 1000.0
         usable = energy.get("usable_wh_mean")
         if table and remaining_km > 0 and usable is not None:
-            planned = _interp(table, mission["speed_mps"])
+            planned = interp_table(table, mission["speed_mps"])
             if planned * remaining_km > ENERGY_HEADROOM * usable:
                 self.saving = True
             elif planned * remaining_km < ENERGY_RELEASE * usable:
@@ -111,7 +111,7 @@ def _differs(a, b) -> bool:
     return abs(float(a) - float(b)) > 1e-6
 
 
-def _interp(table: dict, speed: float) -> float:
+def interp_table(table: dict, speed: float) -> float:
     pts = sorted((float(k), v) for k, v in table.items())
     if speed <= pts[0][0]:
         return pts[0][1]

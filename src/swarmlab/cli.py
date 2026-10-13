@@ -34,7 +34,7 @@ def cmd_list(args) -> int:
 def cmd_run(args) -> int:
     from .eval.runner import run_one
     kw = {}
-    if args.cache:
+    if args.cache or args.ai_log:
         kw["supervisor_kw"] = {"cache_path": args.cache, "cache_mode": args.cache_mode, "log_path": args.ai_log}
     row, result = run_one(args.scenario, args.seed, args.config, n=args.n, record_hz=args.record_hz,
                           keep_result=True, **kw)
@@ -48,7 +48,7 @@ def cmd_run(args) -> int:
 def cmd_bench(args) -> int:
     from .eval.runner import run_grid
     extra = {}
-    if args.cache:
+    if args.cache or args.ai_log:
         extra["supervisor_kw"] = {"cache_path": args.cache, "cache_mode": args.cache_mode, "log_path": args.ai_log}
     ns = [int(x) for x in args.n.split(",")] if args.n else None
     rows = run_grid(args.scenarios.split(","), _seeds(args.seeds), args.configs.split(","), args.out,
@@ -74,7 +74,7 @@ def cmd_mission_eval(args) -> int:
         if not client.configured:
             print("NEBIUS_API_KEY is not set: scoring the baseline only")
             client = None
-    out = {"sets": {}, "model": args.model if client else None}
+    out = {"sets": {}, "model": args.model if client else None, "reasoning": bool(args.think) if client else None}
     for name in args.sets.split(","):
         items = load_eval_set(name)
         rows = []
@@ -85,9 +85,12 @@ def cmd_mission_eval(args) -> int:
             if client:
                 t0 = _time.perf_counter()
                 try:
-                    spec, problems, rec = compile_with_model(it["text"], client, args.model)
+                    spec, problems, rec = compile_with_model(it["text"], client, args.model, think=args.think)
                     row["nemotron"] = {"spec": spec, "problems": problems, "record": rec, **score(spec, it["gold"])}
                 except NebiusError as exc:
+                    if exc.fatal:  # no key, key rejected or budget spent: every later call would fail too
+                        print(f"stopping: {exc.reason}", file=sys.stderr)
+                        return 3
                     row["nemotron"] = {"error": exc.reason, "correct": 0, "total": len(it["gold"]), "exact": False}
                 row["nemotron"]["wall_s"] = round(_time.perf_counter() - t0, 2)
             rows.append(row)
@@ -134,14 +137,15 @@ def cmd_stress(args) -> int:
         searcher = tester.RandomSearch(args.seed)
     elif kind == "cem":
         searcher = tester.CrossEntropySearch(args.seed)
-    elif kind == "nemotron":
+    elif kind in ("nemotron", "nemotron-think"):
         import os
         from .ai.client import NebiusClient
         model = model or os.environ.get("SWARMLAB_SUPERVISOR_MODEL", "")
         if not model:
             print("give a model: --searcher nemotron:<model id> (see `swarmlab doctor`)", file=sys.stderr)
             return 2
-        searcher = tester.NemotronSearch(NebiusClient(timeout_s=90.0, max_retries=2, log_path=args.ai_log), model, args.seed)
+        searcher = tester.NemotronSearch(NebiusClient(timeout_s=180.0, max_retries=2, log_path=args.ai_log), model,
+                                         args.seed, think=kind == "nemotron-think")
     else:
         print(f"unknown searcher {args.searcher!r}: random, cem or nemotron:<model>", file=sys.stderr)
         return 2
@@ -216,7 +220,7 @@ def main(argv=None) -> int:
     s.set_defaults(fn=cmd_doctor)
 
     s = sub.add_parser("stress", help="search for conditions that make the swarm fail")
-    s.add_argument("--searcher", default="cem", help="random, cem or nemotron:<model id>")
+    s.add_argument("--searcher", default="cem", help="random, cem, nemotron:<model id> or nemotron-think:<model id>")
     s.add_argument("--budget", type=int, default=40, help="simulated flights to spend")
     s.add_argument("--batch", type=int, default=4)
     s.add_argument("--seed", type=int, default=0)
@@ -252,6 +256,7 @@ def main(argv=None) -> int:
     s = sub.add_parser("mission-eval", help="score the mission compiler against the regex baseline")
     s.add_argument("--sets", default="tuning,heldout")
     s.add_argument("--model", default=None, help="Nemotron model id (needs NEBIUS_API_KEY); omit for baseline only")
+    s.add_argument("--think", action="store_true", help="turn on the model's reasoning mode")
     s.add_argument("--out", default=None)
     s.add_argument("--ai-log", default=None)
     s.set_defaults(fn=cmd_mission_eval)

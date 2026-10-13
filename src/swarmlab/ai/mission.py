@@ -119,16 +119,19 @@ def normalise(obj: dict) -> tuple[dict, list[str]]:
     return spec, problems
 
 
-def compile_with_model(text: str, client, model: str, temperature: float = 0.0, extra_body: dict | None = None):
+def compile_with_model(text: str, client, model: str, temperature: float = 0.0, extra_body: dict | None = None,
+                       think: bool = False):
     """Ask Nemotron for a MissionSpec. Returns (spec, problems, call record dict)."""
-    from .client import extract_json
+    from .client import extract_json, reasoning
+    if extra_body is None:
+        extra_body = reasoning(think)
     if harmful(text):
         spec = empty_spec()
         spec.update(refused=True, refusal_reason="outside civilian use (keyword guard; the model was not called)")
         return spec, [], None
     messages = [{"role": "system", "content": MISSION_SYSTEM}, {"role": "user", "content": text}]
-    result = client.chat(model, messages, role="mission-compiler", temperature=temperature, max_tokens=1500,
-                         extra_body=extra_body)
+    result = client.chat(model, messages, role="mission-compiler", temperature=temperature,
+                         max_tokens=6000 if think else 1500, extra_body=extra_body)
     try:
         obj = extract_json(result.content)
     except ValueError as exc:

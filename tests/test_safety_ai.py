@@ -283,6 +283,22 @@ class BudgetTest(unittest.TestCase):
             strict.decide(summary(), Directive(), 30.0)
 
 
+class ReasoningSwitchTest(unittest.TestCase):
+    def test_reasoning_is_off_by_default_and_part_of_the_cache_key(self):
+        t = FakeTransport([ok(DIRECTIVE_JSON), ok(DIRECTIVE_JSON)])
+        c = NebiusClient(api_key=FAKE_KEY, transport=t, sleep=lambda s: None, rate_per_s=1000, burst=1000)
+        with tempfile.TemporaryDirectory() as tmp:
+            cache = CallCache(Path(tmp) / "c.jsonl", "record")
+            off = NemotronSupervisor(client=c, model="m", cache=cache)
+            on = NemotronSupervisor(client=c, model="m", cache=cache, think=True)
+            off.decide(summary(), Directive(), 30.0)
+            d = on.decide(summary(), Directive(), 30.0)
+            self.assertFalse(d.meta["cached"])          # same prompt, different switch: not a cache hit
+        bodies = [call["body"] for call in t.calls]
+        self.assertEqual([b["chat_template_kwargs"]["enable_thinking"] for b in bodies], [False, True])
+        self.assertGreaterEqual(bodies[1]["max_tokens"], 4096)
+
+
 class ExtractJsonTest(unittest.TestCase):
     def test_variants(self):
         want = {"a": 1, "b": "x}"}

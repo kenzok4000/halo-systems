@@ -103,6 +103,12 @@ class TokenBucket:
             time.sleep(wait)
 
 
+def reasoning(on: bool) -> dict:
+    """Request body switch for Nemotron 3's reasoning mode. With it on (the model's default), the
+    reasoning counts against max_tokens and can use all of it, leaving an empty answer."""
+    return {"chat_template_kwargs": {"enable_thinking": bool(on)}}
+
+
 def redact(text: str, secret: str | None) -> str:
     if not text:
         return text

@@ -20,7 +20,7 @@ from __future__ import annotations
 import os
 
 from ..ai.cache import CallCache, request_key
-from ..ai.client import NebiusClient, NebiusError, extract_json
+from ..ai.client import NebiusClient, NebiusError, extract_json, reasoning
 from ..ai.prompts import PROMPT_VERSION, SUPERVISOR_SYSTEM, supervisor_user
 from ..control.directive import DIRECTIVE_FIELDS, Directive
 from .base import Decision, Supervisor
@@ -34,7 +34,7 @@ class NemotronSupervisor(Supervisor):
 
     def __init__(self, client: NebiusClient | None = None, model: str | None = None, cache: CallCache | None = None,
                  fallback: str = "rule", temperature: float = 0.2, max_tokens: int = 1200,
-                 extra_body: dict | None = None, system_prefix: str = "", strict: bool = False):
+                 extra_body: dict | None = None, system_prefix: str = "", strict: bool = False, think: bool = False):
         self.client = client or NebiusClient(timeout_s=20.0, max_retries=2)
         self.model = model or os.environ.get("SWARMLAB_SUPERVISOR_MODEL", "")
         if not self.model:
@@ -42,8 +42,10 @@ class NemotronSupervisor(Supervisor):
         self.cache = cache
         self.fallback = RuleSupervisor() if fallback == "rule" else None
         self.temperature = temperature
-        self.max_tokens = max_tokens
-        self.extra_body = extra_body
+        self.think = think
+        # Reasoning is off unless asked for: it multiplies latency and tokens (see ai/client.reasoning).
+        self.max_tokens = max(max_tokens, 4096) if think else max_tokens
+        self.extra_body = extra_body if extra_body is not None else reasoning(think)
         self.system = (system_prefix + "\n" + SUPERVISOR_SYSTEM).strip() if system_prefix else SUPERVISOR_SYSTEM
         self.history: list[dict] = []
         self.strict = strict
@@ -51,11 +53,14 @@ class NemotronSupervisor(Supervisor):
     @classmethod
     def from_spec(cls, spec: str, cache_path: str | None = None, cache_mode: str = "record",
                   log_path: str | None = None, **kw) -> "NemotronSupervisor":
-        """``nemotron`` or ``nemotron:<model id>``."""
-        _, _, model = spec.partition(":")
-        client = NebiusClient(timeout_s=20.0, max_retries=2, log_path=log_path)
+        """``nemotron[:<model id>]`` (reasoning off) or ``nemotron-think[:<model id>]`` (reasoning on)."""
+        kind, _, model = spec.partition(":")
+        think = kind == "nemotron-think"
+        if kind not in ("nemotron", "nemotron-think"):
+            raise ValueError(f"unknown supervisor {spec!r}")
+        client = NebiusClient(timeout_s=90.0 if think else 20.0, max_retries=2, log_path=log_path)
         cache = CallCache(cache_path, cache_mode) if cache_path else None
-        return cls(client=client, model=model or None, cache=cache, **kw)
+        return cls(client=client, model=model or None, cache=cache, think=think, **kw)
 
     def _messages(self, summary: dict) -> list[dict]:
         return [{"role": "system", "content": self.system},
@@ -64,7 +69,8 @@ class NemotronSupervisor(Supervisor):
     def decide(self, summary: dict, current: Directive, t: float) -> Decision | None:
         rule_decision = self.fallback.decide(summary, current, t) if self.fallback else None
         messages = self._messages(summary)
-        key = request_key(self.model, messages, self.temperature)
+        key = request_key(self.model, messages, self.temperature,
+                          {"extra_body": self.extra_body, "max_tokens": self.max_tokens})
         meta = {"role": "supervisor", "model": self.model, "prompt_version": PROMPT_VERSION, "cached": False,
                 "fallback": False}
         content, latency = None, 0.0
