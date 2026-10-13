@@ -2,7 +2,8 @@
 
 * Credentials come from the environment only: ``NEBIUS_API_KEY`` (required)
   and ``NEBIUS_BASE_URL`` (default ``https://api.tokenfactory.nebius.com/v1``).
-  The key is never logged, printed or written to disk.
+  The key is never logged, printed or written to disk, is sent only over https,
+  and is never forwarded on a redirect.
 * Timeouts on every request; retries with exponential backoff and jitter on
   network errors, 429 and 5xx; ``Retry-After`` is honoured; a client-side
   token bucket keeps us under a request-rate limit.
@@ -27,6 +28,7 @@ import re
 import threading
 import time
 import urllib.error
+import urllib.parse
 import urllib.request
 import uuid
 from dataclasses import asdict, dataclass, field
@@ -118,11 +120,30 @@ def redact(text: str, secret: str | None) -> str:
     return _KEY_PATTERN.sub(lambda m: "[REDACTED]" if m.group(1) else m.group(0), text)
 
 
+class _NoRedirect(urllib.request.HTTPRedirectHandler):
+    """urllib follows redirects and copies every header, the key included, to the new URL, even on
+    another host. The API never redirects, so a redirect comes back as its own HTTP status instead."""
+
+    def redirect_request(self, req, fp, code, msg, headers, newurl):
+        return None
+
+
+_OPENER = urllib.request.build_opener(_NoRedirect)
+
+
+def base_url_problem(url: str) -> str | None:
+    """Why the key must not be sent to ``url``, or None. Only https is allowed."""
+    parsed = urllib.parse.urlsplit(url)
+    if parsed.scheme != "https" or not parsed.hostname:
+        return f"NEBIUS_BASE_URL must be an https URL, got {parsed.scheme or 'no'} scheme"
+    return None
+
+
 def _http_post(url: str, headers: dict, body: bytes, timeout: float):
     """Default transport: returns (status, headers, body bytes). Raises URLError on network failure."""
     req = urllib.request.Request(url, data=body, headers=headers, method="POST")
     try:
-        with urllib.request.urlopen(req, timeout=timeout) as resp:
+        with _OPENER.open(req, timeout=timeout) as resp:
             return resp.status, dict(resp.headers), resp.read()
     except urllib.error.HTTPError as e:
         return e.code, dict(e.headers or {}), e.read() if e.fp else b""
@@ -131,7 +152,7 @@ def _http_post(url: str, headers: dict, body: bytes, timeout: float):
 def _http_get(url: str, headers: dict, timeout: float):
     req = urllib.request.Request(url, headers=headers, method="GET")
     try:
-        with urllib.request.urlopen(req, timeout=timeout) as resp:
+        with _OPENER.open(req, timeout=timeout) as resp:
             return resp.status, dict(resp.headers), resp.read()
     except urllib.error.HTTPError as e:
         return e.code, dict(e.headers or {}), e.read() if e.fp else b""
@@ -193,6 +214,8 @@ class NebiusClient:
     def list_models(self) -> list[str]:
         if not self.configured:
             raise NebiusError("NEBIUS_API_KEY is not set")
+        if base_url_problem(self.base_url):
+            raise NebiusError(base_url_problem(self.base_url))
         status, _, body = self.get_transport(f"{self.base_url}/models", self._headers(), self.timeout_s)
         if status != 200:
             raise NebiusError(f"listing models failed with HTTP {status}: {redact(body.decode('utf-8', 'replace'), self.api_key)[:300]}", status)
@@ -211,6 +234,10 @@ class NebiusClient:
         record = CallRecord(call_id=uuid.uuid4().hex[:12], role=role, model=model, started_at=time.time())
         if not self.configured:
             record.status, record.error = "error", "NEBIUS_API_KEY is not set"
+            self._log(record)
+            raise NebiusError(record.error, record=record, fatal=True)
+        if base_url_problem(self.base_url):
+            record.status, record.error = "error", base_url_problem(self.base_url)
             self._log(record)
             raise NebiusError(record.error, record=record, fatal=True)
         pricing = self.pricing or Pricing.for_model(model)

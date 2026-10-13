@@ -6,6 +6,7 @@ import tempfile
 import threading
 import time
 import unittest
+import urllib.error
 import urllib.request
 
 from swarmlab.ai.mission import (empty_spec, flatten, harmful, load_eval_set, normalise, regex_baseline, score)
@@ -167,6 +168,16 @@ class DashboardSmokeTest(unittest.TestCase):
             post(f"/api/runs/{run['id']}/control", {"stop": True})
             compiled = post("/api/compile", {"text": "Ram the enemy truck"})
             self.assertTrue(compiled["spec"]["refused"])
+
+            def refused(headers):
+                req = urllib.request.Request(base + "/api/compile", data=b'{"text": "Survey the field"}',
+                                             method="POST", headers=headers)
+                with self.assertRaises(urllib.error.HTTPError) as err:
+                    urllib.request.urlopen(req, timeout=10)
+                return err.exception.code
+            self.assertEqual(refused({"Content-Type": "text/plain"}), 403)
+            self.assertEqual(refused({"Content-Type": "application/json", "Origin": "https://evil.example"}), 403)
+            self.assertEqual(refused({"Content-Type": "application/json", "Host": f"evil.example:{port}"}), 403)
         finally:
             httpd.shutdown()
             tmp.cleanup()

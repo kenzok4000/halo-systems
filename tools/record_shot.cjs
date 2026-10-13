@@ -5,7 +5,7 @@
 //   node tools/record_shot.cjs --scenario forest_trail --config original+fixed --seed 1000 \
 //        --speed 2 --seconds 20 --view top --out video/shot2.webm
 //
-// Options: --url (default http://127.0.0.1:8000), --tab fly|mission|results|about,
+// Options: --url (default http://127.0.0.1:8765, where swarmlab serve listens), --tab fly|mission|results|about,
 // --inject gust@6,motor_failure@12 (seconds after the start), --mission "text" (Mission tab:
 // compile, then fly it), --scroll (scroll the side panel while recording).
 // Needs Playwright (`npm install playwright`, or a global install with NODE_PATH set).
@@ -17,7 +17,7 @@ const args = Object.fromEntries(process.argv.slice(2).reduce((acc, a, i, all) =>
   if (a.startsWith("--")) acc.push([a.slice(2), all[i + 1] && !all[i + 1].startsWith("--") ? all[i + 1] : "1"]);
   return acc;
 }, []));
-const url = args.url || "http://127.0.0.1:8000";
+const url = args.url || "http://127.0.0.1:8765";
 const out = args.out || "video/shot.webm";
 const seconds = Number(args.seconds || 15);
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));

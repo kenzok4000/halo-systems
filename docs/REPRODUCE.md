@@ -1,6 +1,6 @@
 # Reproducing the results
 
-Everything here runs on a laptop with Python 3.10 or newer and numpy. Charts need matplotlib (`pip install -e .[report]`). Nothing except the Nemotron runs needs a network connection or a key.
+Everything here runs on a laptop with Python 3.10 or newer and numpy. Charts need matplotlib (`pip install -e '.[report]'`). Nothing except the Nemotron runs needs a network connection or a key.
 
 ## Seeds
 
@@ -10,6 +10,8 @@ Everything here runs on a laptop with Python 3.10 or newer and numpy. Charts nee
 Each seed fixes the wind, sensor noise, radio losses, obstacle layout and initial positions. Every configuration sees the same conditions for a given seed. That is why the report can compare configurations seed by seed (paired comparisons).
 
 These are the commands that produced every file in `results/`, in the order they ran. `bench` is resumable: it skips rows already in its output file, so an interrupted run can be restarted with the same command. `report` writes `REPORT.md`, `summary.json` and the charts from a rows file.
+
+The committed rows files already hold every flight, so rerunning a command into them does nothing. To check a result, give `--out` a new file and compare its rows with the committed ones: apart from compute-time fields they come out identical.
 
 ## Conventional benchmark (no key needed)
 
@@ -79,7 +81,7 @@ The Nemotron searches cannot be replayed from a cache: the model proposes each b
 
 ```bash
 export NEBIUS_API_KEY=...             # never in a file you commit
-swarmlab doctor --flight              # end-to-end check, writes evidence/
+swarmlab doctor --flight              # end-to-end check, writes evidence/latest/
 NANO=nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B; SUPER=nvidia/nemotron-3-super-120b-a12b
 swarmlab bench --scenarios $ALL --configs improved+nemotron:$NANO,improved+nemotron:$SUPER --seeds heldout --workers 4 \
   --cache results/nemotron_cache.jsonl --ai-log results/nemotron_calls.jsonl --out results/runs.jsonl

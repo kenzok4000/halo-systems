@@ -268,7 +268,8 @@ def main(argv=None) -> int:
     s.set_defaults(fn=cmd_bench)
 
     s = sub.add_parser("doctor", help="end-to-end check of the Nebius Token Factory integration")
-    s.add_argument("--evidence", default="evidence")
+    s.add_argument("--evidence", default="evidence/latest",
+                   help="where to write the check's files (the committed check is in evidence/)")
     s.add_argument("--model", default=None)
     s.add_argument("--flight", action="store_true", help="also fly a full scenario with Nemotron supervising")
     s.add_argument("--scenario", default="forest_trail")

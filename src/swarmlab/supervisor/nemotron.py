@@ -101,7 +101,7 @@ class NemotronSupervisor(Supervisor):
                 if hit.get("error"):
                     raise NebiusError(hit["error"])     # the live call failed here: fail the same way
             elif self.cache is not None and self.cache.mode == "replay":
-                raise NebiusError("replay cache miss (run in record mode with a key to fill it)")
+                raise NebiusError("replay cache miss (run in record mode with a key to fill it)", fatal=True)
             else:
                 result = self.client.chat(self.model, messages, role="supervisor", temperature=self.temperature,
                                           max_tokens=self.max_tokens, extra_body=self.extra_body,

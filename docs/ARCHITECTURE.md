@@ -67,7 +67,7 @@ Every directive, whoever proposed it, passes the validator before the controller
 * `cache.py`: a record/replay cache keyed on model, messages and temperature, so any Nemotron run can be replayed exactly without a key.
 * `mission.py`: the mission compiler, its civilian-use guard, the regex baseline and the scoring.
 * `tester.py`: the stress-test search (random, corners, cross-entropy method, Nemotron), and re-flying a search on another configuration.
-* `doctor.py`: the end-to-end check that writes `evidence/`.
+* `doctor.py`: the end-to-end check, which writes `evidence/latest/` (the committed check is in `evidence/`).
 
 ## Evaluation (`eval/`)
 

@@ -210,6 +210,8 @@ def charts(rows, summary, out: Path) -> list[str]:
         matplotlib.use("Agg")
         import matplotlib.pyplot as plt
     except ImportError:
+        print("matplotlib is not installed, so no charts were drawn and REPORT.md links none "
+              "(pip install -e '.[report]')", file=sys.stderr)
         return []
     made = []
     scenarios = sorted({r["scenario"] for r in rows if "error" not in r}, key=_scenario_order)

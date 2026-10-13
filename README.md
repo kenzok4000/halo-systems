@@ -84,18 +84,21 @@ Nemotron found 2.6 times as many distinct failing conditions as the best baselin
 
 ```bash
 git clone <repo-url> swarmlab && cd swarmlab
-python3 -m pip install -e .            # numpy only; add [report] for charts
+python3 -m venv .venv && . .venv/bin/activate
+python3 -m pip install -e '.[report]'   # numpy, plus matplotlib for charts
 swarmlab list                           # the nine scenarios
-swarmlab run forest_trail --config improved+rule --seed 1000
+swarmlab run forest_trail --config improved+rule --seed 1000   # one flight, about 30 s
 swarmlab serve --open                   # live 3D dashboard on http://127.0.0.1:8765
 python3 -m unittest discover -s tests   # no network needed
 ```
+
+Run the commands from the repository folder: the dashboard reads `results/` and `evidence/` from there.
 
 To use Nemotron, put your Nebius Token Factory key in the environment (never in a file you commit):
 
 ```bash
 export NEBIUS_API_KEY=...               # from tokenfactory.nebius.com
-swarmlab doctor --flight                # end-to-end check; writes evidence/
+swarmlab doctor --flight                # end-to-end check; writes evidence/latest/
 export SWARMLAB_SUPERVISOR_MODEL=<model id printed by doctor>
 swarmlab serve                          # the dashboard now offers the Nemotron supervisor
 ```

@@ -266,6 +266,54 @@ class ClientTest(unittest.TestCase):
         with self.assertRaises(NebiusError):
             c.chat("m", [])
 
+    def test_key_is_never_sent_over_plain_http(self):
+        t = FakeTransport([])
+        c = NebiusClient(api_key=FAKE_KEY, base_url="http://api.example.invalid/v1", transport=t,
+                         get_transport=t, sleep=lambda s: None)
+        with self.assertRaises(NebiusError) as err:
+            c.chat("m", [{"role": "user", "content": "hi"}])
+        self.assertTrue(err.exception.fatal)
+        with self.assertRaises(NebiusError):
+            c.list_models()
+        self.assertEqual(t.calls, [])
+
+    def test_redirects_are_not_followed_so_the_key_stays_put(self):
+        import threading
+        from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+        from swarmlab.ai.client import _http_post
+        seen = []
+
+        class Elsewhere(BaseHTTPRequestHandler):
+            def do_GET(self):
+                seen.append(self.headers.get("Authorization"))
+                self.send_response(200)
+                self.end_headers()
+            do_POST = do_GET
+
+            def log_message(self, *a):
+                pass
+
+        other = ThreadingHTTPServer(("127.0.0.1", 0), Elsewhere)
+
+        class Redirect(Elsewhere):
+            def do_POST(self):
+                self.send_response(302)
+                self.send_header("Location", f"http://127.0.0.1:{other.server_address[1]}/steal")
+                self.end_headers()
+
+        first = ThreadingHTTPServer(("127.0.0.1", 0), Redirect)
+        for srv in (other, first):
+            threading.Thread(target=srv.serve_forever, daemon=True).start()
+        try:
+            status, _, _ = _http_post(f"http://127.0.0.1:{first.server_address[1]}/v1/chat/completions",
+                                      {"Authorization": f"Bearer {FAKE_KEY}"}, b"{}", 5)
+        finally:
+            for srv in (other, first):
+                srv.shutdown()
+                srv.server_close()
+        self.assertEqual(status, 302)
+        self.assertEqual(seen, [])
+
 
 class BudgetTest(unittest.TestCase):
     def setUp(self):
@@ -393,6 +441,9 @@ class NemotronSupervisorTest(unittest.TestCase):
             miss = sup2.decide(summary(**{"time_s": 99.0}), Directive(), 99.0)
             self.assertTrue(miss.meta["fallback"])
             self.assertIn("replay cache miss", miss.meta["error"])
+            sup2.strict = True      # a benchmark run: a miss would quietly fly the rules under Nemotron's name
+            with self.assertRaises(NebiusError):
+                sup2.decide(summary(**{"time_s": 99.0}), Directive(), 99.0)
 
     def test_failed_call_is_replayed_as_the_same_failure(self):
         with tempfile.TemporaryDirectory() as tmp:

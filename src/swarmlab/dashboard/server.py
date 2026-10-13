@@ -248,9 +248,28 @@ class State:
         return run
 
 
-def make_handler(state: State):
+LOCAL_HOSTS = {"127.0.0.1", "localhost", "::1"}
+
+
+def make_handler(state: State, host: str = "127.0.0.1"):
+    hosts = LOCAL_HOSTS | {host}
+
     class Handler(BaseHTTPRequestHandler):
         server_version = "swarmlab"
+
+        def _not_from_this_page(self) -> str | None:
+            """A POST can spend model credits, so only the dashboard's own page may send one. Another web
+            page can make the browser POST here, but it cannot send JSON without the server's consent,
+            set a foreign Origin to match, or (after DNS rebinding) make the Host one of ours."""
+            if (self.headers.get("Content-Type") or "").split(";")[0].strip().lower() != "application/json":
+                return "requests must be JSON"
+            netloc = self.headers.get("Host") or ""
+            if host not in ("0.0.0.0", "::") and urlparse("//" + netloc).hostname not in hosts:
+                return "unexpected Host header"
+            origin = self.headers.get("Origin")
+            if origin and urlparse(origin).netloc != netloc:
+                return "cross-origin requests are refused"
+            return None
 
         def log_message(self, fmt, *args):  # keep the console quiet
             pass
@@ -330,6 +349,9 @@ def make_handler(state: State):
 
         def do_POST(self):
             parts = [p for p in urlparse(self.path).path.split("/") if p]
+            refused = self._not_from_this_page()
+            if refused:
+                return self._error(refused, HTTPStatus.FORBIDDEN)
             try:
                 body = self._body()
                 if parts == ["api", "runs"]:
@@ -462,7 +484,7 @@ def serve(host: str = "127.0.0.1", port: int = 8765, results_dir: str = "results
           model: str | None = None, cache: str | None = None, open_browser: bool = False) -> None:
     state = State(Path(results_dir), Path(evidence_dir), model, Path(cache) if cache else None)
     Path(evidence_dir).mkdir(parents=True, exist_ok=True)
-    httpd = ThreadingHTTPServer((host, port), make_handler(state))
+    httpd = ThreadingHTTPServer((host, port), make_handler(state, host))
     httpd.daemon_threads = True
     url = f"http://{host}:{port}/"
     print(f"SwarmLab dashboard on {url} (Ctrl+C to stop)")

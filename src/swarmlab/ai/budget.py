@@ -123,6 +123,11 @@ class Budget:
 
     def summary(self) -> dict:
         spent = self.spent_usd()
-        return {"ledger": str(self.path), "entries": self._entries, "prompt_tokens": self._tokens[0],
+        # The home directory is written as ~ so a report can be shared without the user's name in it.
+        ledger = str(self.path)
+        home = str(Path.home())
+        if ledger == home or ledger.startswith(home + os.sep):
+            ledger = "~" + ledger[len(home):]
+        return {"ledger": ledger, "entries": self._entries, "prompt_tokens": self._tokens[0],
                 "completion_tokens": self._tokens[1], "spent_usd": round(spent, 4), "cap_usd": self.cap_usd,
                 "remaining_usd": round(self.cap_usd - spent, 4)}
