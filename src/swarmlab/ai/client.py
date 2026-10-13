@@ -32,6 +32,7 @@ import uuid
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
 
+from .. import jsonl
 from .budget import Budget, BudgetExceeded, Pricing, estimate_prompt_tokens
 
 DEFAULT_BASE_URL = "https://api.tokenfactory.nebius.com/v1"
@@ -173,14 +174,12 @@ class NebiusClient:
             self.records.append(record)
             if not self.log_path:
                 return
-            self.log_path.parent.mkdir(parents=True, exist_ok=True)
             entry = {"type": "call", **record.to_dict()}
             if request is not None:
                 entry["request"] = json.loads(redact(json.dumps(request), self.api_key))
             if response_text is not None:
                 entry["response_text"] = redact(response_text, self.api_key)[:20000]
-            with self.log_path.open("a") as fh:
-                fh.write(json.dumps(entry) + "\n")
+            jsonl.append(self.log_path, entry)
 
     def _backoff(self, attempt: int, retry_after: str | None) -> float:
         if retry_after:

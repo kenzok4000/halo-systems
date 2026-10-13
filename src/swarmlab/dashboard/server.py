@@ -217,7 +217,9 @@ class State:
         if "nemotron" in config:
             if not self.ai_status()["ai_available"]:
                 raise ValueError("Nemotron is not available: set NEBIUS_API_KEY and SWARMLAB_SUPERVISOR_MODEL")
-            config = f"{split_config(config)[0]}+nemotron:{self.model}"
+            # --model takes a model id (reasoning off) or a full spec such as nemotron-think:<model id>.
+            spec = self.model if self.model.startswith("nemotron") else f"nemotron:{self.model}"
+            config = f"{split_config(config)[0]}+{spec}"
         if body.get("mission"):
             scenario = from_mission(body["mission"], seed, body.get("mission_text", ""))
         else:
@@ -413,8 +415,9 @@ def _compile(state: State, text: str) -> dict:
         from ..ai.client import NebiusClient, NebiusError
         client = NebiusClient(timeout_s=60.0, max_retries=2, log_path=state.evidence_dir / "dashboard_calls.jsonl")
         try:
-            spec, problems, rec = compile_with_model(text, client, state.model)
-            return {"source": "nemotron" if rec else "guard", "model": state.model, "spec": spec, "problems": problems,
+            kind, _, model_id = state.model.partition(":") if state.model.startswith("nemotron") else ("", "", state.model)
+            spec, problems, rec = compile_with_model(text, client, model_id, think=kind == "nemotron-think")
+            return {"source": "nemotron" if rec else "guard", "model": model_id, "spec": spec, "problems": problems,
                     "call": rec}
         except NebiusError as exc:
             spec = regex_baseline(text)

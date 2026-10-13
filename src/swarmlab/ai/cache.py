@@ -17,6 +17,8 @@ import json
 import threading
 from pathlib import Path
 
+from .. import jsonl
+
 
 def request_key(model: str, messages: list[dict], temperature: float, options: dict | None = None) -> str:
     """``options`` holds anything else that changes the reply (reasoning switch, token limit)."""
@@ -35,10 +37,10 @@ class CallCache:
         self.mode = mode
         self.entries: dict[str, dict] = {}
         self._lock = threading.Lock()
+        self.skipped: list[str] = []      # broken lines; their calls count as misses
         if self.path.exists():
-            for line in self.path.read_text().splitlines():
-                if line.strip():
-                    e = json.loads(line)
+            for e in jsonl.read(self.path, self.skipped):
+                if "key" in e:
                     self.entries[e["key"]] = e
 
     def get(self, key: str) -> dict | None:
@@ -52,6 +54,4 @@ class CallCache:
             entry["error"] = error
         with self._lock:
             self.entries[key] = entry
-            self.path.parent.mkdir(parents=True, exist_ok=True)
-            with self.path.open("a") as fh:
-                fh.write(json.dumps(entry) + "\n")
+            jsonl.append(self.path, entry)

@@ -11,12 +11,12 @@ were tuned on.
 from __future__ import annotations
 
 import dataclasses
-import json
 import os
 import time
 from concurrent.futures import ProcessPoolExecutor, as_completed
 from pathlib import Path
 
+from .. import jsonl
 from ..control.improved import FEATURES, ImprovedController
 from ..control.original import OriginalController
 from ..sim.body import DroneBody
@@ -104,12 +104,10 @@ def run_grid(scenarios, seeds, configs, out_path: str | os.PathLike, n=None, wor
     done = set()
     rows = []
     if resume and out.exists():
-        for line in out.read_text().splitlines():
-            if line.strip():
-                r = json.loads(line)
-                if "error" not in r:
-                    done.add((r["scenario"], r["seed"], r["config"], r.get("n")))
-                    rows.append(r)
+        for r in jsonl.read(out):
+            if "error" not in r:
+                done.add((r["scenario"], r["seed"], r["config"], r.get("n")))
+                rows.append(r)
     ns = n if isinstance(n, (list, tuple)) else [n]
     jobs = []
     for sc in scenarios:
@@ -122,12 +120,11 @@ def run_grid(scenarios, seeds, configs, out_path: str | os.PathLike, n=None, wor
                     jobs.append((sc, s, cfg, nn, dict(extra or {})))
     workers = workers or max(1, (os.cpu_count() or 2))
     t0 = time.perf_counter()
-    with out.open("a") as fh, ProcessPoolExecutor(workers) as ex:
+    with ProcessPoolExecutor(workers) as ex:
         futures = [ex.submit(_job, j) for j in jobs]
         for k, fut in enumerate(as_completed(futures), 1):
             row = fut.result()
-            fh.write(json.dumps(row) + "\n")
-            fh.flush()
+            jsonl.append(out, row)
             rows.append(row)
             if progress and (k % 10 == 0 or k == len(jobs)):
                 progress(f"{k}/{len(jobs)} runs, {time.perf_counter() - t0:.0f} s")

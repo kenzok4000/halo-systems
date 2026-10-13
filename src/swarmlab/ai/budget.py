@@ -25,6 +25,8 @@ import time
 from dataclasses import dataclass
 from pathlib import Path
 
+from .. import jsonl
+
 DEFAULT_CAP_USD = 18.0
 DEFAULT_LEDGER = Path.home() / ".swarmlab" / "nebius_ledger.jsonl"
 
@@ -117,9 +119,7 @@ class Budget:
                  "prompt_tokens": int(prompt_tokens), "completion_tokens": int(completion_tokens),
                  "cost_usd": round(float(cost_usd), 6), "pricing": pricing, "note": note}
         with self._lock:
-            self.path.parent.mkdir(parents=True, exist_ok=True)
-            with self.path.open("a") as fh:
-                fh.write(json.dumps(entry) + "\n")
+            jsonl.append(self.path, entry)
 
     def summary(self) -> dict:
         spent = self.spent_usd()

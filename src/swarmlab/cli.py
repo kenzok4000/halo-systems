@@ -253,7 +253,8 @@ def main(argv=None) -> int:
     s.add_argument("--port", type=int, default=8765)
     s.add_argument("--results", default="results")
     s.add_argument("--evidence", default="evidence")
-    s.add_argument("--model", default=None, help="Nemotron model id (default SWARMLAB_SUPERVISOR_MODEL)")
+    s.add_argument("--model", default=None, help="Nemotron model id, or nemotron-think:<model id> for reasoning on "
+                                                  "(default SWARMLAB_SUPERVISOR_MODEL)")
     s.add_argument("--cache", default=None, help="Nemotron call cache: replays recorded runs without a key, records with one")
     s.add_argument("--open", action="store_true", help="open a browser")
     s.set_defaults(fn=cmd_serve)

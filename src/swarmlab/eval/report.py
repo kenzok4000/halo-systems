@@ -10,8 +10,10 @@ from __future__ import annotations
 
 import json
 import math
+import sys
 from pathlib import Path
 
+from .. import jsonl
 from .stats import METRICS, paired, summarise
 
 CONFIG_LABELS = {
@@ -36,10 +38,10 @@ def label(config: str) -> str:
 
 
 def load_rows(path) -> list[dict]:
-    rows = []
-    for line in Path(path).read_text().splitlines():
-        if line.strip():
-            rows.append(json.loads(line))
+    skipped = []
+    rows = jsonl.read(path, skipped)
+    if skipped:
+        print(f"warning: skipped {len(skipped)} unreadable line(s) in {path}", file=sys.stderr)
     return rows
 
 

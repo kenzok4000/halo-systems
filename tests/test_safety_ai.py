@@ -408,6 +408,32 @@ class NemotronSupervisorTest(unittest.TestCase):
         self.assertIn("No obstacles", supervisor_user(summary(), []))
 
 
+def _append_many(args):
+    from swarmlab import jsonl
+    path, who = args
+    for i in range(200):
+        jsonl.append(path, {"who": who, "i": i, "pad": "x" * 900})
+
+
+class JsonlTest(unittest.TestCase):
+    def test_concurrent_appends_stay_whole_and_junk_is_skipped(self):
+        from concurrent.futures import ProcessPoolExecutor
+        from swarmlab import jsonl
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "shared.jsonl"
+            with ProcessPoolExecutor(4) as ex:
+                list(ex.map(_append_many, [(str(path), w) for w in range(4)]))
+            skipped = []
+            self.assertEqual(len(jsonl.read(path, skipped)), 800)
+            self.assertEqual(skipped, [])
+            with path.open("ab") as fh:
+                fh.write(b': {}}}\n')     # the kind of fragment an overlapping write left behind
+            jsonl.append(path, {"key": "k", "content": "c", "record": {}})
+            self.assertEqual(len(jsonl.read(path, skipped)), 801)
+            self.assertEqual(len(skipped), 1)
+            self.assertIn("k", CallCache(path, "replay").entries)
+
+
 class StressSearchTest(unittest.TestCase):
     def test_model_tests_are_used_and_a_dead_key_stops_a_strict_search(self):
         from swarmlab.ai.tester import NemotronSearch, summarise_search
