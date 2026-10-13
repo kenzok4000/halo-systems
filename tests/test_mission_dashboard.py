@@ -108,6 +108,19 @@ class DashboardSmokeTest(unittest.TestCase):
                 if saved is not None:
                     os.environ["NEBIUS_API_KEY"] = saved
 
+    def test_results_list_every_models_mission_scores_once_with_the_baseline(self):
+        from pathlib import Path
+        from swarmlab.dashboard.server import _results
+        summ = lambda pct: {"field_accuracy_pct": pct, "exact": 1, "prompts": 2}
+        with tempfile.TemporaryDirectory() as tmp:
+            for name, model, think, pct in (("nano", "nvidia/Nano", False, 90), ("think", "nvidia/Nano", True, 95)):
+                Path(tmp, f"mission_eval_{name}.json").write_text(json.dumps(
+                    {"model": model, "reasoning": think,
+                     "sets": {"heldout": {"summary": {"baseline": summ(80), "nemotron": summ(pct)}}}}))
+            rows = _results(Path(tmp))["mission_eval"]["heldout"]
+        self.assertEqual(rows, {"regex baseline": summ(80), "Nemotron Nano": summ(90),
+                                "Nemotron Nano, reasoning on": summ(95)})
+
     def test_server_runs_a_flight_and_streams_frames(self):
         from http.server import ThreadingHTTPServer
         from pathlib import Path

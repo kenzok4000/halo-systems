@@ -436,10 +436,14 @@ def _results(results_dir: Path) -> dict:
         out["charts"] = sorted(p.name for p in results_dir.glob("*.png"))
         report = results_dir / "REPORT.md"
         out["report_md"] = report.read_text() if report.exists() else ""
-    mission = results_dir / "mission_eval.json"
-    if mission.exists():
-        data = json.loads(mission.read_text())
-        out["mission_eval"] = {k: v["summary"] for k, v in data.get("sets", {}).items()}
+    # One file per model run, e.g. mission_eval_nano.json; the regex baseline appears once per prompt set.
+    for path in sorted(results_dir.glob("mission_eval*.json")):
+        data = json.loads(path.read_text())
+        name = "Nemotron " + (data.get("model") or "?").split("/")[-1] + (", reasoning on" if data.get("reasoning") else "")
+        for set_name, v in data.get("sets", {}).items():
+            rows = out.setdefault("mission_eval", {}).setdefault(set_name, {})
+            for who, summ in v["summary"].items():
+                rows["regex baseline" if who == "baseline" else name] = summ
     return out
 
 
