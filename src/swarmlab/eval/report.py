@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import json
 import math
+import re
 import sys
 from pathlib import Path
 
@@ -41,6 +42,23 @@ def label(config: str) -> str:
                                        "reasoning on" if kind == "nemotron-think" else "") if x)
         return f"{ctrl_label} + Nemotron supervisor" + (f" ({detail})" if detail else "")
     return f"{ctrl_label} + " + {"rule": "rule supervisor", "fixed": "fixed plan"}.get(sup, sup)
+
+
+def short_label(config: str) -> str:
+    """A label short enough for a chart legend with five entries in a row."""
+    ctrl, _, sup = config.partition("+")
+    if ctrl.startswith("improved-no-"):
+        names = {"cbf": "CBF", "filter": "state filter"}
+        ctrl_label = "No " + ", ".join(names.get(f, f) for f in ctrl[len("improved-no-"):].split("-"))
+    else:
+        ctrl_label = {"improved": "Improved", "original": "Original"}.get(ctrl, ctrl)
+    if sup.startswith("nemotron"):
+        kind, _, model = sup.partition(":")
+        name = model.split("/")[-1]
+        size = re.search(r"nano|super|ultra", name, re.I)
+        name = f"Nemotron {size.group(0).capitalize()}" if size else (name or "Nemotron")
+        return f"{ctrl_label} + {name}" + (", reasoning" if kind == "nemotron-think" else "")
+    return f"{ctrl_label} + " + {"rule": "rules", "fixed": "fixed plan"}.get(sup, sup)
 
 
 def split_variants(rows: list[dict]) -> list[dict]:
@@ -211,14 +229,14 @@ def charts(rows, summary, out: Path) -> list[str]:
                 ys.append(cell["mean"])
                 err_lo.append(max(0.0, cell["mean"] - (cell["lo"] if cell["lo"] is not None else cell["mean"])))
                 err_hi.append(max(0.0, (cell["hi"] if cell["hi"] is not None else cell["mean"]) - cell["mean"]))
-            ax.bar(xs, ys, width, label=label(cfg), color=COLORS[k % len(COLORS)], yerr=[err_lo, err_hi],
+            ax.bar(xs, ys, width, label=short_label(cfg), color=COLORS[k % len(COLORS)], yerr=[err_lo, err_hi],
                    capsize=2, error_kw={"elinewidth": 0.8})
         ax.set_xticks(range(len(scenarios)))
-        ax.set_xticklabels([s.replace("_", " ") for s in scenarios], rotation=0)
+        ax.set_xticklabels([s.replace("_", "\n").replace(", ", ",\n") for s in scenarios], rotation=0)
         ax.set_ylabel(METRICS[metric][0])
-        ax.legend(frameon=False, ncol=min(4, len(configs)), loc="upper center", bbox_to_anchor=(0.5, 1.18))
+        ax.legend(frameon=False, ncol=min(5, len(configs)), loc="lower center", bbox_to_anchor=(0.5, 1.0))
         fig.tight_layout()
-        fig.savefig(out / fname, dpi=150)
+        fig.savefig(out / fname, dpi=150, bbox_inches="tight")
         plt.close(fig)
         made.append(fname)
     return made

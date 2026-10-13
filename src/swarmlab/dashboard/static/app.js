@@ -256,6 +256,8 @@ async function start(extra = {}) {
 $$(".tabs button").forEach((b) => b.addEventListener("click", () => {
   $$(".tabs button").forEach((x) => x.classList.toggle("active", x === b));
   $$(".tab").forEach((t) => t.classList.toggle("active", t.id === `tab-${b.dataset.tab}`));
+  document.body.classList.toggle("wide", b.dataset.tab === "results");
+  resize();
   if (b.dataset.tab === "results") loadResults();
   if (b.dataset.tab === "about") loadEvidence();
 }));
@@ -330,10 +332,27 @@ $("#fly-mission").addEventListener("click", () => {
   start({ mission: compiled.spec, mission_text: $("#mission-text").value });
 });
 
+const HEADLINE = [["completed", "Missions completed (%)", 0], ["time_formed_pct", "Time in formation (%)", 0],
+                  ["crashes", "Drones lost per flight", 2]];
+
+function headline(r) {
+  const title = (sc) => (scenarios.find((s) => s.name === sc) || {}).title || sc;
+  const n = Object.values(r.summary)[0]?.completed?.n;
+  let html = `<p class="muted small">Mean per flight${n ? ` over ${n} seeds` : ""}, every configuration on the same seeds.</p>`;
+  for (const [metric, name, digits] of HEADLINE) {
+    html += `<h3>${name}</h3><table class="headline"><tr><th>Scenario</th>${r.configs.map((c) => `<th>${esc(c.label)}</th>`).join("")}</tr>`;
+    for (const sc of r.scenarios) {
+      html += `<tr><td>${esc(title(sc))}</td>` + r.configs.map((c) => `<td>${fmt(r.summary[`${sc}|${c.id}`]?.[metric]?.mean, digits)}</td>`).join("") + "</tr>";
+    }
+    html += "</table>";
+  }
+  return html;
+}
+
 async function loadResults() {
   const r = await api("/api/results").catch(() => ({ available: false }));
   if (!r.available) { $("#results").innerHTML = '<p class="muted">No benchmark results yet. Run <code>swarmlab bench</code> then <code>swarmlab report</code>.</p>'; return; }
-  let html = r.charts.map((c) => `<img src="/results/${encodeURIComponent(c)}" alt="${esc(c)}">`).join("");
+  let html = headline(r) + "<h3>Charts</h3>" + r.charts.map((c) => `<img src="/results/${encodeURIComponent(c)}" alt="${esc(c)}">`).join("");
   if (r.mission_eval) {
     html += "<h3>Mission compiler accuracy</h3><table><tr><th>Prompt set</th><th>Parser</th><th>Fields right</th><th>All right</th></tr>";
     for (const [set, sum] of Object.entries(r.mission_eval)) {

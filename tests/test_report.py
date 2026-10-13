@@ -5,7 +5,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from swarmlab.eval.report import build, label, split_variants
+from swarmlab.eval.report import build, label, short_label, split_variants
 
 
 def row(scenario, config, seed, **kw):
@@ -22,6 +22,14 @@ class ReportTest(unittest.TestCase):
         self.assertNotEqual(label(f"improved+nemotron:{nano}"), label(f"improved+nemotron-think:{nano}"))
         self.assertIn("reasoning on", label(f"improved+nemotron-think:{nano}"))
         self.assertEqual(label("improved-no-cbf+rule"), "Improved without cbf + rule supervisor")
+
+    def test_chart_labels_are_short_and_still_distinct(self):
+        nano, sup = "nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B", "nvidia/nemotron-3-super-120b-a12b"
+        self.assertEqual(short_label(f"improved+nemotron:{nano}"), "Improved + Nemotron Nano")
+        self.assertEqual(short_label(f"improved+nemotron-think:{nano}"), "Improved + Nemotron Nano, reasoning")
+        self.assertEqual(short_label(f"improved+nemotron:{sup}"), "Improved + Nemotron Super")
+        self.assertEqual(short_label("improved-no-cbf-filter+rule"), "No CBF, state filter + rules")
+        self.assertEqual(short_label("original+fixed"), "Original + fixed plan")
 
     def test_sweeps_are_split_not_averaged(self):
         rows = [row("open_transit", "improved+rule", 0, n=8), row("open_transit", "improved+rule", 0, n=32),

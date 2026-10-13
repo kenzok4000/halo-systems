@@ -73,10 +73,12 @@ button.primary { background: var(--accent); color: #062a26; border-color: var(--
 table { border-collapse: collapse; width: 100%; font-size: 12px; margin: 6px 0 12px; }
 td, th { border-bottom: 1px solid var(--line); padding: 3px 4px; text-align: left; }
 #results img { width: 100%; border-radius: 6px; background: #fff; margin: 6px 0; }
+body.wide aside { width: min(1000px, 70vw); max-width: none; }
+table.headline th:not(:first-child), table.headline td:not(:first-child) { text-align: right; font-variant-numeric: tabular-nums; }
 .examples button { font-size: 12px; }
 pre { white-space: pre-wrap; font-size: 12px; background: var(--panel-2); padding: 8px; border-radius: 6px; }
 @media (max-width: 800px) {
   main { flex-direction: column; height: auto; }
   #view { height: 60vh; }
-  aside { width: 100%; max-width: none; border-left: 0; }
+  aside, body.wide aside { width: 100%; max-width: none; border-left: 0; }
 }

@@ -28,6 +28,7 @@ from urllib.parse import parse_qs, urlparse
 
 import numpy as np
 
+from ..eval.report import _config_order, _scenario_order, short_label
 from ..eval.runner import make_controller, make_supervisor, split_config
 from ..eval.scenarios import SCENARIOS, from_mission, make
 from ..sim.body import DroneBody
@@ -433,6 +434,9 @@ def _results(results_dir: Path) -> dict:
     if summary.exists():
         out["available"] = True
         out["summary"] = json.loads(summary.read_text())
+        keys = [k.split("|", 1) for k in out["summary"] if "|" in k]
+        out["scenarios"] = sorted({sc for sc, _ in keys}, key=_scenario_order)
+        out["configs"] = [{"id": c, "label": short_label(c)} for c in _config_order({c for _, c in keys})]
         out["charts"] = sorted(p.name for p in results_dir.glob("*.png"))
         report = results_dir / "REPORT.md"
         out["report_md"] = report.read_text() if report.exists() else ""

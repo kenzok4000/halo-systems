@@ -67,7 +67,7 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
     await page.click(`button[data-inject="${inj.kind}"]`);
   }
   if (args.scroll) {
-    const steps = 20;
+    const steps = Math.max(20, Math.round(seconds * 5));
     for (let i = 0; i < steps; i++) {
       await page.evaluate((f) => { const el = document.querySelector("aside"); el.scrollTop = f * (el.scrollHeight - el.clientHeight); }, i / (steps - 1));
       await sleep((seconds * 1000) / steps);

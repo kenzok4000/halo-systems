@@ -121,6 +121,19 @@ class DashboardSmokeTest(unittest.TestCase):
         self.assertEqual(rows, {"regex baseline": summ(80), "Nemotron Nano": summ(90),
                                 "Nemotron Nano, reasoning on": summ(95)})
 
+    def test_results_give_headline_tables_in_report_order(self):
+        from pathlib import Path
+        from swarmlab.dashboard.server import _results
+        cell = {"completed": {"mean": 100.0, "lo": 100.0, "hi": 100.0, "n": 20}}
+        summary = {f"{sc}|{cfg}": cell for sc in ("low_battery", "open_transit")
+                   for cfg in ("improved+nemotron:nvidia/Nano", "improved+rule", "original+fixed")}
+        with tempfile.TemporaryDirectory() as tmp:
+            Path(tmp, "summary.json").write_text(json.dumps(summary))
+            r = _results(Path(tmp))
+        self.assertEqual(r["scenarios"], ["open_transit", "low_battery"])
+        self.assertEqual([c["label"] for c in r["configs"]],
+                         ["Original + fixed plan", "Improved + rules", "Improved + Nemotron Nano"])
+
     def test_server_runs_a_flight_and_streams_frames(self):
         from http.server import ThreadingHTTPServer
         from pathlib import Path
