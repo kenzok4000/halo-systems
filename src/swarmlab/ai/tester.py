@@ -266,6 +266,15 @@ def run_search(searcher, budget: int = 40, batch: int = 4, seed: int = 0, worker
     return history
 
 
+def replay(history: list[dict], config: str, workers: int = 4) -> list[dict]:
+    """Fly the same tests (conditions and seeds) again with another configuration, for paired ablations."""
+    from concurrent.futures import ProcessPoolExecutor
+    from functools import partial
+    with ProcessPoolExecutor(workers) as ex:
+        outcomes = list(ex.map(partial(evaluate, config=config), [h["params"] for h in history], [h["seed"] for h in history]))
+    return [{**h, "outcome": o} for h, o in zip(history, outcomes)]
+
+
 def failure_kinds(history: list[dict]) -> set:
     """Coarse labels of distinct failure modes, for counting variety, not just volume."""
     kinds = set()
@@ -312,7 +321,8 @@ def compare_searches(results: list[dict]) -> str:
     """Markdown table comparing searchers over several saved searches (the JSON `swarmlab stress` writes)."""
     by: dict[str, list[dict]] = {}
     for r in results:
-        by.setdefault(r["searcher"].split(":")[0], []).append(r)
+        name = r["searcher"].split(":")[0] + (f" (tests re-flown on {r['config']})" if r.get("config") else "")
+        by.setdefault(name, []).append(r)
     lines = ["| Searcher | Searches | Flights | Failures | Distinct failing conditions | Failure kinds (all searches) "
              "| Mildest failure (stress level) | Mean stress level of failures | Random top-ups |",
              "|---|---|---|---|---|---|---|---|---|"]

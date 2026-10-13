@@ -482,6 +482,14 @@ class StressSearchTest(unittest.TestCase):
         table = compare_searches([{"searcher": "corners", "history": history}])
         self.assertIn("| corners | 1 | 3 | 3 | 2 |", table)
 
+    def test_replay_flies_the_same_tests_with_another_configuration(self):
+        from swarmlab.ai.tester import SPACE, replay
+        easy = {k: (hi if k in ("spacing_m", "trail_width_m") else lo) for k, (lo, hi, _, _) in SPACE.items()}
+        history = [{"i": 0, "why": "", "params": easy, "seed": 3, "outcome": {"failed": True}}]
+        again = replay(history, "improved-no-cbf+rule", workers=1)
+        self.assertEqual((again[0]["params"], again[0]["seed"]), (easy, 3))
+        self.assertFalse(again[0]["outcome"]["failed"])
+
 
 if __name__ == "__main__":
     unittest.main()

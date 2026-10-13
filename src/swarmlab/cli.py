@@ -170,6 +170,21 @@ def cmd_stress(args) -> int:
     return 0
 
 
+def cmd_stress_replay(args) -> int:
+    from pathlib import Path
+    from .ai import tester
+    src = json.loads(Path(args.search).read_text())
+    history = tester.replay(src["history"], args.config, workers=args.workers)
+    out = {"searcher": src["searcher"], "replay_of": Path(args.search).name,
+           "config": args.config, "seed": src["seed"], "budget": src["budget"], "batch": src["batch"],
+           "summary": tester.summarise_search(history), "failure_kinds": sorted(tester.failure_kinds(history)),
+           "history": history, "model_calls": []}
+    Path(args.out).parent.mkdir(parents=True, exist_ok=True)
+    Path(args.out).write_text(json.dumps(out, indent=1))
+    print(json.dumps(out["summary"]))
+    return 0
+
+
 def cmd_stress_report(args) -> int:
     from pathlib import Path
     from .ai import tester
@@ -179,7 +194,8 @@ def cmd_stress_report(args) -> int:
     for f, r in zip(args.files, results):
         s = tester.summarise_search(r["history"])
         mild = "n/a" if s["mildest_failure_stress"] is None else f"{s['mildest_failure_stress']:.2f}"
-        rows.append(f"| {Path(f).name} | {r['searcher']} | {s['failures']} | {s['distinct_failing_conditions']} "
+        who = r["searcher"] + (f" (re-flown on {r['config']})" if r.get("config") else "")
+        rows.append(f"| {Path(f).name} | {who} | {s['failures']} | {s['distinct_failing_conditions']} "
                     f"| {s['distinct_failure_kinds']} | {mild} | {s['random_top_ups']} |")
     text = ("# Stress-test search\n\n"
             "Each search spends the same number of simulated flights. A failure is any crash or near miss. "
@@ -262,6 +278,13 @@ def main(argv=None) -> int:
     s.add_argument("--out", required=True)
     s.add_argument("--ai-log", default=None)
     s.set_defaults(fn=cmd_stress)
+
+    s = sub.add_parser("stress-replay", help="fly a saved search's tests again with another configuration")
+    s.add_argument("search")
+    s.add_argument("--config", required=True, help="e.g. improved-no-cbf+rule")
+    s.add_argument("--workers", type=int, default=4)
+    s.add_argument("--out", required=True)
+    s.set_defaults(fn=cmd_stress_replay)
 
     s = sub.add_parser("stress-report", help="compare saved stress searches")
     s.add_argument("files", nargs="+")
