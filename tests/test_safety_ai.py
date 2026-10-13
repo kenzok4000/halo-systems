@@ -16,6 +16,7 @@ import numpy as np
 from swarmlab.ai.budget import Budget, Pricing
 from swarmlab.ai.cache import CallCache
 from swarmlab.ai.client import NebiusClient, NebiusError, extract_json
+from swarmlab.ai.prompts import supervisor_user
 from swarmlab.control.cbf import build_constraints, project
 from swarmlab.control.directive import Directive
 from swarmlab.safety.validator import SafetyValidator
@@ -225,6 +226,19 @@ class ClientTest(unittest.TestCase):
         self.assertIn("cut off", ctx.exception.reason)
         self.assertEqual(len(t.calls), 1)
 
+    def test_deadline_bounds_the_whole_call(self):
+        clock = [0.0]
+
+        def slow(url, headers, body, timeout):
+            clock[0] += timeout          # every attempt hangs until its timeout
+            raise TimeoutError("read timed out")
+        c = NebiusClient(api_key=FAKE_KEY, transport=slow, sleep=lambda s: clock.__setitem__(0, clock[0] + s),
+                         clock=lambda: clock[0], rate_per_s=1000, burst=1000, timeout_s=8.0, max_retries=2)
+        with self.assertRaises(NebiusError) as cm:
+            c.chat("m", [{"role": "user", "content": "hi"}], deadline_s=15.0)
+        self.assertLessEqual(cm.exception.record.latency_s, 15.0)
+        self.assertEqual(cm.exception.record.attempts, 2)   # 8 s, a short wait, then only what is left
+
     def test_json_mode_fallback(self):
         c, t = self.client([(400, {}, b'{"error":"response_format not supported"}'), ok(DIRECTIVE_JSON)])
         r = c.chat("m", [])
@@ -364,6 +378,34 @@ class NemotronSupervisorTest(unittest.TestCase):
             miss = sup2.decide(summary(**{"time_s": 99.0}), Directive(), 99.0)
             self.assertTrue(miss.meta["fallback"])
             self.assertIn("replay cache miss", miss.meta["error"])
+
+    def test_failed_call_is_replayed_as_the_same_failure(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "cache.jsonl"
+            sup, _ = self.make([(500, {}, b""), (500, {}, b"")], CallCache(path, "record"))
+            first = sup.decide(summary(), Directive(), 30.0)
+            self.assertTrue(first.meta["fallback"])
+            sup2, t2 = self.make([], CallCache(path, "replay"))
+            second = sup2.decide(summary(), Directive(), 30.0)
+            self.assertEqual(t2.calls, [])
+            self.assertTrue(second.meta["fallback"] and second.meta["cached"])
+            self.assertIn("HTTP 500", second.meta["error"])
+            self.assertEqual(second.latency_s, first.latency_s)
+
+    def test_key_facts_spell_out_the_corridor_verdict(self):
+        s = summary(**{"environment.free_corridor_width_m": 12.9})
+        s["checks"] = {"corridor": {"free_width_m": 12.9, "needed_width_m": {"grid": 24.0, "line": 96.0, "column": 6.0,
+                                                                            "v": 69.6, "ring": 36.6},
+                                    "fits_now": ["column"], "widest_spacing_that_fits_m": {"grid": 2.3, "line": 0.5,
+                                    "column": None, "v": 0.6, "ring": 1.3},
+                                    "mission_plan_needs_m": 24.0, "mission_plan_fits": False}}
+        text = supervisor_user(s, [])
+        self.assertIn("so it does NOT fit", text)
+        self.assertIn("Shapes that fit at the current spacing: column.", text)
+        self.assertIn("no grid fits here", text)
+        self.assertIn("does not fit now", text)
+        self.assertNotIn("No obstacles", text)
+        self.assertIn("No obstacles", supervisor_user(summary(), []))
 
 
 if __name__ == "__main__":

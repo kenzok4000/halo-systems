@@ -6,10 +6,12 @@ reaches the motors directly: the engine applies the answer only after the
 measured API latency has passed in simulated time, and only through the
 safety validator.
 
-If the call fails (network, HTTP error, timeout, unparsable or incomplete
-JSON, or a replay-cache miss), the supervisor falls back to the rule
-supervisor's decision for that step and records why, so the swarm never
-waits on the API and every fallback is counted in the results. With
+If the call fails (network, HTTP error, no answer within the deadline,
+unparsable or incomplete JSON, or a replay-cache miss), the supervisor falls
+back to the rule supervisor's decision for that step and records why, so the
+swarm never waits long on the API and every fallback is counted in the
+results. Failed calls are cached too, with their latency, so a replayed run
+falls back at the same moments the live run did. With
 ``strict=True`` (benchmarks) an error that would hit every later call too
 (no key, key rejected, budget cap) stops the run instead, so a flight that
 was really flown by the rules is never reported as a Nemotron result.
@@ -27,6 +29,15 @@ from .base import Decision, Supervisor
 from .rule import RuleSupervisor
 
 
+# Per-attempt timeout and whole-call deadline, from the tuning-seed call logs. Without reasoning,
+# Nano answered within 3 s every time and Super's slow attempts were all-or-nothing (they timed out
+# at 20 s, then the retry answered in about 2 s), so a slow attempt is cut at 8 s and retried, and
+# the call gives up at 15 s: by then the report it answers is 75 m out of date at 5 m/s. With
+# reasoning, answers took 14 s at the median and 48 s at the 95th percentile, so one 60 s attempt.
+TIMEOUTS = {False: dict(timeout_s=8.0, max_retries=2, deadline_s=15.0),
+            True: dict(timeout_s=60.0, max_retries=0, deadline_s=60.0)}
+
+
 class NemotronSupervisor(Supervisor):
     name = "nemotron"
     label = "Nemotron supervisor"
@@ -34,8 +45,11 @@ class NemotronSupervisor(Supervisor):
 
     def __init__(self, client: NebiusClient | None = None, model: str | None = None, cache: CallCache | None = None,
                  fallback: str = "rule", temperature: float = 0.2, max_tokens: int = 1200,
-                 extra_body: dict | None = None, system_prefix: str = "", strict: bool = False, think: bool = False):
-        self.client = client or NebiusClient(timeout_s=20.0, max_retries=2)
+                 extra_body: dict | None = None, system_prefix: str = "", strict: bool = False, think: bool = False,
+                 deadline_s: float | None = None):
+        t = TIMEOUTS[bool(think)]
+        self.client = client or NebiusClient(timeout_s=t["timeout_s"], max_retries=t["max_retries"])
+        self.deadline_s = deadline_s if deadline_s is not None else t["deadline_s"]
         self.model = model or os.environ.get("SWARMLAB_SUPERVISOR_MODEL", "")
         if not self.model:
             raise ValueError("no model id: pass model= or set SWARMLAB_SUPERVISOR_MODEL (see `swarmlab doctor`)")
@@ -58,7 +72,8 @@ class NemotronSupervisor(Supervisor):
         think = kind == "nemotron-think"
         if kind not in ("nemotron", "nemotron-think"):
             raise ValueError(f"unknown supervisor {spec!r}")
-        client = NebiusClient(timeout_s=90.0 if think else 20.0, max_retries=2, log_path=log_path)
+        t = TIMEOUTS[think]
+        client = NebiusClient(timeout_s=t["timeout_s"], max_retries=t["max_retries"], log_path=log_path)
         cache = CallCache(cache_path, cache_mode) if cache_path else None
         return cls(client=client, model=model or None, cache=cache, think=think, **kw)
 
@@ -83,11 +98,14 @@ class NemotronSupervisor(Supervisor):
                                                     "request_id", "attempts")})
                 meta["cached"] = True
                 latency = float(rec.get("latency_s") or 0.0)
+                if hit.get("error"):
+                    raise NebiusError(hit["error"])     # the live call failed here: fail the same way
             elif self.cache is not None and self.cache.mode == "replay":
                 raise NebiusError("replay cache miss (run in record mode with a key to fill it)")
             else:
                 result = self.client.chat(self.model, messages, role="supervisor", temperature=self.temperature,
-                                          max_tokens=self.max_tokens, extra_body=self.extra_body)
+                                          max_tokens=self.max_tokens, extra_body=self.extra_body,
+                                          deadline_s=self.deadline_s)
                 content = result.content
                 rec = result.record.to_dict()
                 meta.update({k: rec.get(k) for k in ("prompt_tokens", "completion_tokens", "total_tokens", "cost_usd",
@@ -102,6 +120,10 @@ class NemotronSupervisor(Supervisor):
             err = getattr(exc, "record", None)
             if err is not None:
                 latency = err.latency_s
+                meta.update({k: getattr(err, k, None) for k in ("prompt_tokens", "completion_tokens", "total_tokens",
+                                                                "cost_usd", "request_id", "attempts")})
+                if self.cache is not None and not getattr(exc, "fatal", False):
+                    self.cache.put(key, None, err.to_dict(), error=str(exc))
             meta.update({"fallback": True, "error": str(exc)[:300]})
             fb = rule_decision.directive if rule_decision is not None else None
             return Decision(fb, latency_s=latency, raw=(content or "")[:2000], meta=meta)

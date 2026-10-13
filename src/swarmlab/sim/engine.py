@@ -575,12 +575,15 @@ class Simulation:
             # Width scales with spacing, so a unit-spacing width converts any spacing to a width.
             per_m = {s: float(np.ptp(formation_offsets(s, max(flying, 1), 1.0)[:, 1])) for s in SHAPES}
             buffer = 2 * (d.safety_margin_m + CORRIDOR_BUFFER_M)
+            plan_need = per_m[m.formation] * m.spacing_m + 2 * (m.safety_margin_m + CORRIDOR_BUFFER_M)
             checks["corridor"] = {
                 "free_width_m": round(free, 1),
                 "needed_width_m": {s: round(per_m[s] * d.spacing_m + buffer, 1) for s in SHAPES},
                 "fits_now": [s for s in SHAPES if per_m[s] * d.spacing_m + buffer <= free],
                 "widest_spacing_that_fits_m": {s: (round((free - buffer) / per_m[s], 1) if per_m[s] > 0 else None)
                                                for s in SHAPES},
+                "mission_plan_needs_m": round(plan_need, 1),
+                "mission_plan_fits": bool(plan_need <= free),
             }
         if remaining is not None and remaining > 0 and wh_table:
             km = remaining / 1000.0

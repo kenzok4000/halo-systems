@@ -141,7 +141,7 @@ class NebiusClient:
                  max_retries: int = 4, backoff_base_s: float = 1.0, backoff_max_s: float = 20.0,
                  rate_per_s: float = 2.0, burst: int = 4, log_path: str | os.PathLike | None = None,
                  pricing: Pricing | None = None, budget: Budget | None = None, transport=None, get_transport=None,
-                 sleep=time.sleep):
+                 sleep=time.sleep, clock=time.perf_counter):
         self.api_key = api_key if api_key is not None else os.environ.get("NEBIUS_API_KEY", "")
         self.base_url = (base_url or os.environ.get("NEBIUS_BASE_URL") or DEFAULT_BASE_URL).rstrip("/")
         self.timeout_s = timeout_s
@@ -155,6 +155,7 @@ class NebiusClient:
         self.transport = transport or _http_post
         self.get_transport = get_transport or _http_get
         self.sleep = sleep
+        self.clock = clock
         self.records: list[CallRecord] = []
         self._json_mode_unsupported: set[str] = set()
         self._lock = threading.Lock()
@@ -201,8 +202,13 @@ class NebiusClient:
 
     def chat(self, model: str, messages: list[dict], *, role: str = "chat", temperature: float = 0.2,
              max_tokens: int = 800, json_mode: bool = True, extra_body: dict | None = None,
-             timeout_s: float | None = None) -> ChatResult:
-        """One chat completion with retries. Raises ``NebiusError`` when it cannot get a valid answer."""
+             timeout_s: float | None = None, deadline_s: float | None = None) -> ChatResult:
+        """One chat completion with retries. Raises ``NebiusError`` when it cannot get a valid answer.
+
+        ``deadline_s`` bounds the whole call, retries and waits included: no attempt starts or waits
+        past it, and the last attempt's timeout is cut to what is left. An answer that arrives later
+        than the caller can use it is worth nothing, so the caller falls back sooner instead.
+        """
         record = CallRecord(call_id=uuid.uuid4().hex[:12], role=role, model=model, started_at=time.time())
         if not self.configured:
             record.status, record.error = "error", "NEBIUS_API_KEY is not set"
@@ -216,30 +222,44 @@ class NebiusClient:
             payload["response_format"] = {"type": "json_object"}
         if extra_body:
             payload.update(extra_body)
-        t0 = time.perf_counter()
+        t0 = self.clock()
         last_error, last_status, text = "unknown error", None, ""
         attempt = 0
+
+        def left() -> float:
+            return float("inf") if deadline_s is None else deadline_s - (self.clock() - t0)
+
+        def wait(seconds: float) -> bool:
+            """Back off before the next attempt; False if the deadline would pass first."""
+            if seconds >= left():
+                return False
+            self.sleep(seconds)
+            return True
+
         while attempt <= self.max_retries:
+            if left() <= 0:
+                last_error = f"deadline of {deadline_s:g} s passed; last error: {last_error}"
+                break
             attempt += 1
             record.attempts = attempt
             try:
                 self.budget.check(worst_case)
             except BudgetExceeded as exc:
                 record.status, record.error = "error", str(exc)
-                record.latency_s = round(time.perf_counter() - t0, 3)
+                record.latency_s = round(self.clock() - t0, 3)
                 self._log(record)
                 raise NebiusError(str(exc), record=record, fatal=True) from None
             self.bucket.take()
             try:
                 status, headers, body = self.transport(f"{self.base_url}/chat/completions", self._headers(),
-                                                       json.dumps(payload).encode(), timeout_s or self.timeout_s)
+                                                       json.dumps(payload).encode(),
+                                                       min(timeout_s or self.timeout_s, left()))
             except (urllib.error.URLError, TimeoutError, ConnectionError, OSError) as exc:
                 last_error, last_status = f"network error: {type(exc).__name__}: {exc}", None
                 # The server may have done the work before the connection broke: count the worst case.
                 self.budget.add(model=model, role=role, cost_usd=worst_case, status="unknown", call_id=record.call_id,
                                 pricing=pricing.source, note=f"no usage returned ({type(exc).__name__}); counted at worst case")
-                if attempt <= self.max_retries:
-                    self.sleep(self._backoff(attempt, None))
+                if attempt <= self.max_retries and wait(self._backoff(attempt, None)):
                     continue
                 break
             headers = {k.lower(): v for k, v in (headers or {}).items()}
@@ -273,15 +293,15 @@ class NebiusClient:
                                 status="ok" if not last_error else "unusable", call_id=record.call_id,
                                 pricing=pricing.source, note="" if usage else "no usage in response; counted at worst case")
                 if last_error:
-                    if attempt <= self.max_retries and "cut off" not in last_error:
-                        self.sleep(self._backoff(attempt, None))
+                    if attempt <= self.max_retries and "cut off" not in last_error \
+                            and wait(self._backoff(attempt, None)):
                         continue
                     break
                 record.finish_reason = choice.get("finish_reason")
                 record.request_id = record.request_id or data.get("id")
                 record.response_format = "json_object" if use_json else "text"
                 record.status, record.http_status = "ok", 200
-                record.latency_s = round(time.perf_counter() - t0, 3)
+                record.latency_s = round(self.clock() - t0, 3)
                 self._log(record, payload, text)
                 return ChatResult(content, record, data)
             if status == 400 and use_json and "response_format" in text:
@@ -292,12 +312,12 @@ class NebiusClient:
                 attempt -= 1
                 continue
             last_error = f"HTTP {status}: {redact(text, self.api_key)[:300]}"
-            if status in RETRY_STATUS and attempt <= self.max_retries:
-                self.sleep(self._backoff(attempt, headers.get("retry-after")))
+            if status in RETRY_STATUS and attempt <= self.max_retries \
+                    and wait(self._backoff(attempt, headers.get("retry-after"))):
                 continue
             break
         record.status, record.http_status, record.error = "error", last_status, last_error
-        record.latency_s = round(time.perf_counter() - t0, 3)
+        record.latency_s = round(self.clock() - t0, 3)
         self._log(record, payload, text or None)
         raise NebiusError(last_error, last_status, record, fatal=last_status in (401, 403))
 

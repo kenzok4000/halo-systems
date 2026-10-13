@@ -1,7 +1,9 @@
 """Record and replay of model calls, so benchmark runs can be reproduced exactly.
 
 ``record`` mode makes live calls and stores each reply under a hash of the
-request (model, messages, temperature). ``replay`` mode answers from the
+request (model, messages, temperature, options). A call that failed is stored
+too, with its error and latency, so a replay fails at the same point the live
+run did instead of drifting onto a different path. ``replay`` mode answers from the
 store only and fails loudly on a miss, so a replayed benchmark can never
 silently mix in new live answers. Stored entries keep the original call
 record (latency, tokens, request id), marked ``cached`` when replayed, so
@@ -42,10 +44,12 @@ class CallCache:
     def get(self, key: str) -> dict | None:
         return self.entries.get(key)
 
-    def put(self, key: str, content: str, record: dict) -> None:
+    def put(self, key: str, content: str | None, record: dict, error: str | None = None) -> None:
         if self.mode != "record":
             return
         entry = {"key": key, "content": content, "record": record}
+        if error:
+            entry["error"] = error
         with self._lock:
             self.entries[key] = entry
             self.path.parent.mkdir(parents=True, exist_ok=True)
