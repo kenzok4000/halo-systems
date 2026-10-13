@@ -1,4 +1,20 @@
-"""Command line: ``halo <command>``. Run ``halo -h`` for the list."""
+"""Command line: ``halo <command>``. Run ``halo -h`` for the list.
+
+The commands by role:
+
+* benchmark (``eval/``): ``list`` the scenarios, ``run`` one flight, ``bench``
+  a grid of scenarios x seeds x configurations, ``report`` the tables and
+  charts (``eval/report.py`` writes REPORT.md).
+* mission compiler (``ai/mission.py``): ``compile`` one request, and
+  ``mission-eval`` to score the compiler against the regex baseline.
+* stress testing (``ai/tester.py``, where Nemotron can act as the test
+  engineer): ``stress`` runs a search, ``stress-replay`` flies a saved
+  search's tests again with another configuration, and ``stress-report``
+  writes STRESS.md (its text is in ``cmd_stress_report``).
+* operations: ``doctor`` checks the Nebius Token Factory integration end to
+  end, ``budget`` shows model spend against the cap, and ``serve`` starts the
+  live dashboard.
+"""
 
 from __future__ import annotations
 

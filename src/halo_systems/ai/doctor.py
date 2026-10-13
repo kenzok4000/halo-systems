@@ -1,15 +1,20 @@
 """End-to-end check of the Nebius Token Factory integration (``halo doctor``).
 
-Steps, each recorded in ``evidence/``:
+Steps, each recorded in the evidence directory (``halo doctor`` writes to
+``evidence/latest`` by default; the committed check is in ``evidence/``):
 
 1. Environment: is ``NEBIUS_API_KEY`` set (the value is never shown)?
 2. Models: list the models the key can use and pick the NVIDIA Nemotron ones.
-3. One supervisor call on a real state summary (the forest scenario just
-   before the trees), parsed and checked by the safety validator.
-4. Optionally (``--flight``), a full simulated flight with Nemotron as the
-   supervisor, every call logged and cached for replay.
+3. One supervisor call on a real state summary (the forest_trail scenario
+   at 22 s, just before the trees), parsed and checked by the safety
+   validator. ``--scenario`` does not change this step.
+4. Optionally (``--flight``), a full simulated flight of ``--scenario`` with
+   Nemotron as the supervisor, every call logged and cached for replay.
 
-The command exits non-zero if any step fails. Nothing here is mocked.
+The command exits non-zero if any step fails: 2 no key, 3 listing the
+models failed, 4 no Nemotron model, 5 the supervisor call failed, 6 the
+reply is not a valid directive, 7 the safety validator rejected it, 8 no
+call in the flight was used without a fallback. Nothing here is mocked.
 """
 
 from __future__ import annotations
@@ -96,6 +101,10 @@ def run(evidence_dir: str = "evidence", model: str | None = None, flight: bool =
     from ..supervisor.nemotron import NemotronSupervisor, parse_directive
     summary, sim = state_before_forest(seed)
     sup = NemotronSupervisor(client=client, model=chosen, fallback="none")
+    # Call the client directly with the supervisor's messages and settings instead of sup.decide():
+    # decide() turns a failure into a fallback, while this step reports the HTTP status, finish reason
+    # and raw reply. The call uses this client's 30 s timeout and 3 retries and no deadline, so it can
+    # wait longer than the supervisor does in flight (8 s per attempt, 15 s in all).
     t0 = time.perf_counter()
     try:
         result = client.chat(chosen, sup._messages(summary), role="doctor-supervisor", temperature=0.2,

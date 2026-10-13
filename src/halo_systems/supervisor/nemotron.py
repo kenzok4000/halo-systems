@@ -81,6 +81,9 @@ class NemotronSupervisor(Supervisor):
                 {"role": "user", "content": supervisor_user(summary, self.history)}]
 
     def decide(self, summary: dict, current: Directive, t: float) -> Decision | None:
+        # The rule supervisor sees every report, not only those whose call fails, so its hold timers and
+        # energy hysteresis are up to date when it is needed. Its answer is used only if the call below
+        # fails or its reply cannot be parsed.
         rule_decision = self.fallback.decide(summary, current, t) if self.fallback else None
         messages = self._messages(summary)
         key = request_key(self.model, messages, self.temperature,
@@ -91,6 +94,7 @@ class NemotronSupervisor(Supervisor):
         try:
             hit = self.cache.get(key) if self.cache and self.cache.mode != "off" else None
             if hit is not None:
+                # 1. Cache hit: replay the recorded answer, or the recorded failure with its latency.
                 content = hit["content"]
                 rec = dict(hit["record"])
                 meta.update({k: rec.get(k) for k in ("prompt_tokens", "completion_tokens", "total_tokens", "cost_usd",
@@ -100,8 +104,10 @@ class NemotronSupervisor(Supervisor):
                 if hit.get("error"):
                     raise NebiusError(hit["error"])     # the live call failed here: fail the same way
             elif self.cache is not None and self.cache.mode == "replay":
+                # 2. Replay mode and no entry: an error marked fatal. It stops a strict run; otherwise it falls back.
                 raise NebiusError("replay cache miss (run in record mode with a key to fill it)", fatal=True)
             else:
+                # 3. A live call. The reply is stored before it is parsed, so a bad reply replays the same way.
                 result = self.client.chat(self.model, messages, role="supervisor", temperature=self.temperature,
                                           max_tokens=self.max_tokens, extra_body=self.extra_body,
                                           deadline_s=self.deadline_s)
@@ -127,6 +133,9 @@ class NemotronSupervisor(Supervisor):
             fb = rule_decision.directive if rule_decision is not None else None
             return Decision(fb, latency_s=latency, raw=(content or "")[:2000], meta=meta)
         meta["reason"] = proposal.get("reason", "")
+        # The model's own proposals as parsed, before the validator clamps or rejects them, and only from
+        # replies that parsed. The last four (without reasons) go into the next message, so the format of
+        # these entries is part of the prompt that recorded calls are looked up by.
         self.history.append({"t": round(t, 1), **{k: proposal[k] for k in DIRECTIVE_FIELDS}, "reason": proposal.get("reason", "")})
         proposal["source"] = "nemotron"
         return Decision(proposal, latency_s=latency, raw=content[:2000], meta=meta)

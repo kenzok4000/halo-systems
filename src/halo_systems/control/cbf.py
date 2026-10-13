@@ -35,7 +35,24 @@ def _rows_dot(a, b):
 def build_constraints(p, v, nbr_pos, nbr_vel, nbr_age, active, *, d_safe, a_brake, gamma, max_neighbours=MAX_NEIGHBOURS,
                       stale_growth=0.5, max_age=3.0, world=None, obstacle_clearance=1.0, floor_z=1.0,
                       obstacle_range=OBSTACLE_RANGE_M):
-    """Linear constraints G a <= b for every drone: shapes (n, K, 3), (n, K)."""
+    """Linear constraints G a <= b on every drone's acceleration.
+
+    Returns ``(G, b, mask)`` with shapes (n, K, 3), (n, K) and (n, K). ``mask``
+    is False for unused rows (fewer such neighbours or obstacles than rows)
+    and for every row of a drone that is not active. The columns, in order:
+
+    * ``[0, k)``: the nearest active neighbours heard within ``max_age``,
+      k = min(max_neighbours, n - 1);
+    * ``[k, k + OBSTACLE_ROWS)``: the nearest obstacle surfaces within
+      ``obstacle_range``, present only when ``world`` has obstacles;
+    * the last column: the ground.
+
+    ``ImprovedController.command`` picks out the obstacle rows by this layout.
+    Units: ``d_safe``, ``obstacle_clearance``, ``floor_z`` and ``obstacle_range``
+    in m; ``a_brake``, the braking deceleration the barriers assume, in m/s^2;
+    ``gamma``, the barrier decay rate, in 1/s; ``stale_growth`` in m per second
+    of message age; ``max_age`` in s.
+    """
     n = len(p)
     rows_g, rows_b, rows_m = [], [], []
 
@@ -98,7 +115,12 @@ def build_constraints(p, v, nbr_pos, nbr_vel, nbr_age, active, *, d_safe, a_brak
 def project(a_nom, g, b, mask, a_max, iterations=12):
     """Closest acceleration to ``a_nom`` with G a <= b and |a| <= a_max (Dykstra).
 
-    Also returns which constraints the nominal command violated (the filter's interventions).
+    Runs a fixed number of sweeps (``iterations``), so the half-space
+    constraints hold only approximately. The bound |a| <= a_max holds exactly,
+    since the ball is the last projection of every sweep.
+
+    Also returns which constraints the nominal command violated (the filter's
+    interventions), not which are active at the returned acceleration.
     """
     n, k, _ = g.shape
     active_rows = mask & (_rows_dot(g, a_nom[:, None, :]) - b > 1e-6)

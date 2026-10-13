@@ -30,6 +30,7 @@ HELD_OUT_SEEDS = tuple(range(1000, 1020))
 
 
 def make_controller(spec: str, body: DroneBody, world):
+    """``original``, ``improved``, or ``improved-no-<feature>[-<feature>...]`` with features from ``FEATURES``."""
     if spec == "original":
         return OriginalController(body, world)
     if spec == "improved":
@@ -44,6 +45,7 @@ def make_controller(spec: str, body: DroneBody, world):
 
 
 def make_supervisor(spec: str, **kw):
+    """``fixed`` (or ``none``, the same), ``rule``, ``nemotron[:<model id>]`` or ``nemotron-think[:<model id>]``."""
     if spec in ("fixed", "none"):
         return FixedSupervisor()
     if spec == "rule":
@@ -55,6 +57,7 @@ def make_supervisor(spec: str, **kw):
 
 
 def split_config(config: str) -> tuple[str, str]:
+    """``controller+supervisor`` -> (controller, supervisor); a missing supervisor means ``fixed``."""
     ctrl, _, sup = config.partition("+")
     return ctrl, (sup or "fixed")
 
@@ -62,7 +65,18 @@ def split_config(config: str) -> tuple[str, str]:
 def run_one(scenario: str, seed: int, config: str, n: int | None = None, record_hz: float = 0.0,
             keep_result: bool = False, supervisor_kw: dict | None = None, gps_scale: float | None = None,
             **overrides):
-    """``gps_scale`` multiplies the scenario's GPS noise and bias (the navigation-error sweep)."""
+    """Fly one scenario with one configuration and return its row of metrics.
+
+    The row is a flat dict: scenario, seed, config, controller, supervisor and n,
+    then ``wall_s`` and every key from ``compute_metrics``. With ``keep_result`` the
+    return value is ``(row, RunResult)``. ``gps_scale`` multiplies the scenario's
+    GPS noise and bias (the navigation-error sweep), and ``overrides`` replace
+    ``Scenario`` fields (see ``scenarios.make``); both are recorded in the row
+    when given.
+    Nemotron runs default to ``strict=True``: an error every later call would hit
+    too (no key, key rejected, budget cap) fails the run, so a flight the rule
+    fallback really flew is never reported as a Nemotron result.
+    """
     ctrl_spec, sup_spec = split_config(config)
     sc = make(scenario, seed, n=n, **overrides)
     if gps_scale is not None:
@@ -101,6 +115,9 @@ def run_grid(scenarios, seeds, configs, out_path: str | os.PathLike, n=None, wor
     """Run every combination and append rows to ``out_path`` (JSON lines). Skips rows already there."""
     out = Path(out_path)
     out.parent.mkdir(parents=True, exist_ok=True)
+    # A row is keyed by (scenario, seed, config, actual n, gps_scale or 1.0); other
+    # ``extra`` options are not part of the key. Error rows are not counted as
+    # done, so they are run again.
     done = set()
     rows = []
     if resume and out.exists():
@@ -114,12 +131,14 @@ def run_grid(scenarios, seeds, configs, out_path: str | os.PathLike, n=None, wor
         for nn in ns:
             for cfg in configs:
                 for s in seeds:
+                    # A default-n job builds the scenario only to learn its n.
                     key_n = nn if nn is not None else make(sc, s).n
                     if (sc, s, cfg, key_n, (extra or {}).get("gps_scale", 1.0)) in done:
                         continue
                     jobs.append((sc, s, cfg, nn, dict(extra or {})))
     workers = workers or max(1, (os.cpu_count() or 2))
     t0 = time.perf_counter()
+    # Rows are appended as runs finish, so the file is not in seed order.
     with ProcessPoolExecutor(workers) as ex:
         futures = [ex.submit(_job, j) for j in jobs]
         for k, fut in enumerate(as_completed(futures), 1):

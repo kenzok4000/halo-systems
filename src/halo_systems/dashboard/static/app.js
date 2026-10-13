@@ -42,6 +42,8 @@ let world = new THREE.Group(); scene.add(world);
 let droneMesh = null, slotMesh = null, shadowMesh = null, pathLine = null, windArrow = null;
 let targetMeshes = [], surveyBox = null;
 const TARGET_HIDDEN = new THREE.Color(0x5a4a3a), TARGET_FOUND = new THREE.Color(0xff5a1f);
+// Keyed by drone status (sim/engine.py): 0 active, 1 failed (motor out, falling), 2 crashed,
+// 3 retired (left on low battery), 4 down (a failed drone that hit the ground or an obstacle).
 const COLORS = { 0: new THREE.Color(0x4fb3a9), 1: new THREE.Color(0xe5625c), 2: new THREE.Color(0xe5625c),
   3: new THREE.Color(0x9aa3ad), 4: new THREE.Color(0xe5625c) };
 const dummy = new THREE.Object3D();
@@ -124,6 +126,8 @@ function drawFrame(f) {
     droneMesh.setColorAt(i, COLORS[f.s[i]] || COLORS[0]);
     dummy.position.set(v.x, 0.05, v.z); dummy.rotation.set(-Math.PI / 2, 0, 0); dummy.updateMatrix();
     shadowMesh.setMatrixAt(i, dummy.matrix);
+    // slot is null for drones no longer flying, so their ring is parked out of view. The camera
+    // follows the centroid of the flying drones' actual positions, not of their slots.
     const slot = f.slots[i];
     if (slot) {
       const sv = toV(slot);
@@ -200,6 +204,8 @@ function onAi(a) {
 }
 
 function onEvent(e) {
+  // Directive changes are logged from the "directive" stream, which has the reason and any validator
+  // violations. Injections are logged by the button handlers ("you injected ...").
   const skip = { directive: 1, injected: 1 };
   if (skip[e.kind]) return;
   // One function per kind: only the matching one runs, since each reads fields only its kind has.
@@ -267,6 +273,8 @@ async function start(extra = {}) {
   source.addEventListener("event", (e) => onEvent(JSON.parse(e.data)));
   source.addEventListener("end", (e) => {
     const m = JSON.parse(e.data).metrics || {};
+    // The crash count here is the benchmark "crashes" metric (value() in eval/stats.py): a drone-to-drone
+    // collision counts 2. The live Crashes counter (metrics.collisions in each frame) counts it once.
     logItem("event", `<b>Flight ended.</b> In formation ${fmt(m.time_formed_pct, 0)}% of the time, ${(m.collisions || 0) * 2 + (m.obstacle_crashes || 0) + (m.ground_crashes || 0)} crashes, completed: ${m.completed ? "yes" : "no"}`);
     source.close(); source = null;
   });

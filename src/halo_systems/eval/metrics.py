@@ -1,19 +1,30 @@
 """Run metrics, all computed from ground truth recorded by the engine.
 
-Definitions (also in docs/BENCHMARKS.md):
+Definitions (also in docs/BENCHMARKS.md), with the result keys they fill:
 
 * tracking error: distance from each flying drone to its own slot (RMS over
   the swarm) after removing the swarm's mean offset ("shape error"), so a
-  formation blown sideways in one piece still tracks well.
+  formation blown sideways in one piece still tracks well. Reported as
+  ``shape_error_*``; ``formation_rms_mean_m`` is the same distance with no
+  offset removed.
 * formation error (integrity): RMS distance from the flying drones to the
   ideal formation for their number, with the best matching of drones to
   positions. It does not care which slot a controller gave each drone, so
   holes left by lost drones and half-finished changes both count. This is
-  the headline formation-quality number.
+  the headline formation-quality number. Reported as ``formation_error_*``
+  and ``time_formed_pct``.
 * formed: formation error under ``FORMED_M`` for at least ``HOLD_S`` seconds.
-* settle time: from the start (or a formation change) until formed.
+* directive change: any accepted change of plan, including a speed or
+  altitude change that keeps the formation (``directive_changes``).
+* settle time: from the start (``settle_time_s``) or from a directive change
+  (``transition_settle_s``) until formed. ``settle_time_s`` is None if the
+  swarm never forms; a change after which it never forms again counts the
+  rest of the flight.
 * recovery time: from a disturbance (gust front, motor failure, radio
-  blackout) until formed again; 0 if the shape never broke.
+  blackout) until formed again; 0 if the shape did not break within 10 s of
+  the disturbance, and the rest of the flight if it never forms again.
+* steady state (``*_steady_m``): from the first settle (or the start, if the
+  swarm never forms), leaving out 10 s after each disturbance or change.
 * collision: two bodies' centres closer than two body radii at any instant
   of a step (swept, so fast crossings count). Near miss: closer than two
   radii plus 0.5 m, counted once per encounter.
@@ -70,7 +81,7 @@ def compute_metrics(sim) -> dict:
     events = sim.events
 
     settle = _first_formed(t, form, 0.0)
-    # Formation changes ordered by an operator or a supervisor.
+    # Plan changes ordered by an operator or a supervisor (formation, spacing, speed, altitude or margin).
     change_times = [e["t"] for e in events if e["kind"] == "directive"]
     transition = []
     for ct in change_times:

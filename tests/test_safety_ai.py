@@ -50,11 +50,13 @@ class ValidatorTest(unittest.TestCase):
         self.cur = Directive("grid", 6.0, 5.0, 20.0, 1.0)
 
     def test_clamps_out_of_range_values(self):
+        """A directive outside the flight envelope is clamped to the limits, not passed through."""
         r = self.v.check({**self.cur.to_dict(), "speed_mps": 40, "altitude_m": 500}, self.cur, 10.0, "nemotron")
         self.assertEqual(r.action, "clamped")
         self.assertEqual((r.directive.speed_mps, r.directive.altitude_m), (12.0, 120.0))
 
     def test_rejects_unknown_shape_and_non_numbers(self):
+        """An unknown formation, a non-number, NaN or a non-object is rejected and the current directive stays."""
         for bad in ({**self.cur.to_dict(), "formation": "star"}, {**self.cur.to_dict(), "spacing_m": "wide"},
                     {**self.cur.to_dict(), "speed_mps": float("nan")}, "not an object"):
             r = self.v.check(bad, self.cur, 10.0, "nemotron")
@@ -62,10 +64,12 @@ class ValidatorTest(unittest.TestCase):
             self.assertEqual(r.directive, self.cur)
 
     def test_raises_spacing_to_the_safe_floor(self):
+        """Spacing below what body size, safety margin and navigation error need is raised to that floor."""
         r = self.v.check({**self.cur.to_dict(), "spacing_m": 2.0, "safety_margin_m": 2.0}, self.cur, 10.0, "rule")
         self.assertGreaterEqual(r.directive.spacing_m, 2 * 0.15 + 2.0 + 3 * math.sqrt(2) * 0.3 - 1e-6)
 
     def test_rate_limits_plan_changes(self):
+        """A plan change less than 3 s after the last one is rejected; a later one is accepted."""
         a = self.v.check({**self.cur.to_dict(), "formation": "line"}, self.cur, 10.0, "nemotron")
         self.assertTrue(a.ok)
         b = self.v.check({**a.directive.to_dict(), "formation": "ring"}, a.directive, 11.0, "nemotron")
@@ -76,6 +80,7 @@ class ValidatorTest(unittest.TestCase):
 
 class CbfTest(unittest.TestCase):
     def test_head_on_pair_is_made_to_brake(self):
+        """Two drones closing head-on are made to brake, and the filtered command meets the constraints."""
         p = np.array([[0.0, 0, 10], [8.0, 0, 10]])
         v = np.array([[5.0, 0, 0], [-5.0, 0, 0]])
         age = np.zeros((2, 2))
@@ -90,6 +95,7 @@ class CbfTest(unittest.TestCase):
         self.assertLess(np.max(np.where(m, viol, -np.inf)), 1e-2)
 
     def test_far_apart_leaves_command_unchanged(self):
+        """Drones far apart keep their nominal command exactly."""
         p = np.array([[0.0, 0, 10], [80.0, 0, 10]])
         v = np.zeros((2, 3))
         g, b, m = build_constraints(p, v, np.tile(p, (2, 1, 1)), np.tile(v, (2, 1, 1)), np.zeros((2, 2)),
@@ -199,6 +205,7 @@ class ClientTest(unittest.TestCase):
             self.tmp.cleanup()
 
     def test_success_records_usage_and_never_logs_the_key(self):
+        """A successful call records tokens and request id; the key goes in the header, never into the call log."""
         c, t = self.client([ok(DIRECTIVE_JSON)])
         r = c.chat("nvidia/nemotron-test", [{"role": "user", "content": "hi"}])
         self.assertEqual(r.record.total_tokens, 120)
@@ -243,6 +250,7 @@ class ClientTest(unittest.TestCase):
         self.assertEqual(len(t.calls), 1)
 
     def test_deadline_bounds_the_whole_call(self):
+        """The deadline bounds the whole call, retries and waits included, not each attempt."""
         clock = [0.0]
 
         def slow(url, headers, body, timeout):
@@ -268,6 +276,7 @@ class ClientTest(unittest.TestCase):
             c.chat("m", [])
 
     def test_key_is_never_sent_over_plain_http(self):
+        """With an http:// base URL nothing is sent, for chat or the model list, and the chat error is fatal."""
         t = FakeTransport([])
         c = NebiusClient(api_key=FAKE_KEY, base_url="http://api.example.invalid/v1", transport=t,
                          get_transport=t, sleep=lambda s: None)
@@ -279,6 +288,7 @@ class ClientTest(unittest.TestCase):
         self.assertEqual(t.calls, [])
 
     def test_redirects_are_not_followed_so_the_key_stays_put(self):
+        """A redirect is returned, not followed, so the key never reaches the redirect target."""
         import threading
         from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
         from halo_systems.ai.client import _http_post
@@ -331,6 +341,7 @@ class BudgetTest(unittest.TestCase):
         return c, t
 
     def test_cap_stops_the_call_before_it_is_sent(self):
+        """A call that could cross the spend cap is refused with a fatal error before anything is sent."""
         c, t = self.client([ok(DIRECTIVE_JSON)], cap=0.0001)
         with self.assertRaises(NebiusError) as ctx:
             c.chat("nvidia/nemotron-nano-test", [{"role": "user", "content": "x"}], max_tokens=1200)
@@ -361,6 +372,7 @@ class BudgetTest(unittest.TestCase):
             del os.environ["NEBIUS_PRICE_INPUT_PER_M"], os.environ["NEBIUS_PRICE_OUTPUT_PER_M"]
 
     def test_strict_supervisor_stops_on_a_dead_key_instead_of_falling_back(self):
+        """On a rejected key a strict supervisor raises; a non-strict one falls back to the rules."""
         responses = [(401, {}, b'{"detail":"Unable to authenticate"}')]
         c, _ = self.client(list(responses))
         loose = NemotronSupervisor(client=c, model="nvidia/nemotron-test")
@@ -430,6 +442,7 @@ class NemotronSupervisorTest(unittest.TestCase):
         self.assertIn("HTTP 500", d.meta["error"])
 
     def test_record_then_replay_gives_the_same_answer_without_calls(self):
+        """A recorded call replays to the same directive with no request; a miss falls back, or raises when strict."""
         with tempfile.TemporaryDirectory() as tmp:
             path = Path(tmp) / "cache.jsonl"
             sup, _ = self.make([ok(DIRECTIVE_JSON)], CallCache(path, "record"))
@@ -532,6 +545,7 @@ class StressSearchTest(unittest.TestCase):
         self.assertEqual((s["failures"], s["distinct_failing_conditions"]), (3, 2))   # a re-flown test counts once
         self.assertEqual(s["mildest_failure_stress"], 0.0)
         table = compare_searches([{"searcher": "corners", "history": history}])
+        # searcher | searches | flights | failures | distinct failing conditions
         self.assertIn("| corners | 1 | 3 | 3 | 2 |", table)
         table = compare_searches([{"searcher": "corners", "history": history}, {"searcher": "corners", "history": history[:1]}])
         self.assertIn("| corners | 2 | 4 | 4 | 2 |", table)   # the same condition found by two searches counts once
@@ -540,6 +554,8 @@ class StressSearchTest(unittest.TestCase):
         orig = {"searcher": "corners", "history": [{**h, "outcome": o} for h, o in zip(history, [calm, calm, out])]}
         paired = compare_replays({"c.json": orig, "c_nocbf.json": {"searcher": "corners", "replay_of": "c.json",
                                                                    "config": "improved-no-cbf+rule", "history": flown}})
+        # tests from | re-flown on | flights | failed as searched | failed when re-flown | failed only when
+        # re-flown | failed only as searched | drones lost as searched | drones lost when re-flown
         self.assertIn("| corners | improved-no-cbf+rule | 3 | 1 | 2 | 1 | 0 | 1 | 2 |", paired)
 
     def test_replay_flies_the_same_tests_with_another_configuration(self):

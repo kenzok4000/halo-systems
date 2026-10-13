@@ -1,20 +1,32 @@
 """The improved conventional controller.
 
-Same sensing and the same acceleration budget as the original, with five
-standard techniques from the multi-robot literature:
+Same sensing and the same acceleration budget as the original, with seven
+standard techniques from the multi-robot literature. Each can be switched
+off for the ablation study, under the names in ``FEATURES`` (so a config
+``improved-no-cbf`` flies without the safety filter):
 
-1. Hungarian slot re-assignment after every formation change or loss, so
-   paths do not cross and gaps close (``plan.reassign``).
-2. Slots that glide to a new formation at bounded speed (``plan.blend``).
-3. A virtual leader that slows while the formation is out of shape
-   (``plan.pace``).
-4. PD tracking of each slot plus a consensus term on the relative shape, so
-   a gust that pushes the whole swarm does not tear the formation apart.
-5. A control-barrier-function safety filter (``cbf.py``) for drone-to-drone,
-   obstacle and ground clearance, with margins that grow with message age.
+1. ``reassign``: Hungarian slot re-assignment after every formation change
+   or loss, so paths do not cross and gaps close (``plan.py``).
+2. ``blend``: slots that glide to a new formation at bounded speed
+   (``plan.py``).
+3. ``pace``: a virtual leader that slows while the formation is out of
+   shape and before bends (``plan.py``).
+4. ``consensus``: a term on the relative shape, added to PD tracking of
+   each slot, so a gust that pushes the whole swarm does not tear the
+   formation apart.
+5. ``cbf``: a control-barrier-function safety filter (``cbf.py``) for
+   drone-to-drone, obstacle and ground clearance, with margins that grow
+   with message age. Two helpers come with it: near mapped obstacles the
+   leader is held to a sensing-limited speed, and a drone whose command
+   runs into an obstacle constraint is pushed sideways, toward its slot's
+   side, to break deadlocks.
+6. ``filter``: a simple complementary filter on the drone's own navigation
+   estimate, which removes measurement jitter from the motor commands. It
+   filters the state; it is not the safety filter.
+7. ``feedforward``: the slot's own acceleration, low-passed over 0.2 s.
 
-It also smooths its own navigation estimate with a simple complementary
-filter, which removes measurement jitter from the motor commands.
+Each step: state filter, speed cap, ``plan.advance``, PD + consensus +
+feedforward, soft speed limit, clip to the acceleration limit, safety filter.
 """
 
 from __future__ import annotations
@@ -38,12 +50,12 @@ class ImprovedController(Controller):
     name = "improved"
     label = "Improved controller"
 
-    kp = 3.0
-    kd = 3.2
-    kc = 0.8
-    a_brake = 3.0
-    gamma = 3.0
-    nav_k = 2.0      # safety distances grow by this many sigma of navigation error (2 vs 0 and 3 on seeds 0-9)
+    kp = 3.0         # 1/s^2, PD gain on the slot position error
+    kd = 3.2         # 1/s, PD gain on the slot velocity error (damping ratio kd / (2 sqrt(kp)), about 0.92)
+    kc = 0.8         # 1/s^2, consensus gain on the relative shape
+    a_brake = 3.0    # m/s^2, the braking deceleration every barrier assumes
+    gamma = 3.0      # 1/s, barrier decay rate
+    nav_k = 2.0      # safety distances grow by this many sigma of navigation error (picked from 0, 2, 3 on tuning seeds 0-9)
 
     def __init__(self, *args, features=FEATURES, speed_limit: float = 20.0, **kwargs):
         super().__init__(*args, speed_limit=speed_limit, **kwargs)

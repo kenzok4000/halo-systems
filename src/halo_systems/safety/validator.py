@@ -3,7 +3,8 @@
 Every directive from a supervisor (rules, Nemotron or an operator) passes
 through ``SafetyValidator.check`` before the controller sees it:
 
-1. Schema: required fields, types, a known formation, finite numbers.
+1. Schema: a missing field keeps its current value (noted); an unknown
+   formation, a non-number or a non-finite number rejects the proposal.
 2. Bounds: values outside the flight envelope are clamped and the clamp is
    recorded; nothing outside the envelope reaches the controller.
 3. Feasibility: spacing never drops below what the drone size, safety
@@ -25,6 +26,9 @@ from ..control.formations import SHAPES
 
 @dataclass
 class Limits:
+    # Each tuple is (lo, hi). The simulator replaces the altitude ceiling with the scenario's. The
+    # supervisor prompt (ai/prompts.py) states the 3 s change interval, so a new value needs the
+    # prompt changed to match, and recorded Nemotron calls then no longer replay.
     spacing_m: tuple = (2.0, 15.0)
     speed_mps: tuple = (0.5, 12.0)
     altitude_m: tuple = (5.0, 120.0)
@@ -60,6 +64,14 @@ class SafetyValidator:
         return max(self.limits.spacing_m[0], 2 * self.body_radius_m + margin + 3 * rel_sigma)
 
     def check(self, proposal, current: Directive, t: float, source: str) -> ValidationResult:
+        """Check ``proposal`` (a Directive or a dict) against ``current`` at time ``t``.
+
+        The result's ``directive`` is what is now in force: the checked proposal,
+        or ``current`` if it was rejected. It carries ``source`` from this call;
+        a ``source`` in the proposal is ignored. The rate limit applies only to
+        plan changes, so repeating the current plan, with a new reason say, is
+        never held back by it.
+        """
         violations: list[str] = []
         if isinstance(proposal, Directive):
             data = proposal.to_dict()

@@ -11,10 +11,12 @@ import numpy as np
 
 
 def hungarian(cost: np.ndarray) -> np.ndarray:
-    """Minimum-cost assignment of rows to columns (rows <= columns).
+    """Minimum-cost assignment of rows to columns, for any rectangular cost.
 
-    Returns ``col_of_row`` (length = rows). Shortest augmenting path with
-    potentials, the classic O(n^2 m) formulation.
+    Returns ``col_of_row`` (length = rows). With more rows than columns it
+    solves the transpose, and rows left without a column get -1. Shortest
+    augmenting path with potentials, the classic O(n^2 m) formulation (as
+    written up on e-maxx / cp-algorithms).
     """
     cost = np.asarray(cost, dtype=float)
     n, m = cost.shape

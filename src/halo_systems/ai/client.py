@@ -39,6 +39,8 @@ from .budget import Budget, BudgetExceeded, Pricing, estimate_prompt_tokens
 
 DEFAULT_BASE_URL = "https://api.tokenfactory.nebius.com/v1"
 RETRY_STATUS = {408, 409, 425, 429, 500, 502, 503, 504}
+# Any long token, with "Bearer " in front if there is one. redact() replaces only the tokens that follow
+# "Bearer "; the others (request ids, cache keys) are left as they are so the logs stay readable.
 _KEY_PATTERN = re.compile(r"(Bearer\s+)?[A-Za-z0-9_\-\.]{24,}")
 
 
@@ -55,6 +57,9 @@ class NebiusError(RuntimeError):
 
 @dataclass
 class CallRecord:
+    """One model call, across all its attempts. Written to the call log, and stored in the replay cache
+    by the supervisor."""
+
     call_id: str
     role: str
     model: str
@@ -71,6 +76,9 @@ class CallRecord:
     cost_usd: float = 0.0
     finish_reason: str | None = None
     response_format: str | None = None
+    # The client never sets ``cached`` or ``extra``; they keep their defaults and stay in the record so
+    # the call log and cache files keep the same fields. A replayed answer is marked in the supervisor's
+    # Decision.meta["cached"] instead.
     cached: bool = False
     extra: dict = field(default_factory=dict)
 
@@ -86,6 +94,9 @@ class ChatResult:
 
 
 class TokenBucket:
+    """Client-side rate limit: up to ``burst`` requests back to back, refilled at ``rate_per_s``.
+    It waits with ``time.sleep``, not the client's injected ``sleep``."""
+
     def __init__(self, rate_per_s: float, burst: int):
         self.rate = rate_per_s
         self.capacity = burst
@@ -113,6 +124,7 @@ def reasoning(on: bool) -> dict:
 
 
 def redact(text: str, secret: str | None) -> str:
+    """Replace the configured key wherever it appears, then any long token that follows ``Bearer ``."""
     if not text:
         return text
     if secret:
@@ -159,6 +171,14 @@ def _http_get(url: str, headers: dict, timeout: float):
 
 
 class NebiusClient:
+    """Chat completions on Nebius Token Factory, with retries, rate limit, spend guard and call log.
+
+    ``transport``, ``get_transport``, ``sleep`` and ``clock`` can be replaced; the tests use them to
+    script HTTP replies and time (``FakeTransport`` in ``tests/test_safety_ai.py``). The rate limit
+    belongs to this client only: each benchmark run builds its own client, so parallel workers each
+    get their own ``rate_per_s``. ``budget`` defaults to the shared ledger (``Budget()``).
+    """
+
     def __init__(self, api_key: str | None = None, base_url: str | None = None, *, timeout_s: float = 30.0,
                  max_retries: int = 4, backoff_base_s: float = 1.0, backoff_max_s: float = 20.0,
                  rate_per_s: float = 2.0, burst: int = 4, log_path: str | os.PathLike | None = None,
@@ -231,6 +251,7 @@ class NebiusClient:
         past it, and the last attempt's timeout is cut to what is left. An answer that arrives later
         than the caller can use it is worth nothing, so the caller falls back sooner instead.
         """
+        # Before any attempt: check the key and the URL (both fatal), price the worst case, build the body.
         record = CallRecord(call_id=uuid.uuid4().hex[:12], role=role, model=model, started_at=time.time())
         if not self.configured:
             record.status, record.error = "error", "NEBIUS_API_KEY is not set"
@@ -262,6 +283,7 @@ class NebiusClient:
             self.sleep(seconds)
             return True
 
+        # One pass per attempt: deadline, budget check, rate limit, then send.
         while attempt <= self.max_retries:
             if left() <= 0:
                 last_error = f"deadline of {deadline_s:g} s passed; last error: {last_error}"
@@ -281,6 +303,7 @@ class NebiusClient:
                                                        json.dumps(payload).encode(),
                                                        min(timeout_s or self.timeout_s, left()))
             except (urllib.error.URLError, TimeoutError, ConnectionError, OSError) as exc:
+                # Network error or timeout: back off and retry while attempts and time are left.
                 last_error, last_status = f"network error: {type(exc).__name__}: {exc}", None
                 # The server may have done the work before the connection broke: count the worst case.
                 self.budget.add(model=model, role=role, cost_usd=worst_case, status="unknown", call_id=record.call_id,
@@ -292,6 +315,8 @@ class NebiusClient:
             record.request_id = headers.get("x-request-id") or headers.get("request-id") or record.request_id
             text = body.decode("utf-8", "replace") if isinstance(body, (bytes, bytearray)) else str(body)
             last_status = status
+            # 200: parse the reply and bill this attempt, then return the answer, retry, or stop if the
+            # reply was cut off.
             if status == 200:
                 data, content = None, ""
                 try:
@@ -332,11 +357,14 @@ class NebiusClient:
                 return ChatResult(content, record, data)
             if status == 400 and use_json and "response_format" in text:
                 # Model does not support JSON mode: remember and retry without it (prompt still asks for JSON).
+                # This attempt does not count against max_retries.
                 self._json_mode_unsupported.add(model)
                 payload.pop("response_format", None)
                 use_json = False
                 attempt -= 1
                 continue
+            # Any other HTTP error: retry only the statuses in RETRY_STATUS. A final 401 or 403 is
+            # raised below as fatal.
             last_error = f"HTTP {status}: {redact(text, self.api_key)[:300]}"
             if status in RETRY_STATUS and attempt <= self.max_retries \
                     and wait(self._backoff(attempt, headers.get("retry-after"))):

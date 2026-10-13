@@ -2,12 +2,19 @@
 
 Nemotron turns text such as "sweep the 300 x 200 m field line abreast,
 8 m apart at 30 m with 12 drones" into a ``MissionSpec`` JSON object.
-The spec is then validated (schema, units, bounds, geofence) before any
-flight is built from it, and the directive part goes through the same
-safety validator as every supervisor directive. Requests outside civilian
-use (weapons, attacking or ramming anything, dropping objects on people,
-jamming) are refused by the compiler and by a keyword guard, and never
-become a flight.
+The model converts units itself (the prompt lists the factors); the code
+does not check them. The spec is then checked in three places:
+``normalise`` checks types, the formation and route type names, and that
+numbers are finite and not negative (a bad field becomes null and is
+listed as a problem); ``eval.scenarios.from_mission`` fills nulls from
+``DEFAULTS``, keeps the drone count between 2 and 64 and caps a survey area
+at 1500 m a side and a transit at 3000 m; and at take-off the engine passes
+the directive through the same safety validator as every supervisor
+directive, which clamps it to the flight envelope, including the
+operator's altitude ceiling. Requests outside civilian use (weapons,
+attacking or ramming anything, dropping objects on people, jamming) are
+refused by a keyword guard before the model is called, or by the model
+itself, and never become a flight.
 
 A deterministic regex/keyword parser is the baseline it is scored against
 (``halo mission-eval``).
@@ -55,13 +62,17 @@ something (give length_m if stated).
 down or intimidate people, animals or vehicles, to carry or drop weapons or objects onto people, or to jam \
 or interfere with other aircraft or radios."""
 
+# Whole words anywhere in the text, so some civilian requests match too, for example "shoot aerial
+# video", "traffic jam" and "lightning strike".
 _HARM = re.compile(r"\b(attack|ram|ramming|strike|kill|weapon|bomb|explosive|grenade|shoot|enemy|target(?:ing)? (?:the )?"
                    r"(?:person|people|vehicle|crowd)|jam(?:ming)?|intimidat\w*|harass\w*)\b|drop .{0,30}\bon (?:the )?"
                    r"(?:people|crowd|person|protesters?)", re.I)
 
 
 def harmful(text: str) -> bool:
-    """Keyword guard that runs before and after the model (defence in depth)."""
+    """Keyword guard on the operator's text. ``compile_with_model`` runs it before calling the model, and
+    a match refuses the request without a call; ``regex_baseline`` runs it too. The model's reply is not
+    checked with it."""
     return bool(_HARM.search(text))
 
 
@@ -123,7 +134,17 @@ def normalise(obj: dict) -> tuple[dict, list[str]]:
 
 def compile_with_model(text: str, client, model: str, temperature: float = 0.0, extra_body: dict | None = None,
                        think: bool = False):
-    """Ask Nemotron for a MissionSpec. Returns (spec, problems, call record dict)."""
+    """Ask Nemotron for a MissionSpec. Returns (spec, problems, call record dict).
+
+    * If the keyword guard matches, the model is not called: the result is a refused spec, no problems
+      and None for the record (held-out request 108 in ``results/mission_eval_*.json`` is one).
+    * A reply with no parsable JSON object gives ``empty_spec()``, an "unparsable reply" problem and
+      the record.
+    * A ``NebiusError`` from the client is not caught here; it reaches the caller.
+
+    With ``think=True``, ``max_tokens`` is 6000 instead of 1500, because the reasoning counts against it
+    (see ``client.reasoning``).
+    """
     from .client import extract_json, reasoning
     if extra_body is None:
         extra_body = reasoning(think)

@@ -1,11 +1,11 @@
 """Point-mass multirotor dynamics with an autopilot thrust loop.
 
-This is the same model as in the original engine: thrust bounded
-by the thrust-to-weight ratio, quadratic air drag on the air-relative
-velocity, gravity, semi-implicit Euler at 50 Hz. Two additions, both
-documented in docs/ARCHITECTURE.md: a first-order thrust response (motor
-lag) and a no-downward-thrust limit, since a quadcopter cannot push itself
-down. There are no attitude or rotor dynamics.
+This is the same model as in the earlier private simulator (not in this
+repo): thrust bounded by the thrust-to-weight ratio, quadratic air drag on
+the air-relative velocity, gravity, semi-implicit Euler at 50 Hz. Two
+additions, both documented in docs/ARCHITECTURE.md: a first-order thrust
+response (motor lag) and a no-downward-thrust limit, since a quadcopter
+cannot push itself down. There are no attitude or rotor dynamics.
 """
 
 from __future__ import annotations
@@ -18,7 +18,7 @@ G_VEC = np.array([0.0, 0.0, -GRAVITY])
 
 
 def drag_accel(velocity: np.ndarray, body: DroneBody) -> np.ndarray:
-    """Drag acceleration magnitude-direction for velocities (n, 3) (opposes motion)."""
+    """Quadratic drag acceleration for velocities (n, 3); opposes motion."""
     speed = np.linalg.norm(velocity, axis=-1, keepdims=True)
     return -0.5 * AIR_DENSITY * body.drag_area_m2 * speed * velocity / body.mass_kg
 
@@ -43,6 +43,9 @@ def integrate(p, v, thrust, thrust_cmd, wind, powered, body: DroneBody, dt: floa
     alpha = min(1.0, dt / max(body.motor_tau_s, 1e-9))
     thrust = thrust + alpha * (thrust_cmd - thrust)
     thrust = np.where(powered[:, None], thrust, 0.0)
+    # Drag is written out here on the air-relative velocity and divided by the mass together with the
+    # thrust (drag_accel is the autopilot's version, on its ground-velocity estimate). Recorded runs
+    # replay exactly only while this arithmetic, its order included, stays as it is.
     rel = v - wind
     speed = np.linalg.norm(rel, axis=1, keepdims=True)
     drag = -0.5 * AIR_DENSITY * body.drag_area_m2 * speed * rel

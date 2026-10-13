@@ -15,7 +15,14 @@ from .plan import FormationPlan
 
 @dataclass
 class Observation:
-    """Everything a controller may use at one step (no ground truth)."""
+    """Everything a controller may use at one step.
+
+    Positions and velocities are estimates and radio data, never ground truth.
+    ``active`` is the exception: the simulator sets it to the true mask of
+    drones flying in formation, except in the copy passed to
+    ``update_members``, where it marks the drones the swarm still counts (a
+    failed drone stays counted until its failure is noticed).
+    """
 
     t: float
     p_est: np.ndarray        # (n, 3) own navigation estimates
@@ -31,6 +38,7 @@ class Controller:
 
     name = "controller"
     label = "Controller"
+    # Switches for the FormationPlan built in reset() (see plan.py).
     reassign = False
     blend = False
     pace = False
@@ -40,6 +48,8 @@ class Controller:
         self.body = body
         self.world = world
         self.accel_limit = accel_limit
+        # Only ImprovedController uses speed_limit, as a soft limit (20 m/s by default there).
+        # OriginalController caps its velocity target instead (see original.py).
         self.speed_limit = speed_limit
         self.floor_z = floor_z
         # Accuracy of the navigation sensor (1 sigma per axis, metres), set by the simulator from the
@@ -58,6 +68,14 @@ class Controller:
         self.plan.set_members(np.nonzero(obs.active)[0], obs.p_est, obs.t)
 
     def formation_error_estimate(self, obs: Observation) -> float:
+        """RMS distance (m) from each active drone's position estimate to its slot.
+
+        Supervisors see this as ``formation.rms_error_m``. ``shape_error_estimate``
+        removes the swarm's common offset; the improved controller paces the
+        leader on it. The benchmark's formation error is a third measure:
+        ``Simulation.integrity_error`` uses true positions and the best matching
+        of drones to the ideal shape.
+        """
         pos, _ = self.plan.slots()
         a = obs.active
         if not a.any():

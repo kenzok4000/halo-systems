@@ -1,13 +1,21 @@
 """Record and replay of model calls, so benchmark runs can be reproduced exactly.
 
-``record`` mode makes live calls and stores each reply under a hash of the
-request (model, messages, temperature, options). A call that failed is stored
-too, with its error and latency, so a replay fails at the same point the live
-run did instead of drifting onto a different path. ``replay`` mode answers from the
-store only and fails loudly on a miss, so a replayed benchmark can never
-silently mix in new live answers. Stored entries keep the original call
-record (latency, tokens, request id), marked ``cached`` when replayed, so
-reports show what the live call cost, never a made-up number.
+``record`` mode answers from the store when the request is already there,
+and otherwise makes a live call and stores the reply under a hash of the
+request (model, messages, temperature, options). A call that failed for a
+non-fatal reason is stored too, with its error and latency, so a replay fails
+at the same point the live run did instead of drifting onto a different path.
+``replay`` mode answers from the store only and never makes a live call, so a
+replayed benchmark can never silently mix in new live answers. Stored entries
+keep the original call record (latency, tokens, request id), so reports show
+what the live call cost, never a made-up number.
+
+``CallCache`` itself only stores and looks up entries. Serving a hit, failing
+on a replay miss and marking a replayed answer all happen in
+``NemotronSupervisor.decide`` (``supervisor/nemotron.py``): a hit sets
+``meta["cached"]`` on the decision, and a replay miss raises a fatal
+``NebiusError``. That stops a benchmark run (``strict=True``); otherwise the
+step falls back and the error is recorded in the decision.
 """
 
 from __future__ import annotations
@@ -21,7 +29,13 @@ from .. import jsonl
 
 
 def request_key(model: str, messages: list[dict], temperature: float, options: dict | None = None) -> str:
-    """``options`` holds anything else that changes the reply (reasoning switch, token limit)."""
+    """``options`` holds anything else that changes the reply (reasoning switch, token limit).
+
+    The key covers the exact message text, so a one-character change to a prompt turns its stored
+    calls into misses. The way the key is built (these field names, the ``json.dumps`` settings and
+    the cut to 32 hex characters) is fixed too: changing it turns every entry in an existing cache
+    file, such as ``results/nemotron_cache.jsonl``, into a miss.
+    """
     req = {"model": model, "messages": messages, "temperature": temperature}
     if options:
         req["options"] = options

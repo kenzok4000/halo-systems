@@ -46,6 +46,8 @@ class AsyncSupervisor(Supervisor):
 
     def __init__(self, inner: Supervisor):
         self.inner = inner
+        # The engine uses ``name`` to schedule supervision and to tag directive sources, so the
+        # wrapper takes on the inner supervisor's identity.
         self.name = inner.name
         self.label = inner.label
         self.uses_ai = inner.uses_ai
@@ -54,6 +56,7 @@ class AsyncSupervisor(Supervisor):
         self.requested_t = None
 
     def decide(self, summary, current, t):
+        """Start a call if none is running. Always returns None: nothing to apply yet."""
         if self.future is None:
             self.requested_t = t
             self.future = self.pool.submit(self.inner.decide, summary, current, t)
@@ -72,11 +75,19 @@ class AsyncSupervisor(Supervisor):
 
 
 class LiveRun:
+    """One flight on its own thread, paced to wall time x speed, streamed to its SSE subscribers.
+
+    Frames are published at ``FRAME_HZ`` of simulated time.
+    """
+
     def __init__(self, scenario, config: str, seed: int, supervisor_kw: dict | None = None):
         ctrl_spec, sup_spec = split_config(config)
         body = DroneBody()
         sup = make_supervisor(sup_spec, **(supervisor_kw or {}))
         # Replayed calls return at once, so they run in step with the simulation, exactly as in the benchmark.
+        # They have to: the engine then applies each answer after its recorded latency in simulated time,
+        # so every later summary, and so every message and cache key, matches the recorded run. Live calls
+        # go through AsyncSupervisor so the 50 Hz loop never waits on the network.
         replay = getattr(getattr(sup, "cache", None), "mode", None) == "replay"
         self.async_sup = AsyncSupervisor(sup) if sup.uses_ai and not replay else None
         self.sim = Simulation(scenario, make_controller(ctrl_spec, body, scenario.world), self.async_sup or sup,
@@ -89,6 +100,7 @@ class LiveRun:
         self.lock = threading.Lock()
         self.subscribers: list[queue.Queue] = []
         self.sent_events = 0
+        # directives[0] is the starting directive; the page has it from hello(), so streaming starts at 1.
         self.sent_directives = 1
         self.sent_ai = 0
         self.stop = False
@@ -141,6 +153,12 @@ class LiveRun:
                 continue
             with self.lock:
                 sim.step()
+                # A finished Nemotron call re-enters the engine the way Simulation._supervise handles
+                # one: it is logged in sim.ai_calls (here with both t_request and t_applied), then put on
+                # sim.pending due now, since the real wait has already passed. The next sim.step()
+                # passes it through the safety validator with source "nemotron", or "fallback" when
+                # meta["fallback"] is set. A None directive (for example a worker exception) keeps the
+                # current plan.
                 if self.async_sup is not None:
                     got = self.async_sup.collect()
                     if got is not None:
@@ -204,6 +222,8 @@ class LiveRun:
 
 
 class State:
+    """What the request threads share: the live runs (at most ``MAX_RUNS``) and the AI settings."""
+
     def __init__(self, results_dir: Path, evidence_dir: Path, model: str | None, cache_path: Path | None = None):
         self.runs: dict[str, LiveRun] = {}
         self.results_dir = results_dir
@@ -261,6 +281,23 @@ LOCAL_HOSTS = {"127.0.0.1", "localhost", "::1"}
 
 
 def make_handler(state: State, host: str = "127.0.0.1"):
+    """The request handler class. Routes:
+
+    GET  /, /static/<path>             the page and its files
+    GET  /results/<file>               a file from the results folder (charts)
+    GET  /api/status                   key, model and AI mode, and the live run ids
+    GET  /api/scenarios                name, title, description, n and use case of each scenario
+    GET  /api/results                  benchmark summary, chart names, REPORT.md, mission-compiler scores
+    GET  /api/evidence                 the last ``halo doctor`` check
+    GET  /api/runs/<id>/stream         Server-Sent Events: hello, frame, event, directive, ai, end
+    GET  /api/runs/<id>/export         the run's result with its time series
+    POST /api/runs                     {scenario, n} or {mission, mission_text}, with config, seed, speed
+    POST /api/runs/<id>/inject         {kind, ...}: motor_failure, gust, blackout or directive
+    POST /api/runs/<id>/control        {speed, paused, stop}
+    POST /api/compile                  {text}: the mission compiler
+
+    Every POST must be JSON from the dashboard's own page (see ``_not_from_this_page``).
+    """
     hosts = LOCAL_HOSTS | {host}
 
     class Handler(BaseHTTPRequestHandler):
@@ -402,6 +439,7 @@ def make_handler(state: State, host: str = "127.0.0.1"):
                 # Replay what already happened so a late subscriber has the full log.
                 for e in list(run.sim.events):
                     self._send("event", e)
+                # Skips directives[0], the starting directive (see LiveRun.sent_directives).
                 for d in list(run.sim.directives[1:]):
                     self._send("directive", d)
                 for a in list(run.sim.ai_calls):

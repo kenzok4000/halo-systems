@@ -1,10 +1,18 @@
 """The simulation loop: disturbances, sensing, supervision, control, physics.
 
-One ``Simulation`` is one reproducible run. Random streams for wind,
-sensing, start positions and starting charge are split from the seed with
-``numpy.random.SeedSequence``, so two controllers run with the same seed
-face exactly the same gusts, sensor noise and radio losses (a paired
-comparison).
+One ``Simulation`` is one reproducible run. Four random streams are split
+from the seed with ``numpy.random.SeedSequence``: wind, sensing, the start
+(positions and starting charge) and the noise on the supervisor's wind
+reading. Two controllers run with the same seed therefore face exactly the
+same gusts, sensor noise and radio losses (a paired comparison).
+
+Each step, in order: wind, motor failures, sensing and radio, formation
+membership, supervisor and operator script, controller, thrust and physics,
+collisions, energy, ground sensor, recording, end check.
+
+Physics and the metrics use the true state. Controllers work from navigation
+estimates and radio messages, and the status report's separation, wind and
+formation error are estimates too.
 """
 
 from __future__ import annotations
@@ -29,6 +37,13 @@ from .scenario import Scenario
 from .sensing import Sensing
 from .wind import WindField
 
+# Drone status, kept in Simulation.status and written to each frame's "s" (the dashboard colours drones by it):
+# ACTIVE   flying in formation.
+# FAILED   motor out: falls with no thrust; the formation drops it after FAILURE_DETECTION_S.
+# CRASHED  hit another drone, or hit an obstacle or the ground while its motors still worked.
+# RETIRED  left the formation at the battery reserve.
+# DOWN     a failed drone that has reached an obstacle or the ground (not counted as a crash).
+# CRASHED, RETIRED and DOWN drones are no longer moved or checked for collisions; they stay where they were.
 ACTIVE, FAILED, CRASHED, RETIRED, DOWN = 0, 1, 2, 3, 4
 STATUS_NAMES = {ACTIVE: "active", FAILED: "failed", CRASHED: "crashed", RETIRED: "retired", DOWN: "down"}
 NEAR_MISS_EXTRA_M = 0.5
@@ -86,6 +101,15 @@ def energy_table(body: DroneBody, headwind: float, speed_limits=(0.5, 12.0)) -> 
 
 
 class Simulation:
+    """One run: the true state, the logs and the step loop.
+
+    True state: ``p``, ``v`` and ``thrust`` (n, 3), ``status`` (the codes
+    above) and ``battery_wh`` (n,). Logs: ``events``, ``directives``,
+    ``ai_calls``, ``frames`` (at ``record_hz``) and ``series`` (every step,
+    for the metrics). The dashboard and the evaluation use ``step``, ``run``,
+    ``result``, ``summary``, ``frame`` and ``inject``.
+    """
+
     def __init__(self, scenario: Scenario, controller: Controller, supervisor: Supervisor | None = None,
                  seed: int = 0, body: DroneBody | None = None, record_hz: float = 10.0,
                  validator: SafetyValidator | None = None):
@@ -105,6 +129,9 @@ class Simulation:
         limits = Limits(altitude_m=(5.0, scenario.altitude_max_m))
         self.validator = validator or SafetyValidator(self.body.radius_m, nav_sigma_m=nav_sigma, limits=limits)
         self.path = Path(scenario.waypoints, loop=scenario.loop)
+        # The scenario's directive passes the same validator as any other, so it can be clamped too; its
+        # validator log entry has t = -1e9. The rate-limit clock is then reset, so the first supervisor
+        # or operator change is not held back by the mission.
         start = self.validator.check(scenario.directive, scenario.directive, -1e9, "mission")
         self.directive: Directive = start.directive
         self.mission_directive: Directive = start.directive
@@ -177,7 +204,9 @@ class Simulation:
         self.events.append(e)
 
     def _wind_at(self, t: float, airborne: np.ndarray) -> np.ndarray:
-        # Gust fronts sweep across the drones that are flying, timed on their centre.
+        # Gust fronts sweep across the drones that are flying, timed on their centre. WindField.at(t, positions)
+        # would centre the sweep on all drones, landed ones included; here drones not flying get no front wind.
+        # The front is subtracted and added back; summing afresh would round differently and change recorded runs.
         wind = self.wind.at(t)
         if self.sc.wind.fronts:
             wind = wind - self.wind.front_vector(t)
@@ -347,6 +376,17 @@ class Simulation:
             self.event("directive_rejected", None, source=source, violations=result.violations)
 
     def _collisions(self, p0: np.ndarray, airborne: np.ndarray) -> None:
+        """Count this step's collisions, near misses and obstacle and ground strikes.
+
+        Drone-to-drone contact uses the closest approach during the step, so fast
+        crossings count. A touching pair counts while at least one of the two is
+        still flying, so a pile-up of three drones counts as two collisions; both
+        drones become CRASHED, even one whose motor had already failed. A near
+        miss counts once, when two active drones come within 2 r +
+        NEAR_MISS_EXTRA_M. Obstacle and ground strikes are checked only at the
+        end-of-step positions; a failed drone that strikes becomes DOWN and does
+        not count as a crash.
+        """
         r = self.body.radius_m
         cd = closest_approach(p0, self.p, airborne)
         hit = cd < 2 * r
@@ -402,6 +442,13 @@ class Simulation:
             self.event("retired_low_battery", int(d), battery_pct=round(100 * self.battery_wh[d] / self.capacity_wh, 1))
 
     def _record(self, obs: Observation) -> None:
+        """Append this step to ``series`` and, at ``record_hz``, a frame to ``frames``.
+
+        It also does work the run depends on, on every step even with
+        ``record_hz=0``: it draws the noisy wind reading from ``rng_misc`` and
+        keeps the 5 s windows (separation, wind, near misses) that ``summary``
+        reads.
+        """
         active = self.active_mask()
         slots, _ = self.ctrl.plan.slots()
         s = self.series
@@ -545,7 +592,21 @@ class Simulation:
         return {"kind": kind, "t": start, **detail}
 
     def summary(self, obs: Observation | None = None) -> dict:
-        """The compact state report given to supervisors (rules and Nemotron alike)."""
+        """The compact state report given to supervisors (rules and Nemotron alike).
+
+        Sections: mission, swarm, mission_directive, current_directive,
+        formation, safety, environment, comms, energy, limits,
+        formation_widths_at_current_spacing_m and checks. Separation, wind,
+        gusts and formation error come from the drones' estimates and a noisy
+        wind reading. Lost drones, battery, near misses and collisions come from
+        the simulator's own bookkeeping, and the corridor and obstacle density
+        from the map.
+
+        Nemotron gets this dict as compact JSON (``ai.prompts.supervisor_user``),
+        and recorded calls are looked up by the exact prompt text. Changing a key
+        name, the key order or a rounding here changes that text, so recorded
+        Nemotron runs would no longer replay.
+        """
         obs = obs or self.obs
         plan = self.ctrl.plan
         act = self.active_mask()

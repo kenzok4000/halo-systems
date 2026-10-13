@@ -13,7 +13,8 @@ from collections import defaultdict
 
 import numpy as np
 
-# Metric -> (label, better direction: -1 lower is better, +1 higher is better)
+# Metric -> (label, better direction: -1 lower is better, +1 higher is better,
+# 0 reported with no better direction)
 METRICS = {
     "time_formed_pct": ("Time in formation (%)", +1),
     "formation_error_mean_m": ("Formation error, mean (m)", -1),
@@ -46,6 +47,12 @@ SCOUT_METRICS = ("targets_found_pct", "first_find_s", "all_found_s", "area_cover
 
 
 def value(row: dict, metric: str):
+    """One row's value for a metric, as a float, or None if the row has none.
+
+    ``crashes`` is drones destroyed: a drone-to-drone collision destroys both,
+    so it counts 2, and each obstacle or ground strike counts 1. Booleans map
+    to 0 or 100, so ``completed`` averages to a percentage.
+    """
     if metric == "crashes":
         return float(row.get("collisions", 0) * 2 + row.get("obstacle_crashes", 0) + row.get("ground_crashes", 0))
     v = row.get(metric)
@@ -100,7 +107,10 @@ def paired(rows, scenario: str, a: str, b: str, metric: str) -> dict | None:
         return None
     d = np.array([rb[s] - ra[s] for s in seeds])
     mean, lo, hi = bootstrap_ci(d)
+    # Metrics with no better direction (0) count as lower-is-better for win/tie/loss.
     sign = METRICS.get(metric, ("", -1))[1] or -1
+    # A seed is a tie unless the difference exceeds 1% of the mean absolute baseline
+    # value; crashes and completed are compared exactly.
     tol = 1e-9 + (0.01 * np.mean(np.abs([ra[s] for s in seeds])) if metric not in ("crashes", "completed") else 0.0)
     better = int(np.sum(sign * d > tol))
     worse = int(np.sum(sign * d < -tol))

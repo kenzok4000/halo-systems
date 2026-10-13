@@ -92,6 +92,7 @@ class StatsTest(unittest.TestCase):
                [{"scenario": "s", "config": "b", "seed": k, "time_formed_pct": 60.0 + k} for k in range(5)]
         p = paired(rows, "s", "a", "b", "time_formed_pct")
         self.assertEqual((p["b_better"], p["b_worse"], p["n"]), (5, 0, 5))
+        # A collision downs two drones, so it counts twice (value() in eval/stats.py).
         self.assertEqual(value({"collisions": 1, "obstacle_crashes": 2, "ground_crashes": 0}, "crashes"), 4.0)
 
 

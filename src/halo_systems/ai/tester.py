@@ -54,6 +54,12 @@ LOW_IS_HARDER = {"spacing_m", "trail_width_m"}
 
 
 def clip_params(p: dict) -> dict:
+    """Make proposed parameters valid. Every searcher's proposals pass through here, the model's included.
+
+    Keys outside ``SPACE`` are dropped. A missing, non-numeric or non-finite value becomes the middle of
+    its range, and every value is clamped to [low, high]. Integers are rounded with Python's ``round``
+    (halves go to the even number) and floats are kept to 3 decimals.
+    """
     out = {}
     for k, (lo, hi, kind, _) in SPACE.items():
         v = p.get(k, (lo + hi) / 2)
@@ -83,11 +89,17 @@ def stress_level(params: dict) -> float:
 
 
 def build(params: dict, seed: int) -> Scenario:
+    """The stress-test flight: a 360 m straight leg in grid formation at 15 m altitude, 75 s long, with
+    a 22 m altitude ceiling. ``TESTER_SYSTEM`` describes the same leg in words, so change both together."""
     p = clip_params(params)
     rng = np.random.default_rng(np.random.SeedSequence([seed, 77]))
+    # Keep the order of the random draws: gust front angles, wind angle, tree count, three draws per
+    # tree (skipped trees included), failure times, then which drones fail. A saved search keeps only
+    # params and seed, so replay() rebuilds the same conditions only while this order stays the same.
     n = p["drones"]
     fronts = []
     if p["gust_front_mps"] > 0:
+        # Each front is a 5 s gust in a random horizontal direction with a 1 m/s downdraft (z = -1).
         for t in (25.0, 45.0):
             ang = rng.uniform(0, 2 * math.pi)
             fronts.append(GustFront(t, 5.0, (p["gust_front_mps"] * math.cos(ang), p["gust_front_mps"] * math.sin(ang), -1.0)))
@@ -185,6 +197,10 @@ class CrossEntropySearch:
         self.elite_frac = elite_frac
 
     def propose(self, history: list[dict], k: int) -> list[dict]:
+        # Once there are 4 tests, refit before each batch: the elite is the top ``elite_frac`` (at least
+        # 2) of all tests so far by severity, and the mean and spread move 70% of the way to the elite's.
+        # The spread never drops below 0.05, so sampling keeps exploring. Samples are drawn in the unit
+        # cube, one axis per parameter in SPACE order.
         if len(history) >= 4:
             ranked = sorted(history, key=lambda h: -h["outcome"]["severity"])
             elite = ranked[:max(2, int(len(ranked) * self.elite_frac))]
@@ -210,12 +226,23 @@ and especially failures of different kinds than those already found. Reply with 
 
 
 class NemotronSearch:
+    """Nemotron as the test engineer.
+
+    Every call sends the whole history so far: each test's params, severity, whether it failed, drones
+    lost (as "crashes"), near misses and closest approach. Temperature defaults to 0.7. When the model
+    proposes too few tests or the call fails, the batch is filled from ``RandomSearch(seed)``, so the
+    n-th top-up has the same conditions as the n-th test of the random search with that seed
+    (``results/stress/random_<seed>.json``). With ``strict=True`` (the CLI) an error every later call
+    would hit too (no key, rejected key, budget) is raised, so a dead key cannot turn the search into
+    random search; with ``strict=False`` (the tests) the batch is topped up instead.
+    """
+
     name = "nemotron"
 
     def __init__(self, client, model: str, seed: int = 0, temperature: float = 0.7, think: bool = False,
                  strict: bool = False):
         self.client = client
-        self.strict = strict      # stop on errors every later call would hit too (no key, rejected key, budget)
+        self.strict = strict
         self.model = model
         self.think = think
         self.temperature = temperature
@@ -276,7 +303,14 @@ def replay(history: list[dict], config: str, workers: int = 4) -> list[dict]:
 
 
 def failure_kinds(history: list[dict]) -> set:
-    """Coarse labels of distinct failure modes, for counting variety, not just volume."""
+    """Coarse labels of distinct failure modes, for counting variety, not just volume.
+
+    A label looks like ``what:cause+cause``. ``what`` is the first of collision, obstacle, ground and
+    near-miss that the flight had. The causes are the parameters past the hand-set thresholds below
+    (forest, gusts, radio, gps, tight, failures, reform), sorted, or ``other`` if none is. The kind
+    counts reported for the stress searches (13 each for Nemotron and corner search in
+    ``docs/DEVPOST.md``, 3 of them in common) depend on these thresholds.
+    """
     kinds = set()
     for h in history:
         o, p = h["outcome"], h["params"]
@@ -331,6 +365,8 @@ def compare_replays(named: dict[str, dict]) -> str:
         src = named.get(r.get("replay_of", ""))
         if src is None:
             continue
+        # g holds the table's columns in order: flights, failed as searched, failed when re-flown, failed
+        # only when re-flown, failed only as searched, drones lost as searched, drones lost when re-flown.
         g = groups.setdefault((src["searcher"].split(":")[0], r["config"]), [0] * 7)
         for a, b in zip(src["history"], r["history"]):
             fa, fb = a["outcome"]["failed"], b["outcome"]["failed"]

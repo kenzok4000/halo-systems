@@ -55,7 +55,10 @@ class WindField:
         if c.gust_sigma_mps > 0:
             a = dt / c.gust_tau_s
             self.shared += -a * self.shared + c.gust_sigma_mps * np.sqrt(2 * a) * self.rng.standard_normal(3)
-            self.shared[2] *= 0.3  # vertical gusts are weaker near the ground
+            # The 0.3 factor (vertical gusts are weaker near the ground) is applied to the state on every
+            # step, so with 0.02 s steps and a 3 s correlation time the shared vertical gust is about 4% of
+            # gust_sigma_mps and nearly uncorrelated from one step to the next.
+            self.shared[2] *= 0.3
         if c.local_sigma_mps > 0:
             a = dt / c.local_tau_s
             self.local += -a * self.local + c.local_sigma_mps * np.sqrt(2 * a) * self.rng.standard_normal((self.count, 3))

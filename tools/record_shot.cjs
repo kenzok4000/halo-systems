@@ -6,9 +6,14 @@
 //        --speed 2 --seconds 20 --view top --out video/shot2.webm
 //
 // Options: --url (default http://127.0.0.1:8765, where halo serve listens), --tab fly|mission|results|about,
-// --inject gust@6,motor_failure@12 (seconds after the start), --mission "text" (Mission tab:
-// compile, then fly it), --scroll (scroll the side panel while recording).
-// Needs Playwright (`npm install playwright`, or a global install with NODE_PATH set).
+// --inject gust@6,motor_failure@12 (kinds gust, motor_failure or blackout; seconds after the start),
+// --mission "text" (Mission tab: compile, then fly it; --no-fly stops after compiling),
+// --speed 1|2|5 (the page's speed buttons; any other value has no button, so the click times out),
+// --view top (the page's Top view button), --seconds (default 15), --out (default video/shot.webm),
+// --scroll (scroll the side panel while recording).
+// The video starts when the page opens, so it also holds the page load and set-up before the shot.
+// Needs Playwright (`npm install playwright && npx playwright install chromium`, or a global install
+// with NODE_PATH set).
 const { chromium } = require("playwright");
 const { mkdirSync, renameSync } = require("node:fs");
 const { dirname } = require("node:path");

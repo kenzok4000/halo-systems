@@ -39,6 +39,19 @@ YAW_GAIN = 1.5            # 1/s
 
 
 class FormationPlan:
+    """The virtual leader and every drone's slot, moved on once per control step.
+
+    ``s`` is the leader's arc length along the path (m) and ``speed_now`` its
+    speed (m/s); ``heading`` (rad) and ``heading_rate`` (rad/s) are the
+    formation frame's heading and turn rate. ``offset`` is each drone's
+    current slot in that frame, ``target`` the slot it is blending toward from
+    ``blend_from``, and ``offset_rate`` the blend's rate of change.
+    ``members`` are the drones the formation is built for; the slots of other
+    drones go to the centre, and the controllers give those drones a zero
+    command. ``yaw_rate`` is the maximum turn rate (rad/s) and ``blend_speed``
+    (m/s) sets how long a blend takes.
+    """
+
     def __init__(self, path: Path, directive: Directive, n: int, *, reassign: bool, blend: bool, pace: bool,
                  start_progress: float = 0.0, yaw_rate: float = 0.35, blend_speed: float = 5.0):
         self.path = path
@@ -120,12 +133,27 @@ class FormationPlan:
         return np.array([xy[0], xy[1], self.directive.altitude_m])
 
     def advance(self, dt: float, t: float, formation_error: float = 0.0) -> None:
+        """Move the leader, heading and slot offsets on by ``dt`` seconds.
+
+        ``formation_error`` is the shape error (m) that ``pace`` slows for. In order:
+
+        1. Leader speed: the directive's speed, capped by ``speed_cap``.
+        2. With ``pace``: slow for shape error, lower the turn rate of wide
+           formations, slow before bends, and change speed by at most
+           LEADER_ACCEL per second.
+        3. Brake to stop at the end of an open path, then move the leader on.
+        4. Turn the heading toward the path at up to ``yaw_rate``; with
+           ``pace`` the turn rate itself changes by at most YAW_ACCEL per
+           second.
+        5. Move the slot offsets along any blend in progress.
+        """
         d = self.directive
         speed = min(d.speed_mps, self.speed_cap)
         yaw_rate = self.yaw_rate
         if self.pace:
             # Slow the leader while the formation is more than a metre out of shape,
             # but never below 30% so stragglers stuck behind obstacles cannot halt it.
+            # Speed halves when the error is 1.5 m past the deadband.
             if formation_error > 0:
                 speed = speed * max(PACE_FLOOR, 1.0 / (1.0 + max(0.0, formation_error - PACE_DEADBAND_M) / 1.5))
             # Turn a wide formation more slowly, so its outer drones need at most

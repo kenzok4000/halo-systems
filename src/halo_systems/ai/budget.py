@@ -117,7 +117,12 @@ class Budget:
             return self._spent
 
     def check(self, projected_usd: float) -> None:
-        """Raise ``BudgetExceeded`` if a request costing up to ``projected_usd`` could cross the cap."""
+        """Raise ``BudgetExceeded`` if a request costing up to ``projected_usd`` could cross the cap.
+
+        The check and the later ``add`` are separate steps, not one atomic one. N callers running in
+        parallel can each pass the check before any of them records its cost, so the cap can be
+        overshot by up to about N worst-case requests.
+        """
         spent = self.spent_usd()
         if spent + projected_usd > self.cap_usd:
             raise BudgetExceeded(f"budget cap reached: ${spent:.4f} spent of ${self.cap_usd:.2f} "

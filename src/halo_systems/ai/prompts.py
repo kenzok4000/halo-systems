@@ -1,7 +1,22 @@
-"""Prompts for the Nemotron roles. Kept in one place so they are easy to review and version."""
+"""The Nemotron supervisor's prompt and the status message built for it.
+
+Everything here is model input and must stay the same byte for byte. The replay cache key
+(``ai.cache.request_key``) hashes the exact messages, so a one-character change to
+``SUPERVISOR_SYSTEM`` or to the text that ``key_facts`` and ``supervisor_user`` write turns the
+stored calls in ``results/nemotron_cache.jsonl`` into misses. ``PROMPT_VERSION`` is recorded with every
+supervisor decision; change it when the prompt is changed on purpose. The mission compiler's and the
+stress tester's prompts live with their code (``MISSION_SYSTEM`` in ``ai/mission.py``,
+``TESTER_SYSTEM`` in ``ai/tester.py``).
+"""
 
 PROMPT_VERSION = "2026-10-13.3"
 
+# A backslash at the end of a line inside the string joins it to the next line, so each paragraph
+# and each bullet reaches the model as one line. The prompt restates values that live in code, so
+# change both together: "3 seconds" is Limits.min_change_interval_s (safety/validator.py),
+# "2 x (safety margin + 2 m)" uses CORRIDOR_BUFFER_M (supervisor/rule.py), the shape list is
+# control.formations.SHAPES, "over a second" is the stale-link test in Simulation.summary
+# (sim/engine.py) and "every few seconds" is Scenario.supervisor_period_s (5 s by default).
 SUPERVISOR_SYSTEM = """You supervise a swarm of small quadcopters flying in formation. A fast \
 autopilot (50 times a second) keeps each drone in its slot and avoids collisions on its own. \
 Every few seconds you receive a JSON status report and choose the swarm's directive: the \
@@ -110,6 +125,9 @@ def key_facts(summary: dict) -> list[str]:
 
 
 def supervisor_user(summary: dict, history: list[dict]) -> str:
+    """The user message: the key facts as a list, the whole report as compact JSON, then up to four of
+    the model's most recent directives (with their times, without reasons). Its exact text is part of
+    the cache key."""
     import json
     lines = ["Key facts:"] + [f"- {f}" for f in key_facts(summary)]
     lines += ["Status report:", json.dumps(summary, separators=(",", ":"))]

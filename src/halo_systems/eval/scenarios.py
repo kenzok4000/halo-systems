@@ -5,6 +5,11 @@ forests, gust timings, failure times and wind directions, not just new
 sensor noise. Every scenario also carries a plain-language mission text,
 which is what an operator would type (used by the mission compiler).
 
+The order and number of rng draws in each builder are part of the
+benchmark: changing them changes every seed. The positional arguments of
+each ``Directive(...)`` call are formation, spacing_m, speed_mps,
+altitude_m and safety_margin_m.
+
 Civilian use cases covered: wildfire scouting, search and rescue,
 agricultural and forest survey, infrastructure inspection, delivery convoys,
 and light shows.
@@ -81,7 +86,9 @@ def forest_trail(seed: int = 0, n: int = 16) -> Scenario:
         if abs(y - centre_y) < trail / 2 + r:
             continue
         trees.append(Cylinder(float(x), float(y), float(r), float(rng.uniform(26.0, 36.0))))
-    # A few lone trees in the open before and after the forest.
+    # A few lone trees in the open before and after the forest. Both x positions
+    # are drawn and one is chosen; keep it that way so every seed's later draws,
+    # and so its layout, stay the same.
     for _ in range(12):
         x = rng.choice([rng.uniform(40.0, 120.0), rng.uniform(300.0, 380.0)])
         y = rng.uniform(-50.0, 50.0)
@@ -160,6 +167,8 @@ def motor_failures(seed: int = 0, n: int = 16) -> Scenario:
 
 def low_battery(seed: int = 0, n: int = 16) -> Scenario:
     rng = _rng(seed, 7)
+    # Not used. The draw is kept so that every seed's later draws, and so its
+    # headwind, stay the same.
     heading = rng.uniform(0, 360)
     head = rng.uniform(3.0, 5.0)
     return Scenario(

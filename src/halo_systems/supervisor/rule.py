@@ -9,11 +9,11 @@ tuned rules that a careful engineer would write for these scenarios:
 * Turbulence and near misses: widen spacing and raise the safety margin,
   and hold that for a while after it calms down.
 * Degraded radio: slow down while many links are stale.
-* Energy: when the remaining leg needs more than 90% of the usable charge
-  at the current speed, fly the cruise speed with the lowest energy per
-  kilometre for the present headwind.
+* Energy: when the remaining leg at the mission speed needs more than 90%
+  of the mean usable charge, fly the cruise speed with the lowest energy
+  per kilometre for the present headwind, until the leg needs less than 60%.
 
-The thresholds were tuned on the training seeds only (see docs/BENCHMARKS.md).
+The thresholds were tuned on the tuning seeds (0-9) only (see docs/BENCHMARKS.md).
 """
 
 from __future__ import annotations
@@ -21,13 +21,15 @@ from __future__ import annotations
 from ..control.directive import Directive
 from .base import Decision, Supervisor
 
+# CORRIDOR_BUFFER_M and interp_table also feed Simulation._checks, which builds the report's "checks" that
+# Nemotron reads. Changing either changes Nemotron's prompt, so its recorded calls would no longer replay.
 CORRIDOR_BUFFER_M = 2.0     # free space wanted each side, on top of the safety margin
 MIN_SPACING_FRACTION = 0.6  # never squeeze below 60% of the mission spacing to fit a corridor
-GUST_LIMIT_MPS = 4.0
-STALE_LIMIT = 0.5
-HOLD_S = 15.0
-ENERGY_HEADROOM = 0.9
-ENERGY_RELEASE = 0.6
+GUST_LIMIT_MPS = 4.0        # gust peak (m/s, last 5 s) above which spacing and margin widen
+STALE_LIMIT = 0.5           # share of stale radio links above which the swarm slows down
+HOLD_S = 15.0               # how long the gust and radio responses last after their last trigger
+ENERGY_HEADROOM = 0.9       # save energy once the leg needs more than this share of the mean usable charge
+ENERGY_RELEASE = 0.6        # stop saving once it needs less than this share
 
 
 class RuleSupervisor(Supervisor):
@@ -44,6 +46,10 @@ class RuleSupervisor(Supervisor):
         mission = dict(summary["mission_directive"])
         cur = summary["current_directive"]
         env, safety, comms, energy = summary["environment"], summary["safety"], summary["comms"], summary["energy"]
+        # Every call starts again from the mission plan, so the plan comes back by itself once no rule
+        # fires; the only state kept is the two hold timers and the energy flag. The rules run in the
+        # order below and a later one overrides an earlier one on the same field: the energy rule's
+        # speed replaces the radio slowdown, and the corridor rule can replace the spacing or the shape.
         want = dict(mission)
         reasons = []
 
