@@ -6,7 +6,7 @@ SwarmLab uses NVIDIA Nemotron models, served by Nebius Token Factory's OpenAI-co
 |---|---|---|---|
 | Supervisor | Status report every 5 s of simulated time | Directive (formation, spacing, speed, altitude, safety margin) | Rule supervisor; fixed plan |
 | Mission compiler | Operator's plain-language request | Mission plan JSON, or a refusal for non-civilian use | Regex and keyword parser |
-| Test engineer | Every stress test so far, with outcomes | The next batch of tests, each with a reason | Random search; cross-entropy method |
+| Test engineer | Every stress test so far, with outcomes | The next batch of tests, each with a reason | Random search; corner search; cross-entropy method |
 
 ## Why the model is not in the control loop
 

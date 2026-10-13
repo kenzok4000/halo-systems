@@ -66,7 +66,7 @@ Every directive, whoever proposed it, passes the validator before the controller
 * `budget.py`: a spend ledger shared by every process, checked before each request. See [NVIDIA_NEBIUS.md](NVIDIA_NEBIUS.md).
 * `cache.py`: a record/replay cache keyed on model, messages and temperature, so any Nemotron run can be replayed exactly without a key.
 * `mission.py`: the mission compiler, its civilian-use guard, the regex baseline and the scoring.
-* `tester.py`: the stress-test search (random, cross-entropy method, Nemotron).
+* `tester.py`: the stress-test search (random, corners, cross-entropy method, Nemotron), and re-flying a search on another configuration.
 * `doctor.py`: the end-to-end check that writes `evidence/`.
 
 ## Evaluation (`eval/`)

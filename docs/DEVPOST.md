@@ -24,7 +24,7 @@ Small drone swarms can search a forest for a missing hiker, scout a field or ins
 * Flies every drone with a 50 Hz controller that has slot assignment, synchronised transitions, consensus and a control-barrier-function safety filter. No language model is in this loop.
 * Every 5 s of simulated time, a supervisor reads a status report and sets the formation, spacing, speed, altitude and safety margin. The supervisor is either tuned rules or Nemotron, and its answer passes a safety validator first.
 * Turns plain-language mission requests into checked mission plans, and refuses non-civilian requests.
-* Searches for conditions that make the swarm fail, with Nemotron as a test engineer against random search and the cross-entropy method.
+* Searches for conditions that make the swarm fail, with Nemotron as a test engineer against random search, corner search and the cross-entropy method.
 * Benchmarks everything on held-out seeds, with confidence intervals and paired comparisons, and shows it live in a 3D dashboard.
 
 ## How we built it

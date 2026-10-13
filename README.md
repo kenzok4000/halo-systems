@@ -8,7 +8,7 @@ SwarmLab is a reproducible simulation testbed for civilian drone swarms: search 
 |---|---|---|
 | Supervisor (every 5 s) | Reads a short status report and sets the formation, spacing, speed, altitude and safety margin | A tuned rule-based supervisor and a fixed plan |
 | Mission compiler | Turns an operator's plain-language request into a checked mission plan, and refuses non-civilian requests | A regex and keyword parser |
-| Test engineer | Proposes stress tests to find conditions that make the swarm fail | Random search and the cross-entropy method |
+| Test engineer | Proposes stress tests to find conditions that make the swarm fail | Random search, corner search and the cross-entropy method |
 
 Every Nemotron output passes a safety validator before it can affect a flight. While a call is out, the drones keep flying on the current directive. Any failure (network, a call past its deadline, bad JSON) falls back to the rules for that step.
 

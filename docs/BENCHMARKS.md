@@ -37,6 +37,15 @@ Nine scenarios, each with 16 drones (12 in the field survey). Each tests one thi
 * **Model latency counts.** In benchmarks the simulation pauses while a model call is made. The answer then takes effect only after the call's measured latency has passed in simulated time, so slow answers cost what they would in flight.
 * **Failures are not hidden.** A run whose supervisor could not reach the model at all (no key, rejected key, spent budget) is recorded as an error and excluded. Individual failed calls fall back to the rules for that step and are counted in `ai_fallbacks`.
 
+## Nemotron setup, chosen before the held-out runs
+
+Chosen on 13 October 2026 from the last tuning round (seeds 5-9, `results/tuning/`), and committed before any Nemotron flight on seeds 1000-1019. Nothing in the controller, rule supervisor, validator, prompts or engine changes between that commit and the held-out runs.
+
+* **Supervisor, main entry: Nemotron 3 Nano, reasoning off** (`improved+nemotron:nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B`). On the tuning seeds it flew the low-battery leg faster and on less energy than the rules, tied or slightly beat them elsewhere, held formation slightly less well in the urban canyon, and cost about a fifth as much per flight as Super.
+* **Supervisor, also run: Nemotron 3 Super, reasoning off**, as a declared comparison with a larger model.
+* **Not run on the held-out seeds: Nano with reasoning on.** On the tuning seeds it completed 3 of 5 forest flights where the rules completed 5, and its calls took several seconds each. Its tuning results are reported as they are.
+* **Mission compiler:** Nano with reasoning off, Nano with reasoning on and Super are all scored on the held-out prompts against the regex baseline.
+
 ## Metrics
 
 | Metric | Meaning |
