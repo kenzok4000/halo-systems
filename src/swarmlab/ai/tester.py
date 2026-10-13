@@ -367,6 +367,7 @@ def compare_searches(results: list[dict]) -> str:
         levels = [stress_level(h["params"]) for h in fails]
         mild = f"{min(levels):.2f}" if levels else "n/a"
         mean = f"{np.mean(levels):.2f}" if levels else "n/a"
-        lines.append(f"| {name} | {len(rs)} | {len(hist)} | {len(fails)} | {sum(s['distinct_failing_conditions'] for s in sums)} "
+        distinct = len({json.dumps(clip_params(h["params"]), sort_keys=True) for h in fails})
+        lines.append(f"| {name} | {len(rs)} | {len(hist)} | {len(fails)} | {distinct} "
                      f"| {len(failure_kinds(hist))} | {mild} | {mean} | {sum(s['random_top_ups'] for s in sums)} |")
     return "\n".join(lines) + "\n"

@@ -31,6 +31,19 @@ class ReportTest(unittest.TestCase):
         self.assertEqual(short_label("improved-no-cbf-filter+rule"), "No CBF, state filter + rules")
         self.assertEqual(short_label("original+fixed"), "Original + fixed plan")
 
+    def test_bench_resume_tells_gps_scales_apart(self):
+        from swarmlab.eval.runner import run_grid
+        with tempfile.TemporaryDirectory() as tmp:
+            out = Path(tmp) / "gps.jsonl"
+            out.write_text(json.dumps({"scenario": "open_transit", "seed": 1, "config": "improved+rule", "n": 16,
+                                       "gps_scale": 0.5}) + "\n")
+            same = run_grid(["open_transit"], [1], ["improved+rule"], out, workers=1, extra={"gps_scale": 0.5},
+                            progress=lambda *a, **k: None)
+            self.assertEqual(len(same), 1)   # already there: skipped
+            more = run_grid(["open_transit"], [1], ["improved+rule"], out, workers=1, extra={"gps_scale": 2.0},
+                            progress=lambda *a, **k: None)
+            self.assertEqual(sorted(r.get("gps_scale") for r in more), [0.5, 2.0])
+
     def test_sweeps_are_split_not_averaged(self):
         rows = [row("open_transit", "improved+rule", 0, n=8), row("open_transit", "improved+rule", 0, n=32),
                 row("forest_trail", "improved+rule", 0)]

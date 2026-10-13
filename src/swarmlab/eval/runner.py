@@ -106,7 +106,7 @@ def run_grid(scenarios, seeds, configs, out_path: str | os.PathLike, n=None, wor
     if resume and out.exists():
         for r in jsonl.read(out):
             if "error" not in r:
-                done.add((r["scenario"], r["seed"], r["config"], r.get("n")))
+                done.add((r["scenario"], r["seed"], r["config"], r.get("n"), r.get("gps_scale", 1.0)))
                 rows.append(r)
     ns = n if isinstance(n, (list, tuple)) else [n]
     jobs = []
@@ -115,7 +115,7 @@ def run_grid(scenarios, seeds, configs, out_path: str | os.PathLike, n=None, wor
             for cfg in configs:
                 for s in seeds:
                     key_n = nn if nn is not None else make(sc, s).n
-                    if (sc, s, cfg, key_n) in done:
+                    if (sc, s, cfg, key_n, (extra or {}).get("gps_scale", 1.0)) in done:
                         continue
                     jobs.append((sc, s, cfg, nn, dict(extra or {})))
     workers = workers or max(1, (os.cpu_count() or 2))

@@ -39,7 +39,7 @@ Nine scenarios, each with 16 drones (12 in the field survey). Each tests one thi
 
 ## Nemotron setup, chosen before the held-out runs
 
-Chosen on 13 October 2026 from the last tuning round (seeds 5-9, `results/tuning/`), and committed before any Nemotron flight on seeds 1000-1019. Nothing in the controller, rule supervisor, validator, prompts or engine changes between that commit and the held-out runs.
+Chosen on 13 October 2026 from the last tuning round (seeds 5-9, `results/tuning/`), and committed before any Nemotron flight on seeds 1000-1019. The conventional held-out flights (no Nemotron) had already run by then; the choice below uses only the tuning seeds. Nothing in the controller, rule supervisor, validator, prompts or engine changes between that commit and the held-out runs.
 
 * **Supervisor, main entry: Nemotron 3 Nano, reasoning off** (`improved+nemotron:nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B`). On the tuning seeds it flew the low-battery leg faster and on less energy than the rules, tied or slightly beat them elsewhere, held formation slightly less well in the urban canyon, and cost about a fifth as much per flight as Super.
 * **Supervisor, also run: Nemotron 3 Super, reasoning off**, as a declared comparison with a larger model.
@@ -58,7 +58,7 @@ Chosen on 13 October 2026 from the last tuning round (seeds 5-9, `results/tuning
 | Completion time (s) | For completed runs only |
 | Energy (Wh per drone-km) | Battery energy per drone per kilometre flown |
 | Drones retired | Drones that left the formation at the battery reserve |
-| Time faster than planned (%) | Share of the flight flown faster than the operator's planned speed. Flying faster than planned shortens completion time, so this is reported beside it |
+| Time faster than planned (%) | Share of the flight during which the supervisor's directive set a speed above the operator's planned speed. Flying faster than planned shortens completion time, so this is reported beside it |
 | Model calls, fallbacks, latency, tokens, cost | From the call records, for Nemotron runs |
 
 Time in formation counts the drones still flying. A controller that loses drones in a crash can still score well on it, which is why crashes are always reported beside it.

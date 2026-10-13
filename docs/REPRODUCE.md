@@ -9,70 +9,106 @@ Everything here runs on a laptop with Python 3.10 or newer and numpy. Charts nee
 
 Each seed fixes the wind, sensor noise, radio losses, obstacle layout and initial positions. Every configuration sees the same conditions for a given seed. That is why the report can compare configurations seed by seed (paired comparisons).
 
+These are the commands that produced every file in `results/`, in the order they ran. `bench` is resumable: it skips rows already in its output file, so an interrupted run can be restarted with the same command. `report` writes `REPORT.md`, `summary.json` and the charts from a rows file.
+
 ## Conventional benchmark (no key needed)
 
 ```bash
-swarmlab bench \
-  --scenarios open_transit,formation_changes,forest_trail,urban_canyon,gusty_day,comms_degraded,motor_failures,low_battery,field_survey \
-  --configs original+fixed,improved+fixed,improved+rule \
-  --seeds heldout --out results/runs.jsonl
-swarmlab report results/runs.jsonl --out results
+ALL=open_transit,formation_changes,forest_trail,urban_canyon,gusty_day,comms_degraded,motor_failures,low_battery,field_survey
+swarmlab bench --scenarios $ALL --configs original+fixed,improved+fixed,improved+rule \
+  --seeds heldout --workers 4 --out results/runs.jsonl
 ```
 
-`bench` is resumable: it skips rows already in the output file. `report` writes `REPORT.md`, `summary.json` and the charts.
+## Ablations, navigation error and scaling
 
-## Ablations, scaling and noise
-
-The improved controller's techniques can be switched off one at a time with `improved-no-<feature>`. The features are reassign, blend, pace, consensus, cbf, filter and feedforward.
+The improved controller's techniques can be switched off one at a time with `improved-no-<feature>`. The features are reassign, blend, pace, consensus, cbf (the safety filter), filter (the state filter) and feedforward.
 
 ```bash
 swarmlab bench --scenarios formation_changes,forest_trail,gusty_day,motor_failures \
-  --configs improved+rule,improved-no-cbf+rule,improved-no-reassign+rule,improved-no-consensus+rule \
-  --seeds heldout --out results/ablation.jsonl
+  --configs improved+rule,improved-no-cbf+rule,improved-no-reassign+rule,improved-no-blend+rule,improved-no-pace+rule,improved-no-consensus+rule,improved-no-filter+rule,improved-no-feedforward+rule \
+  --seeds heldout --workers 4 --out results/ablation/runs.jsonl
+# the safety filter on the other five scenarios
+swarmlab bench --scenarios open_transit,urban_canyon,comms_degraded,low_battery,field_survey \
+  --configs improved+rule,improved-no-cbf+rule --seeds heldout --workers 4 --out results/ablation/runs.jsonl
+swarmlab report results/ablation/runs.jsonl --out results/ablation
+
+for g in 0.5 1 2 3; do
+  swarmlab bench --scenarios forest_trail,gusty_day --configs original+fixed,improved+rule \
+    --seeds heldout --gps-scale $g --workers 4 --out results/gps/runs.jsonl
+done
+swarmlab report results/gps/runs.jsonl --out results/gps
+
 swarmlab bench --scenarios open_transit,motor_failures --configs original+fixed,improved+rule \
-  --n 8,16,32,64 --seeds heldout --out results/scaling.jsonl
+  --n 8,16,32,64 --seeds heldout --workers 4 --out results/scaling/runs.jsonl
+swarmlab report results/scaling/runs.jsonl --out results/scaling
 ```
-
-## Mission compiler
-
-```bash
-swarmlab mission-eval --out results/mission_eval.json                         # regex baseline only
-swarmlab mission-eval --model <nemotron model id> --out results/mission_eval.json
-```
-
-The regex baseline and both prompt sets were added in the same first commit, and the baseline has not changed since. The model prompt was tuned on the tuning prompts only; the held-out prompts were first sent to a model in the final evaluation. The same author wrote the prompts, the baseline and the model prompt, so the held-out set is unseen by the model, not by its author.
 
 ## Stress-test search
 
+The searches attack the improved controller with the rule supervisor. Each spends 40 simulated flights, proposed in batches of 4.
+
 ```bash
+NANO=nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B
 for s in 0 1 2 3 4; do
-  swarmlab stress --searcher random  --budget 40 --seed $s --out results/stress/random_$s.json
-  swarmlab stress --searcher corners --budget 40 --seed $s --out results/stress/corners_$s.json
-  swarmlab stress --searcher cem     --budget 40 --seed $s --out results/stress/cem_$s.json
-  swarmlab stress --searcher nemotron:<model id> --budget 40 --seed $s --out results/stress/nemotron_$s.json
+  swarmlab stress --searcher random  --budget 40 --batch 4 --seed $s --workers 4 --out results/stress/random_$s.json
+  swarmlab stress --searcher cem     --budget 40 --batch 4 --seed $s --workers 4 --out results/stress/cem_$s.json
+  swarmlab stress --searcher corners --budget 40 --seed $s --workers 4 --out results/stress/corners_$s.json
+  # these two need a key
+  swarmlab stress --searcher nemotron:$NANO       --budget 40 --batch 4 --seed $s --workers 4 \
+    --ai-log results/stress/nemotron_calls.jsonl --out results/stress/nemotron_$s.json
+  swarmlab stress --searcher nemotron-think:$NANO --budget 40 --batch 4 --seed $s --workers 4 \
+    --ai-log results/stress/nemotron_calls.jsonl --out results/stress/nemotron-think_$s.json
 done
-swarmlab stress-report results/stress/*.json --out results/STRESS.md
 ```
 
-To re-fly a search's tests on another configuration, with the same conditions and seeds, for example without the safety filter:
+To re-fly a search's tests on another configuration, with the same conditions and seeds (here without the safety filter), and then compare everything:
 
 ```bash
-swarmlab stress-replay results/stress/corners_0.json --config improved-no-cbf+rule --out results/stress_nocbf/corners_0.json
+for f in results/stress/*_[0-4].json; do
+  b=$(basename $f .json)
+  swarmlab stress-replay $f --config improved-no-cbf+rule --workers 4 --out results/stress/no_safety_filter/${b}_nocbf.json
+done
+swarmlab stress-report results/stress/random_*.json results/stress/corners_*.json results/stress/cem_*.json \
+  results/stress/nemotron_*.json results/stress/nemotron-think_*.json results/stress/no_safety_filter/*.json \
+  --out results/STRESS.md
 ```
 
-## Nemotron runs
+The Nemotron searches cannot be replayed from a cache: the model proposes each batch after seeing the last, so a rerun makes new calls and finds different tests. The saved searches hold every test's conditions, seed, the model's reason and the outcome, and `stress-replay` re-flies them exactly.
+
+## Nemotron runs (need a key)
 
 ```bash
 export NEBIUS_API_KEY=...             # never in a file you commit
 swarmlab doctor --flight              # end-to-end check, writes evidence/
-swarmlab bench --scenarios ... --configs improved+nemotron:<model id> --seeds heldout \
-  --cache results/nemotron_cache.jsonl --out results/runs.jsonl
+NANO=nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B; SUPER=nvidia/nemotron-3-super-120b-a12b
+swarmlab bench --scenarios $ALL --configs improved+nemotron:$NANO,improved+nemotron:$SUPER --seeds heldout --workers 4 \
+  --cache results/nemotron_cache.jsonl --ai-log results/nemotron_calls.jsonl --out results/runs.jsonl
+gzip results/nemotron_calls.jsonl
+swarmlab report results/runs.jsonl --out results
 swarmlab budget                       # spend so far against the cap
 ```
 
-Spend is capped by the guard described in [NVIDIA_NEBIUS.md](NVIDIA_NEBIUS.md).
+Spend is capped by the guard described in [NVIDIA_NEBIUS.md](NVIDIA_NEBIUS.md). `improved+nemotron-think:<model id>` turns reasoning on.
 
-To replay the published Nemotron runs exactly with no key and no cost, add `--cache-mode replay`.
+The supervisor runs can be replayed exactly with no key and no cost: run the same `bench` command with `--cache-mode replay` (and a new `--out`). Every call is answered from `results/nemotron_cache.jsonl`, so the flights match the published rows apart from timing fields. The dashboard does the same with `swarmlab serve --model $NANO --cache results/nemotron_cache.jsonl`.
+
+## Mission compiler (needs a key, except for the baseline)
+
+```bash
+swarmlab mission-eval --sets heldout --out results/mission_eval_baseline.json            # regex baseline only, no key
+swarmlab mission-eval --sets heldout --model $NANO         --ai-log results/mission_calls.jsonl --out results/mission_eval_nano.json
+swarmlab mission-eval --sets heldout --model $NANO --think --ai-log results/mission_calls.jsonl --out results/mission_eval_nano_think.json
+swarmlab mission-eval --sets heldout --model $SUPER        --ai-log results/mission_calls.jsonl --out results/mission_eval_super.json
+gzip results/mission_calls.jsonl
+```
+
+Each file also scores the regex baseline on the same prompts. The mission compiler has no replay cache; the call log keeps every request and reply.
+
+The regex baseline and both prompt sets were added in the same first commit, and the baseline has not changed since. The model prompt was tuned on the tuning prompts only; the held-out prompts were first sent to a model in the final evaluation. The same author wrote the prompts, the baseline and the model prompt, so the held-out set is unseen by the model, not by its author.
+
+## Tuning rounds
+
+`results/tuning/` keeps the three rounds on the tuning seeds. They used the same `bench` and `mission-eval` commands with `--seeds 0-4` (rounds 1 and 2) or `--seeds 5-9` (round 3), `--sets tuning`, and the configurations `improved+nemotron:$NANO`, `improved+nemotron:$SUPER` and `improved+nemotron-think:$NANO`, on seven scenarios in rounds 1 and 2 and all nine in round 3. See [results/README.md](../results/README.md) for what each round changed.
 
 ## Tests
 

@@ -261,7 +261,7 @@ def main(argv=None) -> int:
     s.add_argument("--n", default=None, help="comma-separated drone counts (scaling study)")
     s.add_argument("--out", required=True)
     s.add_argument("--workers", type=int, default=None)
-    s.add_argument("--gps-scale", type=float, default=None, help="multiply GPS noise and bias (use a separate --out per value)")
+    s.add_argument("--gps-scale", type=float, default=None, help="multiply GPS noise and bias; rows record the scale")
     s.add_argument("--cache")
     s.add_argument("--cache-mode", default="record", choices=("record", "replay", "off"))
     s.add_argument("--ai-log", default=None)

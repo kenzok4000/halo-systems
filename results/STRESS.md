@@ -10,10 +10,10 @@ Each search spends the same number of simulated flights. A failure is any crash 
 | corners | 5 | 200 | 15 | 15 | 13 | 0.50 | 0.62 | 0 |
 | cem | 5 | 200 | 10 | 10 | 8 | 0.50 | 0.53 | 0 |
 | nemotron | 5 | 200 | 46 | 39 | 13 | 0.48 | 0.85 | 0 |
-| nemotron-think | 5 | 200 | 16 | 16 | 11 | 0.46 | 0.80 | 20 |
+| nemotron-think | 5 | 200 | 16 | 15 | 11 | 0.46 | 0.80 | 20 |
 | cem (tests re-flown on improved-no-cbf+rule) | 5 | 200 | 69 | 69 | 33 | 0.42 | 0.54 | 0 |
 | corners (tests re-flown on improved-no-cbf+rule) | 5 | 200 | 30 | 30 | 24 | 0.29 | 0.61 | 0 |
-| nemotron-think (tests re-flown on improved-no-cbf+rule) | 5 | 200 | 63 | 63 | 35 | 0.32 | 0.64 | 20 |
+| nemotron-think (tests re-flown on improved-no-cbf+rule) | 5 | 200 | 63 | 62 | 35 | 0.32 | 0.64 | 20 |
 | nemotron (tests re-flown on improved-no-cbf+rule) | 5 | 200 | 71 | 63 | 17 | 0.20 | 0.78 | 0 |
 | random (tests re-flown on improved-no-cbf+rule) | 5 | 200 | 56 | 56 | 25 | 0.40 | 0.54 | 0 |
 

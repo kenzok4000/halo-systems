@@ -481,6 +481,8 @@ class StressSearchTest(unittest.TestCase):
         self.assertEqual(s["mildest_failure_stress"], 0.0)
         table = compare_searches([{"searcher": "corners", "history": history}])
         self.assertIn("| corners | 1 | 3 | 3 | 2 |", table)
+        table = compare_searches([{"searcher": "corners", "history": history}, {"searcher": "corners", "history": history[:1]}])
+        self.assertIn("| corners | 2 | 4 | 4 | 2 |", table)   # the same condition found by two searches counts once
         calm = {**out, "obstacle_crashes": 0, "failed": False}
         flown = [{**h, "outcome": o} for h, o in zip(history, [out, calm, out])]
         orig = {"searcher": "corners", "history": [{**h, "outcome": o} for h, o in zip(history, [calm, calm, out])]}
