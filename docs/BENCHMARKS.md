@@ -63,8 +63,26 @@ Chosen on 13 October 2026 from the last tuning round (seeds 5-9, `results/tuning
 
 Time in formation counts the drones still flying. A controller that loses drones in a crash can still score well on it, which is why crashes are always reported beside it.
 
+## Stress-test search
+
+Each searcher gets 5 searches of 40 short flights against the improved controller with the rule supervisor, in a 14-parameter space of swarm size, spacing, speed, wind, turbulence, gust fronts, radio loss and latency, GPS noise and bias, motor failures, formation changes and forest density and width (`ai/tester.py`). A flight fails if any drone crashes or two drones pass within 0.8 m. `results/STRESS.md` compares the searchers on:
+
+* failures, and distinct failing conditions, which count a repeated test once;
+* kinds of failure: what failed (collision, obstacle, ground or near miss) and which stresses were present;
+* stress level, from 0 (every parameter at its easy end) to 1 (every parameter at its hard end). A failure at a low stress level is the more useful find.
+
+Corner search, which tests random corners of the parameter box, is the boundary-value baseline. It was added after the first Nemotron searches showed that the model mostly set every parameter near its limit, to check whether that alone explained its results.
+
+## Checks on the numbers
+
+* **Determinism.** Re-flying 100 held-out flights of the rule supervisor gave identical results apart from the controller's measured compute time.
+* **Replay.** Replaying 24 held-out Nemotron flights from `results/nemotron_cache.jsonl`, with no key, gave identical rows to the live runs.
+
 ## Known limits of the benchmark
 
 * Some scenarios separate the configurations clearly and some do not. The report says which.
 * The rule supervisor was tuned on the same scenarios it is tested on, with different seeds. The same holds for the Nemotron prompt. Neither has seen the held-out seeds.
 * The physics and sensor models are textbook approximations, not calibrated against hardware.
+* In the nine scenarios the supervisor keeps the swarm out of situations where the safety filter has to act, so removing the filter changes nothing there. Its effect shows only in the stress tests.
+* Time in formation uses a fixed 1 m threshold. With GPS error tripled, neither controller stays within it for most of the flight, although the improved one still loses no drones.
+* Nemotron's held-out results come from one run per seed at temperature 0.2. A repeat would not give identical answers, which is why the call cache is published.
