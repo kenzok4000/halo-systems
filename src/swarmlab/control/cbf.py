@@ -25,6 +25,7 @@ import numpy as np
 
 MAX_NEIGHBOURS = 6   # nearest neighbours each drone constrains against
 OBSTACLE_ROWS = 3    # nearest obstacle surfaces each drone constrains against
+OBSTACLE_RANGE_M = 15.0  # how far ahead the filter sees obstacles (a forward depth sensor's range)
 
 
 def _rows_dot(a, b):
@@ -33,7 +34,7 @@ def _rows_dot(a, b):
 
 def build_constraints(p, v, nbr_pos, nbr_vel, nbr_age, active, *, d_safe, a_brake, gamma, max_neighbours=MAX_NEIGHBOURS,
                       stale_growth=0.5, max_age=3.0, world=None, obstacle_clearance=1.0, floor_z=1.0,
-                      obstacle_range=15.0):
+                      obstacle_range=OBSTACLE_RANGE_M):
     """Linear constraints G a <= b for every drone: shapes (n, K, 3), (n, K)."""
     n = len(p)
     rows_g, rows_b, rows_m = [], [], []

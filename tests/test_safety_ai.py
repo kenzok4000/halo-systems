@@ -98,6 +98,21 @@ class CbfTest(unittest.TestCase):
         np.testing.assert_allclose(a, a_nom, atol=1e-9)
 
 
+class SensingLimitedSpeedTest(unittest.TestCase):
+    def test_leader_is_capped_only_when_obstacles_are_near(self):
+        from types import SimpleNamespace
+        from swarmlab.control.improved import ImprovedController
+        from swarmlab.sim.body import DroneBody
+        from swarmlab.sim.world import Cylinder, World
+        ctrl = ImprovedController(DroneBody(), World(cylinders=[Cylinder(30.0, 0.0, 0.3, 30.0)]))
+        plan = SimpleNamespace(directive=Directive(speed_mps=12.0), speed_now=12.0)
+        v_sense = ctrl._sensing_limited_speed(plan, np.array([[0.0, 0.0, 15.0]]))
+        self.assertLess(v_sense, 10.0)        # about sqrt(2 * 3 * (15 - 1.3)) = 9.1 m/s
+        self.assertEqual(ctrl._sensing_limited_speed(plan, np.array([[-200.0, 0.0, 15.0]])), math.inf)
+        slow = SimpleNamespace(directive=Directive(speed_mps=5.0), speed_now=5.0)
+        self.assertEqual(ctrl._sensing_limited_speed(slow, np.array([[0.0, 0.0, 15.0]])), math.inf)
+
+
 def summary(**over):
     s = {
         "time_s": 30.0,

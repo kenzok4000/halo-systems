@@ -60,6 +60,7 @@ class FormationPlan:
         self.blend_T = 0.0
         self.offset_rate = np.zeros((n, 3))
         self.speed_now = directive.speed_mps
+        self.speed_cap = math.inf               # set by the controller (sensing-limited speed near obstacles)
         self.changes = 0
         self._rebuild(np.arange(n), None, t=0.0, initial=True)
 
@@ -120,7 +121,7 @@ class FormationPlan:
 
     def advance(self, dt: float, t: float, formation_error: float = 0.0) -> None:
         d = self.directive
-        speed = d.speed_mps
+        speed = min(d.speed_mps, self.speed_cap)
         yaw_rate = self.yaw_rate
         if self.pace:
             # Slow the leader while the formation is more than a metre out of shape,

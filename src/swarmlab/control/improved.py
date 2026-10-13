@@ -19,12 +19,14 @@ filter, which removes measurement jitter from the motor commands.
 
 from __future__ import annotations
 
+import math
 import time
 
 import numpy as np
 
 from .base import Controller, Observation
-from .cbf import MAX_NEIGHBOURS, OBSTACLE_ROWS, build_constraints, project
+from .cbf import MAX_NEIGHBOURS, OBSTACLE_RANGE_M, OBSTACLE_ROWS, build_constraints, project
+from .plan import LEADER_ACCEL
 
 
 FEATURES = ("reassign", "blend", "pace", "consensus", "cbf", "filter", "feedforward")
@@ -61,6 +63,7 @@ class ImprovedController(Controller):
         self._a_prev = None
         self._ref_v_prev = None
         self.filter_active_steps = 0
+        self._cap_checked_t = -math.inf
 
     def _filter(self, obs: Observation, dt: float):
         if "filter" not in self.features:
@@ -76,11 +79,34 @@ class ImprovedController(Controller):
         self._pf += 0.15 * (obs.p_est - self._pf)
         return self._pf, self._vf
 
+    def _sensing_limited_speed(self, plan, positions: np.ndarray) -> float:
+        """Fastest leader speed at which a drone can still stop for an obstacle that has just come into view.
+
+        The safety filter sees obstacles out to OBSTACLE_RANGE_M. Its obstacle barrier holds only if a drone
+        closes on an obstacle no faster than sqrt(2 a_brake gap), so an obstacle first seen at that range
+        allows sqrt(2 a_brake (range - clearance)). The leader slows to that while the obstacle map shows
+        anything within the range plus the distance it needs to slow down; elsewhere there is no cap.
+        The stress-test search found obstacle strikes at 8-10 m/s in dense forest, which this addresses.
+        """
+        if not len(positions):
+            return math.inf
+        clearance = self.body.radius_m + plan.directive.safety_margin_m + self.nav_k * self.nav_sigma_m
+        v_sense = math.sqrt(2.0 * self.a_brake * max(OBSTACLE_RANGE_M - clearance, 0.0))
+        if plan.speed_now <= v_sense and plan.directive.speed_mps <= v_sense:
+            return math.inf
+        horizon = OBSTACLE_RANGE_M + max(0.0, plan.speed_now ** 2 - v_sense ** 2) / (2.0 * LEADER_ACCEL) + 5.0
+        _, _, mask = self.world.nearby(positions, horizon, k=1)
+        return v_sense if mask.any() else math.inf
+
     def command(self, obs: Observation, dt: float) -> np.ndarray:
         t0 = time.perf_counter()
         plan = self.plan
         p, v = self._filter(obs, dt)
         act = obs.active
+        if "cbf" in self.features and self.world is not None and self.world.obstacle_count \
+                and obs.t - self._cap_checked_t >= 0.2:
+            self._cap_checked_t = obs.t
+            plan.speed_cap = self._sensing_limited_speed(plan, p[act])
         plan.advance(dt, obs.t, self.shape_error_estimate(obs))
         ref_p, ref_v = plan.slots()
         if self._ref_v_prev is None:
