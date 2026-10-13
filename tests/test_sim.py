@@ -163,6 +163,26 @@ class EngineTest(unittest.TestCase):
         self.assertEqual(r.metrics["drones_lost"], 1)
         self.assertTrue(any(e["kind"] == "motor_failure" for e in r.events))
 
+    def test_slow_supervisor_has_one_request_in_flight(self):
+        from swarmlab.supervisor.base import Decision, Supervisor
+
+        class Slow(Supervisor):
+            name = "slow"
+
+            def __init__(self):
+                self.asked = []
+
+            def decide(self, summary, current, t):
+                self.asked.append(t)
+                return Decision(None, latency_s=12.0, meta={"fallback": False})
+        sc = dataclasses.replace(short(duration=40.0), supervisor_period_s=5.0)
+        body = DroneBody()
+        sup = Slow()
+        Simulation(sc, ImprovedController(body, sc.world), sup, seed=0, body=body, record_hz=0).run()
+        gaps = np.diff(sup.asked)
+        self.assertGreater(len(sup.asked), 1)
+        self.assertTrue(np.all(gaps >= 12.0 - 1e-6), sup.asked)   # never asked again before the answer came
+
     def test_summary_has_the_fields_supervisors_use(self):
         sc = make("forest_trail", 0)
         body = DroneBody()

@@ -243,7 +243,9 @@ class Simulation:
     # ------------------------------------------------------------------------
     def _supervise(self, obs: Observation) -> None:
         t = self.t
-        if t >= self.next_supervise:
+        # One request in flight at a time: a slow answer delays the next request rather than
+        # overlapping it, so answers can never arrive out of order or override a newer one.
+        if t >= self.next_supervise and not self.pending:
             self.next_supervise += self.sc.supervisor_period_s
             summary = self.summary(obs)
             decision = self.sup.decide(summary, self.directive, t)
