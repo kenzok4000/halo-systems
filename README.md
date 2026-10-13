@@ -102,7 +102,7 @@ python3 -m venv .venv && . .venv/bin/activate
 python3 -m pip install -e '.[report]'   # numpy, plus matplotlib for charts
 swarmlab list                           # the ten scenarios
 swarmlab run forest_trail --config improved+rule --seed 1000   # one flight, about 30 s
-swarmlab serve --open                   # live 3D dashboard on http://127.0.0.1:8765
+swarmlab serve --open                   # live 3D dashboard on http://127.0.0.1:8765; with no key it replays the recorded Nemotron flights
 python3 -m unittest discover -s tests   # no network needed
 ```
 

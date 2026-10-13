@@ -279,7 +279,9 @@ async function start(extra = {}) {
   source.addEventListener("event", (e) => onEvent(JSON.parse(e.data)));
   source.addEventListener("end", (e) => {
     const m = JSON.parse(e.data).metrics || {};
-    logItem("event", `<b>Flight ended.</b> In formation ${fmt(m.time_formed_pct, 0)}% of the time, ${(m.collisions || 0) * 2 + (m.obstacle_crashes || 0) + (m.ground_crashes || 0)} crashes, completed: ${m.completed ? "yes" : "no"}`);
+    const crashes = (m.collisions || 0) * 2 + (m.obstacle_crashes || 0) + (m.ground_crashes || 0);   // drones destroyed, as in the Crashes tile
+    const done = m.completed == null ? "not applicable (looped route)" : m.completed ? "yes" : "no";
+    logItem("event", `<b>Flight ended.</b> In formation ${fmt(m.time_formed_pct, 0)}% of the time, ${crashes} ${crashes === 1 ? "drone" : "drones"} lost in crashes, completed: ${done}`);
     source.close(); source = null;
   });
 }
