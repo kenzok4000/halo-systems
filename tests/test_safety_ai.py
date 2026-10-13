@@ -467,7 +467,7 @@ class StressSearchTest(unittest.TestCase):
             NemotronSearch(dead, "m", strict=True).propose([], 2)
 
     def test_corner_search_stress_level_and_repeats(self):
-        from swarmlab.ai.tester import SPACE, CornerSearch, compare_searches, stress_level, summarise_search
+        from swarmlab.ai.tester import SPACE, CornerSearch, compare_replays, compare_searches, stress_level, summarise_search
         for prop in CornerSearch(0).propose([], 8):
             self.assertTrue(all(prop["params"][k] in (lo, hi) for k, (lo, hi, _, _) in SPACE.items()))
         easy = {k: (hi if k in ("spacing_m", "trail_width_m") else lo) for k, (lo, hi, _, _) in SPACE.items()}
@@ -481,6 +481,12 @@ class StressSearchTest(unittest.TestCase):
         self.assertEqual(s["mildest_failure_stress"], 0.0)
         table = compare_searches([{"searcher": "corners", "history": history}])
         self.assertIn("| corners | 1 | 3 | 3 | 2 |", table)
+        calm = {**out, "obstacle_crashes": 0, "failed": False}
+        flown = [{**h, "outcome": o} for h, o in zip(history, [out, calm, out])]
+        orig = {"searcher": "corners", "history": [{**h, "outcome": o} for h, o in zip(history, [calm, calm, out])]}
+        paired = compare_replays({"c.json": orig, "c_nocbf.json": {"searcher": "corners", "replay_of": "c.json",
+                                                                   "config": "improved-no-cbf+rule", "history": flown}})
+        self.assertIn("| corners | improved-no-cbf+rule | 3 | 1 | 2 | 1 | 0 | 1 | 2 |", paired)
 
     def test_replay_flies_the_same_tests_with_another_configuration(self):
         from swarmlab.ai.tester import SPACE, replay

@@ -199,10 +199,16 @@ def cmd_stress_report(args) -> int:
                     f"| {s['distinct_failure_kinds']} | {mild} | {s['random_top_ups']} |")
     text = ("# Stress-test search\n\n"
             "Each search spends the same number of simulated flights. A failure is any crash or near miss. "
-            "Distinct failing conditions count the same test conditions once, however often they were re-flown. "
+            "Distinct failing conditions count the same test conditions once, however often a searcher repeated them. "
             "The stress level runs from 0 (every parameter at its easy end) to 1 (every parameter at its hard end); "
             "a failure at a low stress level is the more useful find.\n\n"
-            "## By searcher\n\n" + tester.compare_searches(results) + "\n## By search\n\n" + "\n".join(rows) + "\n")
+            "## By searcher\n\n" + tester.compare_searches(results))
+    paired = tester.compare_replays({Path(f).name: r for f, r in zip(args.files, results)})
+    if paired:
+        text += ("\n## Same tests, another configuration\n\n"
+                 "Each test re-flown with the same conditions and seed. The system searched was the improved "
+                 "controller with the rule supervisor.\n\n" + paired)
+    text += "\n## By search\n\n" + "\n".join(rows) + "\n"
     Path(args.out).parent.mkdir(parents=True, exist_ok=True)
     Path(args.out).write_text(text)
     print(f"wrote {args.out}")

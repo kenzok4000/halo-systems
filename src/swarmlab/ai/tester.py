@@ -309,12 +309,46 @@ def summarise_search(history: list[dict]) -> dict:
     levels = [stress_level(h["params"]) for h in fails]
     return {"tests": len(history), "random_top_ups": sum(h["why"].startswith("random top-up") for h in history),
             "failures": len(fails),
-            # the same conditions re-flown with another seed count once
+            # the same conditions repeated with another seed count once
             "distinct_failing_conditions": len({json.dumps(clip_params(h["params"]), sort_keys=True) for h in fails}),
             "distinct_failure_kinds": len(failure_kinds(history)), "first_failure_at": first,
             "mildest_failure_stress": min(levels) if levels else None,
             "mean_failure_stress": round(float(np.mean(levels)), 3) if levels else None,
             "max_severity": max(sev) if sev else None, "mean_severity": float(np.mean(sev)) if sev else None}
+
+
+def _lost(o: dict) -> int:
+    return 2 * o["collisions"] + o["obstacle_crashes"] + o["ground_crashes"]
+
+
+def compare_replays(named: dict[str, dict]) -> str:
+    """Markdown table pairing each re-flown search with the search it re-flew, test by test.
+
+    `named` maps file names to saved searches; a re-flown search names its source in `replay_of`.
+    """
+    groups: dict[tuple, list[int]] = {}
+    for r in named.values():
+        src = named.get(r.get("replay_of", ""))
+        if src is None:
+            continue
+        g = groups.setdefault((src["searcher"].split(":")[0], r["config"]), [0] * 7)
+        for a, b in zip(src["history"], r["history"]):
+            fa, fb = a["outcome"]["failed"], b["outcome"]["failed"]
+            g[0] += 1
+            g[1] += fa
+            g[2] += fb
+            g[3] += fb and not fa
+            g[4] += fa and not fb
+            g[5] += _lost(a["outcome"])
+            g[6] += _lost(b["outcome"])
+    if not groups:
+        return ""
+    lines = ["| Tests from | Re-flown on | Flights | Failed as searched | Failed when re-flown | Failed only when re-flown "
+             "| Failed only as searched | Drones lost as searched | Drones lost when re-flown |",
+             "|---|---|---|---|---|---|---|---|---|"]
+    for (name, config), g in groups.items():
+        lines.append(f"| {name} | {config} | " + " | ".join(str(x) for x in g) + " |")
+    return "\n".join(lines) + "\n"
 
 
 def compare_searches(results: list[dict]) -> str:
