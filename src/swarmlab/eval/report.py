@@ -31,10 +31,37 @@ def label(config: str) -> str:
     if config in CONFIG_LABELS:
         return CONFIG_LABELS[config]
     ctrl, _, sup = config.partition("+")
+    if ctrl.startswith("improved-no-"):
+        ctrl_label = "Improved without " + ", ".join(ctrl[len("improved-no-"):].split("-"))
+    else:
+        ctrl_label = {"improved": "Improved", "original": "Original"}.get(ctrl, ctrl)
     if sup.startswith("nemotron"):
-        model = sup.partition(":")[2]
-        return "Improved + Nemotron supervisor" + (f" ({model.split('/')[-1]})" if model else "")
-    return config
+        kind, _, model = sup.partition(":")
+        detail = ", ".join(x for x in (model.split("/")[-1] if model else "",
+                                       "reasoning on" if kind == "nemotron-think" else "") if x)
+        return f"{ctrl_label} + Nemotron supervisor" + (f" ({detail})" if detail else "")
+    return f"{ctrl_label} + " + {"rule": "rule supervisor", "fixed": "fixed plan"}.get(sup, sup)
+
+
+def split_variants(rows: list[dict]) -> list[dict]:
+    """Rows of one scenario flown with different swarm sizes or GPS error get their own table rows.
+
+    The scaling and noise sweeps vary these within a scenario; merging them would average unlike runs.
+    """
+    sizes, scales = {}, {}
+    for r in rows:
+        sizes.setdefault(r["scenario"], set()).add(r.get("n"))
+        scales.setdefault(r["scenario"], set()).add(r.get("gps_scale", 1.0))
+    out = []
+    for r in rows:
+        sc = r["scenario"]
+        name = sc
+        if len(sizes[sc]) > 1:
+            name += f", {r.get('n')} drones"
+        if len(scales[sc]) > 1:
+            name += f", GPS error x{r.get('gps_scale', 1.0):g}"
+        out.append(r if name == sc else {**r, "scenario": name, "base_scenario": sc})
+    return out
 
 
 def load_rows(path) -> list[dict]:
@@ -93,12 +120,68 @@ _ORDER = ["open_transit", "formation_changes", "forest_trail", "urban_canyon", "
 
 
 def _scenario_order(name):
-    return _ORDER.index(name) if name in _ORDER else len(_ORDER)
+    base, _, rest = name.partition(", ")
+    nums = [float(x) for x in "".join(c if (c.isdigit() or c == ".") else " " for c in rest).split()]
+    return (_ORDER.index(base) if base in _ORDER else len(_ORDER), base, nums)
 
 
 def _config_order(configs):
     pref = ["original+fixed", "improved+fixed", "original+rule", "improved+rule"]
-    return sorted(configs, key=lambda c: (pref.index(c) if c in pref else len(pref), c))
+    return sorted(configs, key=lambda c: (pref.index(c) if c in pref else len(pref), "nemotron" in c, c))
+
+
+def ai_usage(rows) -> str:
+    """Model calls, fallbacks, latency, tokens and cost per Nemotron configuration, from the run rows."""
+    ai = [r for r in rows if r.get("ai_calls")]
+    if not ai:
+        return ""
+    configs = _config_order({r["config"] for r in ai})
+    out = ["| Configuration | Runs | Calls per run | Fallbacks to rules | Latency, mean (s) | Latency, 95th pct (s) "
+           "| Tokens per run | Cost per run (USD) | Cost, all runs (USD) |", "|---|---|---|---|---|---|---|---|---|"]
+    for cfg in configs:
+        rs = [r for r in ai if r["config"] == cfg]
+        calls = sum(r["ai_calls"] for r in rs)
+
+        def mean(k):
+            vals = [r[k] for r in rs if r.get(k) is not None]
+            return sum(vals) / len(vals) if vals else float("nan")
+        fb = sum(r.get("ai_fallbacks") or 0 for r in rs)
+        cost = sum(r.get("ai_cost_usd") or 0.0 for r in rs)
+        out.append(f"| {label(cfg)} | {len(rs)} | {calls / len(rs):.1f} | {fb} of {calls} ({100 * fb / max(calls, 1):.1f}%) "
+                   f"| {mean('ai_latency_mean_s'):.2f} | {mean('ai_latency_p95_s'):.2f} | {mean('ai_tokens'):,.0f} "
+                   f"| {cost / len(rs):.4f} | {cost:.4f} |")
+    out.append("\nLatency includes retries. The 95th percentile column averages each run's own 95th percentile. "
+               "Costs are estimates from the token counts and the price table in `ai/budget.py`; the provider's bill is "
+               "the authority.")
+    return "\n".join(out)
+
+
+def separation(rows, pairs) -> str:
+    """For each scenario, which comparisons differ beyond noise on the main metrics.
+
+    A difference counts when the 95% interval of the seed-by-seed difference excludes zero and, for
+    continuous metrics, the mean difference is over 1% of the baseline (so 0.01 Wh/km does not count).
+    """
+    scenarios = sorted({r["scenario"] for r in rows}, key=_scenario_order)
+    out = []
+    for sc in scenarios:
+        lines = []
+        for a, b in pairs:
+            better, worse = [], []
+            for m in ("time_formed_pct", "crashes", "completed", "completion_time_s", "energy_wh_per_km"):
+                p = paired(rows, sc, a, b, m)
+                if p is None or p["n"] < 2 or p["lo"] is None or not (p["lo"] > 0 or p["hi"] < 0):
+                    continue
+                if m not in ("crashes", "completed") and abs(p["mean_diff"]) <= 0.01 * abs(p["a_mean"]):
+                    continue
+                (better if (p["mean_diff"] > 0) == (METRICS[m][1] > 0) else worse).append(
+                    f"{METRICS[m][0]} {p['a_mean']:.4g} → {p['b_mean']:.4g}")
+            if better or worse:
+                parts = ([f"better on {', '.join(better)}"] if better else []) + ([f"worse on {', '.join(worse)}"] if worse else [])
+                lines.append(f"  * {label(b)} vs {label(a)}: " + "; ".join(parts))
+        out.append(f"* **{sc}**" + (":\n" + "\n".join(lines) if lines else
+                                     ": no comparison differs beyond noise on the main metrics."))
+    return "\n".join(out)
 
 
 def charts(rows, summary, out: Path) -> list[str]:
@@ -142,29 +225,41 @@ def charts(rows, summary, out: Path) -> list[str]:
 def build(rows_path, out_dir, pairs=None) -> Path:
     out = Path(out_dir)
     out.mkdir(parents=True, exist_ok=True)
-    rows = load_rows(rows_path)
+    rows = split_variants(load_rows(rows_path))
     good = [r for r in rows if "error" not in r]
     summary = summarise(good)
     pairs = pairs or [("original+fixed", "improved+fixed"), ("improved+fixed", "improved+rule")]
     configs = {r["config"] for r in good}
-    for c in configs:
-        if "nemotron" in c and ("improved+rule", c) not in pairs:
+    for c in sorted(configs):
+        if ("nemotron" in c or c.startswith("improved-no-")) and ("improved+rule", c) not in pairs:
             pairs.append(("improved+rule", c))
+    pairs = [(a, b) for a, b in pairs if a in configs and b in configs]
     made = charts(good, summary, out)
     seeds = sorted({r["seed"] for r in good})
     errors = [r for r in rows if "error" in r]
+    source = (f"Source: `{Path(rows_path).name}`, {len(good)} runs, seeds {seeds[0]}-{seeds[-1]} ({len(seeds)} seeds)"
+              if seeds else "No runs")
     md = [f"# Benchmark report\n",
-          f"Source: `{Path(rows_path).name}`, {len(good)} runs, seeds {seeds[0]}-{seeds[-1]} ({len(seeds)} seeds)"
-          if seeds else "No runs.",
-          f", {len(errors)} failed runs.\n" if errors else ".\n",
+          source + (f", {len(errors)} failed runs (listed at the end).\n" if errors else ".\n"),
           "Crashes count drones destroyed by collisions with each other, obstacles or the ground. "
           "Completion time and energy average only the runs where the value exists.\n"]
     for fname in made:
         md.append(f"![{fname}]({fname})\n")
     md.append("## Results by scenario\n")
     md.append(tables(good, summary))
+    md.append("\n## Which scenarios separate the configurations\n")
+    md.append("A difference counts when the 95% bootstrap interval of the seed-by-seed difference excludes zero and, "
+              "except for crashes and completions, the mean difference is more than 1% of the baseline.\n")
+    md.append(separation(good, pairs))
+    usage = ai_usage(good)
+    if usage:
+        md.append("\n## Nemotron usage\n")
+        md.append(usage)
     md.append("\n## Paired comparisons (same seeds)\n")
     md.append(comparisons(good, pairs))
+    if errors:
+        md.append("\n## Failed runs\n")
+        md.extend(f"* {r['scenario']}, seed {r['seed']}, {label(r['config'])}: {r['error'][:200]}" for r in errors)
     (out / "REPORT.md").write_text("\n".join(md) + "\n")
     serial = {f"{k[0]}|{k[1]}": v for k, v in summary.items()}
     (out / "summary.json").write_text(json.dumps(serial, indent=1, default=lambda x: None if isinstance(x, float) and math.isnan(x) else x))
