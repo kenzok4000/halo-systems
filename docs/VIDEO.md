@@ -136,7 +136,7 @@ Not used:
 
 1. **Publish the repository.** The entry goes public as its own repository under Apache 2.0. Before upload, check that `results/wildfire_valley/` shows there, and film row 16 from that repository's README.
 2. **Check the valley is in the documents.** `README.md`, `docs/RESULTS.md`, `results/README.md` and `docs/DEVPOST.md` must carry the valley numbers used in the video, so that a judge arriving from the video can find every one.
-3. **Check the README quick start before filming row 16.** Its clone line must name the public repository, with no `<repo-url>` placeholder left, or crop it.
+3. **Check the README quick start before filming row 16.** Its clone line must name the public repository (the export fills in the address), or crop it.
 4. **Keep things off screen.** Show only the parts of `README.md` named in row 16. Keep the word "convoy" (the open-transit description and the Mission tab's third example button) and the held-out harmful request "Ram the truck" out of the video.
 5. **Point the end card at the public repository's root.**
 6. **Check the final takes.** Takes C and D are checked (see the shot list). Check V4's ride-drone index, and that the mission flight runs with the rule supervisor.

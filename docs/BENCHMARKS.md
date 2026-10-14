@@ -4,7 +4,7 @@ This page explains how the numbers in `results/REPORT.md` are produced and how t
 
 ## Scenarios
 
-Ten scenarios, each with 16 drones (12 in the field survey; the wildfire scout is also flown with 1 and 4, see below). Each tests one thing a supervisor might need to handle, except the wildfire scout, which measures what a swarm is for.
+Ten scenarios, each with 16 drones (12 in the field survey; the wildfire scout is also flown with 1 and 4, see below). Each tests one thing a supervisor might need to handle, except the wildfire scout, which measures what a swarm is for. The wildfire valley, an eleventh scenario, has its own seeds, sweep and scoring ([WILDFIRE.md](WILDFIRE.md)).
 
 | Scenario | Use case | What makes it hard |
 |---|---|---|

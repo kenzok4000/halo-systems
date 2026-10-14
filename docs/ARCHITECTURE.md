@@ -72,7 +72,7 @@ Every directive, whoever proposed it, passes the validator before the controller
 
 ## Evaluation (`eval/`)
 
-* `scenarios.py`: the ten benchmark scenarios, plus `from_mission` for compiled missions.
+* `scenarios.py`: the ten benchmark scenarios and the wildfire valley, plus `from_mission` for compiled missions.
 * `runner.py`: runs a grid of scenarios × configurations × seeds in parallel processes, resumable, one JSON line per run.
 * `metrics.py`, `stats.py` and `report.py`: per-run metrics, bootstrap confidence intervals, paired comparisons on the same seeds, and the Markdown report with charts.
 

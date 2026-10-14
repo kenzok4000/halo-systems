@@ -1,14 +1,14 @@
 # Devpost submission
 
-Text for the Devpost form, one section per field. The numbers come from the reports and logs in `results/` and `evidence/` (see `results/README.md`), apart from the project-wide usage figures, which come from the spend ledger. All flight results are from simulation.
+Text for the Devpost form, one section per field. The numbers come from the reports and logs in `results/` and `evidence/` (see `results/README.md`), the wildfire valley's sources from `docs/WILDFIRE.md` and the scout drone's costs from `hardware/`; the project-wide usage figures come from the spend ledger. All flight results are from simulation.
 
 ## Project name
 
-Halo Systems: drone swarms that find wildfire hotspots fast
+Halo Systems: drone swarms that find wildfires early
 
 ## Tagline
 
-Sixteen drones sweep a block of scrub for smouldering hotspots 13 times faster than one. On the swarm's other missions, an NVIDIA Nemotron supervisor sets the plan every 5 s and never touches the motors.
+Autonomous drone swarms that find wildfires early and keep flying safely while the fire changes the weather. A language model never flies the drones; it supervises them.
 
 ## Track
 
@@ -16,38 +16,54 @@ Physical AI
 
 ## Links
 
-* Repository: `https://github.com/kenzok4000/halo-systems` (public, Apache-2.0; created at export, so check the address before submitting).
+* Repository: `<repo-url>` (public, Apache-2.0; created at export, so check the address before submitting).
 * Video: the public YouTube address, filled in after upload.
-* Everything a judge needs runs from the repository without a key: the README quick start replays the recorded Nemotron flights.
+* Everything a judge needs runs from the repository without a key: the README quick start replays the recorded Nemotron flights, and the wildfire valley calls no language model at all.
 
 ## Inspiration
 
 In 2025 wildfires burnt over a million hectares in the European Union, its worst season on record, with 7,783 fires in 25 countries ([European Commission, ECHO, 31 March 2026](https://civil-protection-humanitarian-aid.ec.europa.eu/news-stories/news/record-number-wildfires-2025-calls-stronger-eu-action-2026-03-31_en); [Copernicus, European State of the Climate 2025](https://climate.copernicus.eu/esotc/2025/wildfires)). The fire season is getting longer: the Joint Research Centre reports serious wildfires both earlier and later than the traditional June to mid-September season ([JRC, 5 December 2025](https://joint-research-centre.ec.europa.eu/jrc-news-and-updates/europes-fire-season-expanding-new-jrc-report-shows-2025-12-05_en)). Most of the damage is done by the few fires nobody reached in time: the US Forest Service told the Senate that it contains 98% of fires at initial attack, and that the 1 to 2% that escape account for 30% or more of its fire spending ([USDA Forest Service testimony, 3 August 2017](https://www.fs.usda.gov/sites/default/files/fs_media/fs_document/usda-testimony-senr-fire-christiansen-08-03-17.pdf)). A 2026 study of 3,693 California ignitions found that a network of drones could detect 97% of them, 74% within the first hour, for about 5% of the state's annual prevention spending ([arXiv 2609.18556](https://arxiv.org/abs/2609.18556)).
 
+Fires started by lightning are hard to catch early. They can smoulder for a long time before anyone reports them: across 42 datasets the median "holdover" time ranges from 1.4 to 53.6 hours (Moris et al. 2023, Earth System Science Data 15: 1151), and fire services fly patrols after lightning storms to look for them. A spot smouldering under a few square metres puts up too little smoke for a camera kilometres away or a passer-by to pick out. Finding a fire is also only half the job: the people in its path need to hear in time, and to be told to leave only when they need to. In Japan, mayors decide evacuation Levels 3 to 5, but the earthquake early warning is fully automatic: in 2011 it was issued 8.6 s after the first station detected the quake. We wanted fire warnings that go out the same way, by fixed rules, with a person still able to cancel them (sources in `docs/WILDFIRE.md`).
+
 A single drone with a thermal camera can scout a block of scrub; it takes it most of a battery. Sixteen drones can do it in under a minute, if they can fly together safely, keep formation in gusts, close the gaps when one fails, and change plan when a trail narrows or the battery runs short. That judgement is usually hand-written rules. We wanted to know whether a language model can make those calls better, and how to let it try without ever putting it between the drones and their motors.
 
 ## What it does
 
+* Looks for fires in a mountain valley after dry lightning (the wildfire valley). Each flight has five fires: one already spreading in open scrub, one under tree crowns, one under a rock overhang that no downward camera can see, one smouldering in the open, and one across the valley outside the survey block. The swarm sweeps the valley floor with downward thermal cameras and watches ahead for smoke with forward cameras.
+* Turns what the drones see into a picture for the fire crews. A ground station locates the fires from thermal finds and crossed smoke bearings, forecasts their spread with an ensemble of 16 runs of Rothermel's fire model, 3 hours ahead, and briefs the crews: how each fire was found, whether it is spreading, how fast its head runs and which way, and which named places it reaches and when.
+* Warns the people in the fire's path. Evacuation alerts go out automatically by fixed rules, zone by zone at Japan-style levels (3 prepare, 4 evacuate, 5 emergency), each after an alert check, to simulated phones only. No language model takes part in the alert decision. An operator can cancel an alert or give a zone the all-clear.
+* Compares the drones with today's ways of finding fires: geostationary and polar satellites, AI cameras and calls from the public, modelled from cited figures with the benefit of the doubt (sources in `docs/WILDFIRE.md`).
 * Simulates a swarm of 1 to 64 quadcopters with forward-flight power, wind and gust fronts, noisy GPS, lossy and delayed radio, motor failures, batteries, trees and buildings.
 * Flies every drone with a 50 Hz controller that has slot assignment, synchronised transitions, consensus and a control-barrier-function safety filter. No language model is in this loop.
 * Every 5 s of simulated time, a supervisor reads a status report and sets the formation, spacing, speed, altitude and safety margin. The supervisor is either tuned rules or Nemotron, and its answer passes a safety validator first.
 * Turns plain-language mission requests into checked mission plans, and refuses non-civilian requests.
 * Searches for conditions that make the swarm fail, with Nemotron as a test engineer against random search, corner search and the cross-entropy method.
 * Benchmarks the controllers and supervisors on held-out seeds, with confidence intervals and paired comparisons, and shows it live in a 3D dashboard.
-* Scouts for wildfire ignitions: a thermal sweep of a block of dry scrub for smouldering hotspots, flown with 1, 4 and 16 drones on the same seeds, so the time a swarm saves in finding every hotspot is a measured number, not a claim.
+* Scouts for wildfire ignitions (the wildfire scout): a thermal sweep of a block of dry scrub for smouldering hotspots, flown with 1, 4 and 16 drones on the same seeds, so the time a swarm saves in finding every hotspot is a measured number, not a claim.
+
+What is simulated: the valley simulates the fire's spread (Rothermel's surface fire model on land cover, slope and wind), plume heights, smoke and heat detection as probability models of a detector, the forecast, the alerts and the phones. The wildfire scout's hotspots are fixed points that do not spread, and the nine supervision scenarios have no fire. No scenario simulates the fire's effect on its own wind; gust fronts are injected to stand in for it.
 
 ## How we built it
 
 * Python and numpy, with matplotlib for the charts. The dashboard is a standard-library web server and three.js.
 * Nemotron runs on Nebius Token Factory through its OpenAI-compatible API, with a client that handles timeouts, retries, rate limits, response validation, logging and a spend guard.
 * Every supervisor call is recorded, so the held-out Nemotron flights can be replayed exactly without a key. Mission-compiler and stress-search calls are kept in call logs.
+* The wildfire valley adds a fire model (Rothermel's surface fire model with Albini's revisions, on Anderson's fuel models, spread over the grid by minimum travel time), a bent-over smoke plume, detection models for the thermal camera, the forward camera and the particulate sensor, and models of today's detection methods, each rule taken from a published source (`docs/WILDFIRE.md`).
+* The ground station that locates fires, forecasts their spread, briefs crews and sends alerts is plain code with fixed rules. No language model takes part, so the valley costs nothing to run. Nemotron's jobs are elsewhere: it supervises the flight, compiles missions and hunts for failures. The valley was flown with the rule supervisor.
+* The scout drone the simulator flies is a priced design in `hardware/`: a 7-inch quadcopter from off-the-shelf hobby parts, with a radiometric thermal camera looking down, an RGB camera looking ahead, a particulate sensor and a 900 MHz swarm radio, flying ArduPilot with a Raspberry Pi Zero 2 W as companion computer. It carries cameras, sensors and radios only. The folder holds a parametric CadQuery model, a parts list (USD 1,095 a drone; USD 20,281 for 16 drones, a ground station and spares; prices checked on 2026-10-14, excluding shipping and tax), running costs (USD 149 a swarm flight hour with a crew of two, assuming a 300-hour drone life) and a build guide. It also lists where the parts cannot match the simulator: the scout's GNSS error, for one, is about six times the simulator's.
 * Seeds 0-9 were used for all tuning. Seeds 1000-1019 were each flown once: the conventional configurations first, then Nemotron, after its setup had been chosen on tuning seeds and committed.
+* The wildfire valley has its own seeds: 2000-2011 and 3000-3019 for development, and 4000-4019 held out and flown once with the final code. An earlier sweep on 4000-4019 was stopped part-way when the station changed, and its rows were set aside unread. The models of today's methods were checked only on seeds 3000-3003.
 
 ## Results
 
-All from simulated flights on held-out seeds 1000-1019, each flown once, 20 flights per scenario and configuration, apart from the stress search, which flies its own search seeds, and the mission compiler, scored on a held-out set of 20 requests. The Nemotron setup was chosen on tuning seeds and committed before any Nemotron flight on these seeds.
+All from simulated flights on held-out seeds 1000-1019, each flown once, 20 flights per scenario and configuration, apart from the stress search, which flies its own search seeds, the mission compiler, scored on a held-out set of 20 requests, and the wildfire valley. The Nemotron setup was chosen on tuning seeds and committed before any Nemotron flight on these seeds. The wildfire valley has its own held-out seeds 4000-4019 (20 valleys, 100 fires): 80 flights with 1, 4 and 16 drones, and the 16-drone flights again with alerts by distance alone, all with the improved controller and the rule supervisor. Brackets are 95% intervals.
 
-* **Wildfire scouting, swarm size.** On 20 held-out blocks of 300 × 200 m with six smouldering hotspots each, one drone found the last hotspot after 536 s on average, four drones after 180 s and sixteen after 41 s. Seed by seed, sixteen drones were 13.3 times faster than one [95% interval 12.0 to 14.5], 8.3 minutes sooner on a sweep that takes one drone 11.6 minutes, for 30% more battery energy in total. Every flight found every hotspot with no crashes.
+* **Wildfire valley, finding fires.** Sixteen drones on one flight found 86% of the fires [80, 91], four drones 77% [72, 82] and one drone 60%. Sixteen drones found 59% [52, 66] of all 100 fires while they still smouldered, at about 4 m², a median 20 minutes before they started to spread (missed fires counted as never found). The two fires no downward camera can reach were found only by smoke: the one under the overhang in 75% of flights with four or sixteen drones, and the one across the valley in 20% of flights with four and 85% with sixteen. The sixteen-drone swarm also logged 0.45 false fires per flight [0.25, 0.65], and found all five fires in 8 of 20 flights.
+* **Against today's ways of finding fires**, modelled from published figures with the benefit of the doubt: no cloud, a camera with a clear view of the whole valley, every satellite detection credited to the right fire, the fastest published delivery. An AI camera with a clear view, or a call from the public, reports a fire about 4 minutes after it starts to spread, at 100 to 200 m²; a geostationary satellite after 55 minutes, at 1.6 ha; polar satellites after 128 minutes, at 7.3 ha. Sixteen drones reported 60 of the 100 fires before the earliest of today's four, by a median of 69 minutes. These are models of today's methods built from cited figures, not measurements of them. Cameras and callers start their clock when the fire starts to spread, so none of them finds a smouldering fire here; the drones' lead comes from that phase, and from smoulder times the scenario sets. Today's methods watch for 4 hours, while the drones fly once, for up to 40 minutes. The drones add to today's methods rather than replace them: together, today's four and sixteen drones found every fire.
+* **Spread forecast.** With sixteen drones, the forecast's median matched the true spread of the fires the station knew were spreading with a Sorensen overlap of 0.71 [0.63, 0.78] at 1 hour and 0.83 [0.79, 0.86] at 3 hours (1 is a perfect match). One drone scores 0.77 and 0.89, because it finishes later and forecasts with more of the fire mapped. The forecast leaves out crown fire, spotting and the fire's effect on its own wind, each of which makes real fires faster and less predictable.
+* **Warnings to simulated phones.** Each flight has 63 simulated phones; 5% have no signal. With sixteen drones, 94.7% [93.0, 96.4] of the phones the fire reached were warned before it arrived, a median 126 minutes ahead; 32 of the 34 missed were phones without signal. That share is about the same for every swarm size and for alerts by distance alone, so it is not a gain from the swarm or the forecast. What the forecast changes is who is told to leave: against alerts by distance alone, it told 24 [18, 30] fewer phones per flight to evacuate that the fire did not reach, with the same share warned in time. Every alert passed the check (0 of 144 rejected with sixteen drones), so these flights do not show it stopping a bad one.
+* **Wildfire scout, swarm size.** On 20 held-out blocks of 300 × 200 m with six fixed smouldering hotspots each, one drone found the last hotspot after 536 s on average, four drones after 180 s and sixteen after 41 s. Seed by seed, sixteen drones were 13.3 times faster than one [95% interval 12.0 to 14.5], 8.3 minutes sooner on a sweep that takes one drone 11.6 minutes, for 30% more battery energy in total. Every flight found every hotspot with no crashes.
 * **Safety.** Over nine scenarios, the original formation controller lost 300 drones in crashes in 180 flights. The improved controller, supervised by the rules or by Nemotron, had no crashes and no near misses in 180 flights each. (Drones that drop out with a scripted motor failure are not counted as crashes.)
 * **Supervision.** Without a supervisor, the improved controller finished 5% of forest-trail flights and 55% of urban-canyon flights, because its safety filter will not squeeze a formation through a gap it does not fit. With the rules or Nemotron it finished all of them.
 * **Nemotron 3 Nano against the tuned rules:** on the five headline metrics, better beyond noise in four of nine scenarios and worse in none, but the gains are small and two come with a caveat. It held formation slightly better in the forest (86% against 85% of the time) and used 1.8% less energy in the urban canyon. When the radio degraded it finished in 66 s against 70 s, because the rules slowed down and Nano kept the plan, as flying with no supervisor does. On a low-battery leg it finished in 128 s against 138 s on 5% less energy, partly because it kept a higher speed than planned in 90 of 150 updates where its instructions said the planned speed was enough. It also took longer than the rules to settle after formation changes. In five scenarios no supervisor made a difference above the report's 1% threshold.
@@ -61,33 +77,41 @@ All from simulated flights on held-out seeds 1000-1019, each flown once, 20 flig
 * Nemotron 3 reasons by default. In our first live call, the reasoning used the whole token limit and the answer came back empty, and our client paid for three retries before giving up. We now switch reasoning on or off per role, stop retrying when the limit cuts a reply off, and charge every billed reply to the spend ledger.
 * With reasoning off, Nemotron 3 Nano kept a grid formation that was 24 m wide, buffer included, through a 13.7 m forest trail for a whole flight. It repeated its previous answer and reason 30 times. The status report now includes the corridor and energy arithmetic, worked out by code. The rule supervisor sees the same report.
 * Our first safety filter measured distances between GPS estimates and ignored GPS error, so drones still collided and had near misses in forest and canyon runs on the tuning seeds. It now pads its safety distances by two standard deviations of navigation error. Three standard deviations caused tree strikes in narrow gaps.
+* In the valley, a first sweep on seeds 3000 to 3019 found that more drones gave a worse 1-hour forecast (Sorensen overlap 0.57 with one drone, 0.41 with sixteen) and an early bias of 22 minutes. With more drones, more fires were first located by smoke and sized from the plume top, which over-estimated the largest fires by up to 23 times and made some smouldering fires look like spreading ones. The station now maps burning ground with the thermal cameras, sizes a fire from direct measurements first, and uses the plume top only when at least three drones measured it well. Those seeds then became development seeds, and the held-out seeds were flown once with the final code.
 
 ## Accomplishments
 
 * A supervisor that a 3-billion-active-parameter model runs for about $0.004 a simulated flight, with 3,400 calls and no fallbacks on the held-out seeds, and that matched or beat tuned rules on the headline metrics there.
 * The held-out Nemotron flights can be replayed exactly without a key: 24 of them replayed from the published call cache match the originals apart from compute time (`results/replay_check/`).
-* The evidence includes the failures: the first live call that returned nothing, the run where reasoning was switched off and the model ignored the corridor check, and the scenarios where Nemotron made no difference or did worse.
+* A valley scenario that goes from a drone's first sighting to a checked alert on a simulated phone, with the spread forecast in between, all scored against a truth the station never sees, with no language model and no key.
+* A comparison with today's ways of finding fires in which every rule is written from a cited source and gives today's methods the benefit of the doubt.
+* A priced design for the scout itself: a CAD model, a parts list checked against the simulator's airframe, running costs and a build guide.
+* The evidence includes the failures: the first live call that returned nothing, the run where reasoning was switched off and the model ignored the corridor check, the scenarios where Nemotron made no difference or did worse, and the first valley sweep, where more drones gave a worse forecast.
 
 ## What we learned
 
 * Put the model where its latency does not matter, and make every output pass a validator.
 * Give the model the same report as a strong baseline, and measure both on the same seeds.
 * A small model without reasoning needs the arithmetic done for it. With reasoning on, it does the arithmetic itself but takes far longer.
+* A number that does not move with the swarm is not the swarm's result. In the valley, 94.7% of reached phones were warned in time with one drone and with sixteen, and 95.0% with alerts by distance alone; what the forecast changed was how many phones were told to leave without need.
+* When comparing with today's methods, give them the benefit of the doubt, and say where your lead comes from. In the valley it comes from the smouldering phase.
 
 ## What's next
 
-* Fire weather in the loop: have the supervisor re-plan the sweep from a wind forecast and send the nearest drone back to confirm a find, and measure whether that beats the fixed lawnmower.
-* Calibrate the airframe, battery and thermal-camera models against flight logs and a real camera's detection range.
-* Run the supervisor against real autopilots through a software-in-the-loop bridge, then on a Jetson at the edge.
+* Re-tasking in the valley: the swarm now flies its sweep and lands. Have the supervisor re-plan the sweep from a wind forecast and send the nearest drone back to confirm a doubtful fix or watch a fire, and measure whether that beats the fixed sweep.
+* Fire weather in the model: couple the fire to its own wind, which no scenario simulates yet (gust fronts stand in for it), and add crown fire and spotting to the forecast.
+* Calibrate the airframe, battery and thermal-camera models against flight logs and a real camera's detection range, and the smoke and heat detection models against real footage and sensor logs.
+* Write the scout's onboard program and a MAVLink bridge between the simulator's controller and ArduPilot, which the repository does not have yet. Then run the supervisor against real autopilots through a software-in-the-loop bridge, and on a Jetson at the edge.
+* Model how people respond to an alert. Today an alert counts as delivered, not as acted on.
 
 ## Built with
 
-Python, numpy, matplotlib, three.js, NVIDIA Nemotron 3, Nebius Token Factory
+Python, numpy, matplotlib, three.js, CadQuery, NVIDIA Nemotron 3, Nebius Token Factory
 
 ## NVIDIA and Nebius usage
 
 * Models: NVIDIA Nemotron 3 Nano (`nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B`, the main supervisor) and Nemotron 3 Super (`nvidia/nemotron-3-super-120b-a12b`), via Nebius Token Factory (`https://api.tokenfactory.nebius.com/v1`).
-* Roles: supervisor, mission compiler, test engineer (see docs/NVIDIA_NEBIUS.md).
+* Roles: supervisor, mission compiler, test engineer (see docs/NVIDIA_NEBIUS.md). The wildfire valley calls no language model, so it costs nothing to run.
 * Usage over the whole project, from the spend ledger: about 13,100 requests (13,066 logged by the client and 35 from the first live check, entered by hand), 22.3 million prompt tokens and 3.6 million completion tokens, an estimated $8.23 at price ceilings set above the listed prices. The ledger counts every attempt, retries included, and counts requests that timed out at their worst case.
 
 ## Feedback on Nebius Token Factory and NVIDIA models
@@ -102,14 +126,16 @@ Answers to the five questions the organisers ask, with the numbers behind them i
 
 ## Gallery
 
-Six images for the Devpost gallery, in this order, each taken at 1920 × 1080 once the Halo Systems name is in the dashboard header:
+Eight images for the Devpost gallery, in this order. Dashboard screenshots are taken at 1920 × 1080 once the Halo Systems name is in the dashboard header; the charts are used as saved.
 
 1. The wildfire sweep from above with the hotspots lit orange (a frame from `docs/wildfire.gif`).
-2. The dashboard in the forest trail with Nemotron's directives in the decision log.
-3. `docs/figures/wildfire-swarm-size-light.png`: time to find every hotspot with 1, 4 and 16 drones, with 95% intervals.
-4. `docs/architecture.png`: the three loops.
-5. The Mission tab with a compiled scouting mission beside a refused request.
-6. `results/crashes.png`: drones lost per configuration on the held-out seeds.
+2. `results/wildfire_valley/map.png`: one held-out valley flight (seed 4012, 16 drones, all five fires found), with the true spread against the forecast, the fires located by thermal camera and by smoke, the twelve evacuation zones and the simulated phones coloured by the alert level they received.
+3. `results/wildfire_valley/detection.png`: when each of the 100 fires was reported and how big it was, by sixteen drones and by today's methods as modelled (a fire a method missed is not shown; sixteen drones found 86).
+4. The dashboard in the forest trail with Nemotron's directives in the decision log.
+5. `docs/figures/wildfire-swarm-size-light.png`: time to find every hotspot with 1, 4 and 16 drones, with 95% intervals.
+6. `docs/architecture.png`: the three loops.
+7. The Mission tab with a compiled scouting mission beside a refused request.
+8. `results/crashes.png`: drones lost per configuration on the held-out seeds.
 
 ## Updates during the submission period
 
@@ -118,4 +144,4 @@ Halo Systems (first named SwarmLab) was written during the submission period: it
 * the airframe parameters (mass, thrust-to-weight, drag area, body radius, top speed) and its 17-minute hover endurance, which the power model is tuned to match;
 * the passive formation law, ported as the "original" baseline controller.
 
-Everything else is new: the simulator engine, wind, sensing and power models, the improved controller and safety filter, the supervisors, the Nemotron integration, the benchmark, the dashboard and the docs.
+Everything else is new: the simulator engine, wind, sensing and power models, the improved controller and safety filter, the supervisors, the Nemotron integration, the benchmark, the wildfire valley (its fire, smoke and detection models, the ground station and the alerts), the scout hardware design, the dashboard and the docs.

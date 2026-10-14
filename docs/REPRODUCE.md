@@ -5,7 +5,8 @@ Everything here runs on a laptop with Python 3.10 or newer and numpy. Charts nee
 ## Seeds
 
 * Seeds 0-9 (`--seeds tuning`) were used while developing and tuning the controllers and the rule supervisor.
-* Seeds 1000-1019 (`--seeds heldout`) were not looked at until the final runs. Every headline number uses them.
+* Seeds 1000-1019 (`--seeds heldout`) were not looked at until the final runs. Every headline number outside the wildfire valley uses them.
+* The wildfire valley has its own seeds: 2000-2011 and 3000-3019 for development, and 4000-4019 held out and flown once with the final code ([WILDFIRE.md](WILDFIRE.md)).
 
 Each seed fixes the wind, sensor noise, radio losses, obstacle layout and initial positions. Every configuration sees the same conditions for a given seed. That is why the report can compare configurations seed by seed (paired comparisons).
 
@@ -107,6 +108,24 @@ gzip results/mission_calls.jsonl
 Each committed file also scores the regex baseline on the same prompts, so the baseline's committed score is inside every `mission_eval_*.json`; the baseline-only command is there for a check without a key. The mission compiler has no replay cache; the call log keeps every request and reply.
 
 The regex baseline and both prompt sets were added in the same first commit, and the baseline has not changed since. The model prompt was tuned on the tuning prompts only; the held-out prompts were first sent to a model in the final evaluation. The same author wrote the prompts, the baseline and the model prompt, so the held-out set is unseen by the model, not by its author.
+
+## Wildfire scout (no key needed)
+
+```bash
+halo bench --scenarios wildfire_scout --configs improved+rule --seeds heldout --n 1,4,16 --out results/wildfire/runs.jsonl
+halo report results/wildfire/runs.jsonl --out results/wildfire
+python3 tools/make_figures.py      # the README's figures, from the committed rows
+```
+
+## Wildfire valley (no key needed)
+
+The valley's rows come from a sweep script rather than `bench`, because each row records its alert rule and the ablation flies the distance rule. The sweep skips rows already in its output, so an interrupted sweep resumes.
+
+```bash
+PYTHONPATH=src python3 tools/wildfire_valley_sweep.py --out results/wildfire_valley/runs.jsonl   # seeds 4000-4019: 1, 4 and 16 drones, and the distance-rule ablation
+PYTHONPATH=src python3 tools/wildfire_valley_report.py results/wildfire_valley/runs.jsonl        # writes REPORT.md and summary.json next to the rows
+PYTHONPATH=src python3 tools/wildfire_valley_figures.py --seed 4012 --n 16                       # map.png, swarm_size.png, detection.png
+```
 
 ## Tuning rounds
 
