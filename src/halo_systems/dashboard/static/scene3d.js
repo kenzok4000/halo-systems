@@ -179,6 +179,7 @@ export class SwarmView {
     this.controls.enableDamping = true;
     this.controls.maxPolarAngle = Math.PI * 0.495;
     this.mode = "follow";
+    this.zoom = 1;            // camera distance in follow, orbit, chase and top views, as a multiple of the default
     this.userMoved = false;
     this.controls.addEventListener("start", () => { this.userMoved = true; });
     this.speed = 1;
@@ -1028,7 +1029,15 @@ export class SwarmView {
     this.mode = mode;
     this.userMoved = false;
     this.orbitAngle = Math.atan2(this.camera.position.z - this.focus.z, this.camera.position.x - this.focus.x);
-    if (mode === "top") this.camera.position.set(this.focus.x, this.focus.y + Math.max(140, (this.extent || 40) * 3.2), this.focus.z + 1);
+    if (mode === "top") this.camera.position.set(this.focus.x, this.focus.y + Math.max(140, (this.extent || 40) * 3.2) * this.zoom, this.focus.z + 1);
+  }
+
+  // Pull the camera back (z > 1) or in, keeping the sun's shadows over everything in view.
+  setZoom(z) {
+    this.zoom = Math.max(0.3, Math.min(4, Number(z) || 1));
+    const c = this.sun.shadow.camera, half = 140 * Math.max(1, this.zoom);
+    c.left = -half; c.right = half; c.top = half; c.bottom = -half; c.far = 900 * Math.max(1, this.zoom);
+    c.updateProjectionMatrix();
   }
 
   resize() {
@@ -1194,30 +1203,30 @@ export class SwarmView {
       this.focus.add(delta);
       this.camera.position.add(delta);   // every mode moves with the swarm; the user's own angle and zoom are kept
     }
-    const f = this.focus, e = Math.max(20, this.extent || 20);
+    const f = this.focus, e = Math.max(20, this.extent || 20), z = this.zoom;
     let want = null, aim = 0;   // aim: look this far above the swarm, so the skyline shows at the top of the frame
     if (this.mode === "follow" && !this.userMoved && this.canyon && this.lastFrame) {
       // Between tall buildings: from high up behind the swarm, looking down the street.
-      const hd = this.lastFrame.heading ?? 0, dist = e * 1.2 + 60;
+      const hd = this.lastFrame.heading ?? 0, dist = (e * 1.2 + 60) * z;
       want = new THREE.Vector3(f.x - Math.cos(hd) * dist * 0.55, f.y + dist * 0.85, f.z + Math.sin(hd) * dist * 0.55);
     } else if (this.mode === "follow" && !this.userMoved) {
       // Low enough to see the skyline over the swarm, high enough to see the formation's shape.
-      const dist = e * 1.35 + 70;
+      const dist = (e * 1.35 + 70) * z;
       const dir = this.camera.position.clone().sub(f);
       dir.y = 0; if (dir.lengthSq() < 1) dir.set(-0.6, 0, 0.8); dir.normalize();
       want = f.clone().add(dir.multiplyScalar(dist * 0.92)).add(new THREE.Vector3(0, dist * 0.38, 0));
       aim = dist * 0.15;
     } else if (this.mode === "orbit" && !this.userMoved) {
       this.orbitAngle += dt * 0.1;
-      const rad = e * 1.6 + 70;
+      const rad = (e * 1.6 + 70) * z;
       want = new THREE.Vector3(f.x + Math.cos(this.orbitAngle) * rad, f.y + rad * 0.36, f.z + Math.sin(this.orbitAngle) * rad);
       aim = rad * 0.13;
     } else if (this.mode === "chase" && !this.userMoved && this.lastFrame) {
       const hd = this.lastFrame.heading ?? 0;
-      const back = e * 1.1 + 35;
-      want = new THREE.Vector3(f.x - Math.cos(hd) * back, f.y + 10 + e * 0.28, f.z + Math.sin(hd) * back);
+      const back = (e * 1.1 + 35) * z;
+      want = new THREE.Vector3(f.x - Math.cos(hd) * back, f.y + (10 + e * 0.28) * z, f.z + Math.sin(hd) * back);
     } else if (this.mode === "top" && !this.userMoved) {
-      want = new THREE.Vector3(f.x, f.y + Math.max(150, e * 2.6 + 70), f.z + 1);
+      want = new THREE.Vector3(f.x, f.y + Math.max(150, e * 2.6 + 70) * z, f.z + 1);
     }
     if (want) this.camera.position.lerp(want, this.film ? Math.min(1, dt * 2.5) : k);
     // Never under the ground (on a run with hills the camera can swing behind a slope).

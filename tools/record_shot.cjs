@@ -13,6 +13,8 @@
 // --view follow|chase|orbit|ride|top (the page's view buttons; --ride-drone N rides with drone N, not the one
 // nearest the swarm's centre), --seconds (default 15), --out (default video/shot.webm),
 // --scroll (scroll the side panel while recording).
+// --zoom Z (with --film) pulls the camera back Z times its usual distance in the follow, chase, orbit and top views;
+// --panel alerts|brief|log (with --film) keeps that section of the side panel at its top in every frame.
 // The video starts when the page opens, so it also holds the page load and set-up before the shot.
 //
 // --film [--fps 25] renders the shot frame by frame instead of screen-recording it, for a smooth video on a
@@ -46,7 +48,7 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 (async () => {
   mkdirSync(dirname(out), { recursive: true });
   if (args.film) return film();
-  for (const k of ["approve", "cancel", "allclear", "from", "ride-drone"]) if (args[k]) console.warn(`--${k} needs --film; ignored`);
+  for (const k of ["approve", "cancel", "allclear", "from", "ride-drone", "zoom", "panel"]) if (args[k]) console.warn(`--${k} needs --film; ignored`);
   const browser = await chromium.launch({ args: ["--use-angle=swiftshader", "--enable-unsafe-swiftshader", "--ignore-gpu-blocklist"] });
   const context = await browser.newContext({ viewport: { width: 1920, height: 1080 },
     recordVideo: { dir: dirname(out), size: { width: 1920, height: 1080 } } });
@@ -135,6 +137,17 @@ async function film() {
   await page.click('#speed button[data-speed="5"]');   // buffer as fast as the server's pacing allows
   if (args.view) await page.click(`#view-${args.view === "follow" ? "reset" : args.view}`);
   if (args["ride-drone"]) await page.evaluate((i) => { window.haloView.rideDrone = i; window.haloView.ride = null; }, Number(args["ride-drone"]));
+  if (args.zoom) await page.evaluate((z) => window.haloView.setZoom(z), Number(args.zoom));
+  const panel = { alerts: "#zones", brief: "#brief", log: "#log" }[args.panel];
+  if (args.panel && !panel) throw new Error("--panel takes alerts, brief or log");
+  // Scroll the side panel so the section's heading sits at its top (the sections above it grow during a flight).
+  const pinPanel = () => panel && page.evaluate((sel) => {
+    const aside = document.querySelector("aside");
+    let h = document.querySelector(sel);
+    while (h && h.tagName !== "H3") h = h.previousElementSibling;
+    const top = document.querySelector("nav.tabs").getBoundingClientRect().bottom;   // the tab bar stays stuck over the panel's top
+    if (h) aside.scrollTop += h.getBoundingClientRect().top - top - 8;
+  }, panel);
   // The page buffers at 5x, but the video plays at --speed: show that speed on the buttons (display only).
   await page.evaluate((sp) => document.querySelectorAll("#speed button").forEach((b) => b.classList.toggle("active", Number(b.dataset.speed) === sp)), playback);
   const from = Number(args.from || 0);
@@ -178,6 +191,7 @@ async function film() {
   }
   for (let k = 0; k < frames; k++) {
     await page.evaluate(([dv, ds]) => window.haloFilm.step(dv, ds), [1 / fps, k || from > 0 ? playback / fps : 0]);
+    await pinPanel();
     // The first frame also compiles every shader, which takes a while without a GPU.
     await page.screenshot({ path: join(dir, `f${String(k).padStart(5, "0")}.jpg`), type: "jpeg", quality: 94, timeout: 300000 });
     if (k % fps === 0) process.stdout.write(`\r${k}/${frames} frames`);
