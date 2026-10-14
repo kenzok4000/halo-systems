@@ -55,7 +55,7 @@ python3 -m venv .venv && . .venv/bin/activate
 python3 -m pip install -e '.[report]'   # numpy, plus matplotlib for charts
 python3 -m unittest discover -s tests   # offline, no key, about 30 s
 halo list                               # the ten scenarios
-halo run wildfire_scout --config improved+rule --seed 1000 --n 16   # one sweep, prints its metrics as JSON
+halo run wildfire_scout --config improved+rule --seed 1000 --n 16   # one sweep: all_found_s 33.6, as in results/wildfire
 halo serve --open                       # live 3D dashboard on http://127.0.0.1:8765; Ctrl-C stops it
 ```
 
@@ -176,7 +176,7 @@ halo bench --scenarios open_transit,formation_changes,forest_trail,urban_canyon,
 halo report results/runs.jsonl --out results
 halo bench --scenarios wildfire_scout --configs improved+rule --seeds heldout --n 1,4,16 --out results/wildfire/runs.jsonl
 halo report results/wildfire/runs.jsonl --out results/wildfire
-halo mission-eval --sets heldout --out results/mission_eval_baseline.json   # regex baseline; add --model <id> for Nemotron
+halo mission-eval --sets heldout --out mission_eval_baseline.json   # regex baseline, no key; add --model <id> for Nemotron
 ```
 
 Seeds 0-9 were used for tuning; every headline number uses held-out seeds 1000-1019. The supervision benchmark's simulator, controllers and rules were frozen before any held-out flight, and the Nemotron setup was chosen on tuning seeds and committed before any Nemotron flight on these seeds ([docs/BENCHMARKS.md](docs/BENCHMARKS.md)). The wildfire scout was added afterwards and flown once on the same seed numbers; the change that added the camera leaves every earlier row unchanged. The Nemotron supervisor flights replay exactly from `results/nemotron_cache.jsonl`; the mission-compiler and stress-search calls are kept in call logs instead. [docs/REPRODUCE.md](docs/REPRODUCE.md) lists every command behind `results/`.

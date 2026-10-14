@@ -19,3 +19,7 @@ This run used the code of the time plus a small local change, `thinking-off.patc
 | `cache_forest_trail_0.jsonl` | That flight's calls as recorded. They replay only with the code of that time (d91cfe6 plus the patch): the prompt has changed since, so today's code finds no match and stops |
 
 The supervisor call took 0.97 s and returned a directive the validator accepted. The full flight made 30 calls with no fallbacks, so the integration worked end to end. The flight itself did not reach the end of the trail: the model kept a grid formation that did not fit the trail. That led to the status report spelling out the corridor and energy checks in words, after which Nano and Super with reasoning off finished every forest flight in tuning rounds 2 and 3 and on the held-out seeds; Nano with reasoning on finished 3 of 5 in round 3 (see `results/`).
+
+## `budget.txt`: the spend ledger total
+
+The output of `halo budget` against the project's shared spend ledger on 14 October 2026: 13,068 entries, 22.3 million prompt tokens, 3.6 million completion tokens and an estimated $8.23 at the price ceilings. It is the source of the project-wide usage figures in the README and the Devpost text.

@@ -26,7 +26,7 @@ import matplotlib.pyplot as plt  # noqa: E402
 
 from halo_systems.ai import tester  # noqa: E402
 from halo_systems.eval.report import load_rows  # noqa: E402
-from halo_systems.eval.stats import paired, value  # noqa: E402
+from halo_systems.eval.stats import bootstrap_ci, paired, value  # noqa: E402
 
 OUT = ROOT / "docs" / "figures"
 NANO = "improved+nemotron:nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B"
@@ -117,6 +117,32 @@ def safety_data():
     refly = {"tests": tests, "lost_with": with_filter, "lost_without": without,
              "failures_with": fails_with, "failures_without": fails_without}
     return crashes, refly
+
+
+def wildfire_data():
+    rows = [r for r in load_rows(ROOT / "results" / "wildfire" / "runs.jsonl") if "error" not in r]
+    by_n = {}
+    for r in rows:
+        by_n.setdefault(r["n"], {})[r["seed"]] = r
+    sizes = []
+    for n in sorted(by_n):
+        rs = list(by_n[n].values())
+        mean, lo, hi = bootstrap_ci([r["all_found_s"] for r in rs])
+        sizes.append({"n": n, "flights": len(rs), "all_found": mean, "lo": lo, "hi": hi,
+                      "first_find": bootstrap_ci([r["first_find_s"] for r in rs])[0],
+                      "energy_wh": bootstrap_ci([r["energy_wh"] for r in rs])[0],
+                      "found_pct": bootstrap_ci([r["targets_found_pct"] for r in rs])[0],
+                      "lost": int(sum(value(r, "crashes") for r in rs)),
+                      "near_misses": int(sum(r.get("near_misses", 0) for r in rs))})
+    # Seed by seed: how many times sooner the largest swarm found the last hotspot than one drone.
+    one, big = by_n[min(by_n)], by_n[max(by_n)]
+    seeds = sorted(set(one) & set(big))
+    ratio = bootstrap_ci([one[s]["all_found_s"] / big[s]["all_found_s"] for s in seeds])
+    sooner = bootstrap_ci([(one[s]["all_found_s"] - big[s]["all_found_s"]) / 60.0 for s in seeds])
+    energy = sum(big[s]["energy_wh"] for s in seeds) / sum(one[s]["energy_wh"] for s in seeds)
+    return sizes, {"seeds": len(seeds), "ratio": ratio, "minutes_sooner": sooner,
+                   "one_drone_minutes": bootstrap_ci([one[s]["completion_time_s"] / 60.0 for s in seeds])[0],
+                   "energy_ratio": energy}
 
 
 def supervisor_data():
@@ -230,10 +256,42 @@ def fig_safety(crashes, refly, theme):
     return save(fig, "safety", theme)
 
 
+def fig_wildfire(sizes, theme):
+    t = THEMES[theme]
+    fig, (a1, a2) = plt.subplots(1, 2, figsize=(10, 2.6), gridspec_kw={"width_ratios": [1.5, 1], "wspace": 0.35})
+    fig.set_facecolor(t["surface"])
+    y = list(range(len(sizes)))
+    labels = [f'{s["n"]} drone' + ("" if s["n"] == 1 else "s") for s in sizes]
+    colours = [t["s1"] if s["n"] == max(x["n"] for x in sizes) else t["context"] for s in sizes]
+    style(a1, t)
+    a1.barh(y, [s["all_found"] for s in sizes], height=0.55, color=colours)
+    top = max(s["hi"] for s in sizes)
+    for yi, s in zip(y, sizes):
+        a1.plot([s["lo"], s["hi"]], [yi, yi], color=t["ink2"], linewidth=1.2, solid_capstyle="round")
+        a1.text(s["hi"] + top * 0.02, yi, f'{s["all_found"]:.0f} s', va="center", color=t["ink"], fontsize=9)
+    a1.set_yticks(y, labels)
+    a1.invert_yaxis()
+    a1.set_xlim(0, top * 1.15)
+    title(a1, t, "Time to find all six hotspots",
+          f'seconds, mean over {sizes[0]["flights"]} held-out blocks with 95% interval; every flight found every hotspot')
+    style(a2, t)
+    a2.barh(y, [s["energy_wh"] for s in sizes], height=0.55, color=colours)
+    etop = max(s["energy_wh"] for s in sizes)
+    for yi, s in zip(y, sizes):
+        a2.text(s["energy_wh"] + etop * 0.02, yi, f'{s["energy_wh"]:.1f} Wh', va="center", color=t["ink"], fontsize=9)
+    a2.set_yticks(y, labels)
+    a2.invert_yaxis()
+    a2.set_xlim(0, etop * 1.3)
+    title(a2, t, "Battery energy for the block", "watt-hours, all drones together")
+    fig.subplots_adjust(left=0.1, right=0.98, top=0.74, bottom=0.14)
+    return save(fig, "wildfire-swarm-size", theme)
+
+
 def main() -> int:
     stress = stress_data()
     crashes, refly = safety_data()
     sup = supervisor_data()
+    wild, wild_pair = wildfire_data()
     print("Stress search (results/stress/):")
     for d in stress:
         print(f'  {d["label"]:32s} flights {d["flights"]:3d}  failures {d["failures"]:3d}  distinct {d["distinct"]:3d}  '
@@ -248,8 +306,18 @@ def main() -> int:
             if abs(r["diff"]) > 1e-9 or abs(r["lo"]) > 1e-9 or abs(r["hi"]) > 1e-9:
                 print(f'  {d["label"]:22s} {r["scenario"]:18s} {r["who"]:5s} {r["diff"]:+8.2f} '
                       f'[{r["lo"]:+.2f}, {r["hi"]:+.2f}] {d["unit"]}  better/tie/worse {r["better"]}/{r["ties"]}/{r["worse"]}')
+    print("Wildfire scout, swarm size (results/wildfire/runs.jsonl):")
+    for s in wild:
+        print(f'  {s["n"]:2d} drones  flights {s["flights"]}  hotspots found {s["found_pct"]:.0f}%  '
+              f'all found {s["all_found"]:.1f} s [{s["lo"]:.1f}, {s["hi"]:.1f}]  first find {s["first_find"]:.1f} s  '
+              f'energy {s["energy_wh"]:.1f} Wh  drones lost {s["lost"]}  near misses {s["near_misses"]}')
+    r, m = wild_pair["ratio"], wild_pair["minutes_sooner"]
+    print(f'  seed by seed over {wild_pair["seeds"]} seeds: the largest swarm found the last hotspot {r[0]:.2f} times faster '
+          f'[{r[1]:.2f}, {r[2]:.2f}], {m[0]:.2f} min earlier [{m[1]:.2f}, {m[2]:.2f}]; one drone takes '
+          f'{wild_pair["one_drone_minutes"]:.2f} min to finish; energy ratio {wild_pair["energy_ratio"]:.3f}')
     for theme in THEMES:
-        for path in (fig_stress(stress, theme), fig_supervisor(sup, theme), fig_safety(crashes, refly, theme)):
+        for path in (fig_stress(stress, theme), fig_supervisor(sup, theme), fig_safety(crashes, refly, theme),
+                     fig_wildfire(wild, theme)):
             print("wrote", path.relative_to(ROOT))
     return 0
 

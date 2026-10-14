@@ -5,8 +5,9 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "halo-systems"
 version = "0.1.0"
-description = "Halo Systems: supervised drone-swarm formation testbed. A 50 Hz safety-filtered controller with NVIDIA Nemotron on Nebius Token Factory as supervisor, mission compiler and test engineer."
+description = "Halo Systems: autonomous drone swarms for wildfire scouting. A 50 Hz safety-filtered controller flies the drones; NVIDIA Nemotron on Nebius Token Factory supervises them, compiles missions and stress-tests them."
 readme = "README.md"
+license = {text = "Apache-2.0"}
 requires-python = ">=3.10"
 dependencies = ["numpy>=1.24"]
 

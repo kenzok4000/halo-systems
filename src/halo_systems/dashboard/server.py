@@ -229,14 +229,14 @@ def replay_defaults(results_dir, model: str | None, cache: str | None) -> tuple[
     """With no flags and no key, ``halo serve`` replays the committed Nemotron 3 Nano flights.
 
     The cache defaults to ``results/nemotron_cache.jsonl`` when that file exists, and the model to the
-    one that cache was recorded with when no key and no SWARMLAB_SUPERVISOR_MODEL are set. With a key,
+    one that cache was recorded with when no key and no HALO_SUPERVISOR_MODEL are set. With a key,
     the model stays whatever the flags or the environment say, so a live session never silently
     picks a model.
     """
     default_cache = Path(results_dir) / "nemotron_cache.jsonl"
     if cache is None and default_cache.exists():
         cache = str(default_cache)
-    if model is None and cache and not os.environ.get("NEBIUS_API_KEY") and not os.environ.get("SWARMLAB_SUPERVISOR_MODEL"):
+    if model is None and cache and not os.environ.get("NEBIUS_API_KEY") and not env("SUPERVISOR_MODEL"):
         model = DEFAULT_REPLAY_MODEL
     return model, cache
 

@@ -58,7 +58,7 @@ class MissionTest(unittest.TestCase):
         from pathlib import Path
         from halo_systems.dashboard.server import State, _compile, replay_defaults
         saved = os.environ.pop("NEBIUS_API_KEY", None)
-        saved_model = os.environ.pop("SWARMLAB_SUPERVISOR_MODEL", None)
+        saved_models = {k: os.environ.pop(k, None) for k in ("HALO_SUPERVISOR_MODEL", "SWARMLAB_SUPERVISOR_MODEL")}
         try:
             with tempfile.TemporaryDirectory() as tmp:
                 results = Path(tmp) / "results"
@@ -67,6 +67,9 @@ class MissionTest(unittest.TestCase):
                 model, cache = replay_defaults(results, None, None)
                 self.assertEqual(cache, str(results / "nemotron_cache.jsonl"))
                 self.assertIn("Nemotron", model)
+                os.environ["HALO_SUPERVISOR_MODEL"] = "some/other-model"
+                self.assertIsNone(replay_defaults(results, None, None)[0])
+                del os.environ["HALO_SUPERVISOR_MODEL"]
                 state = State(results, Path(tmp), model, Path(cache))
                 self.assertEqual(state.ai_status()["mode"], "replay")
                 out = _compile(state, "Scout the lightning strike area from last night for hotspots with 12 drones at 20 m")
@@ -80,8 +83,9 @@ class MissionTest(unittest.TestCase):
         finally:
             if saved is not None:
                 os.environ["NEBIUS_API_KEY"] = saved
-            if saved_model is not None:
-                os.environ["SWARMLAB_SUPERVISOR_MODEL"] = saved_model
+            for k, v in saved_models.items():
+                if v is not None:
+                    os.environ[k] = v
 
     def test_doctor_counts_the_flight_calls_from_the_shared_log(self):
         from pathlib import Path

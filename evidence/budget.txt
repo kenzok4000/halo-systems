@@ -1,0 +1,18 @@
+Spend ledger total, read on 14 October 2026 with `halo budget` (no model call is made).
+HALO_LEDGER pointed at the project's shared ledger, which every live call in this project
+wrote to; the path is left out here. Costs are estimates at the price ceilings in
+ai/budget.py, which are set above the listed prices; the provider's bill is the authority.
+
+$ halo budget
+{
+  "entries": 13068,
+  "prompt_tokens": 22345926,
+  "completion_tokens": 3609328,
+  "spent_usd": 8.2331,
+  "cap_usd": 18.0,
+  "remaining_usd": 9.7669
+}
+
+13,068 entries: 13,066 attempts logged by the client, retries included, plus 2 entered by
+hand for the 35 requests of the first live checks on 12 October (4 in evidence/first-attempt/,
+31 in the run after it), made by a build that did not yet write to the ledger.

@@ -92,19 +92,19 @@ halo budget                       # spend so far against the cap
 
 Spend is capped by the guard described in [NVIDIA_NEBIUS.md](NVIDIA_NEBIUS.md). `improved+nemotron-think:<model id>` turns reasoning on.
 
-The supervisor runs can be replayed exactly with no key and no cost: run the same `bench` command with `--cache-mode replay` (and a new `--out`). Every call is answered from `results/nemotron_cache.jsonl`, so the flights match the published rows apart from timing fields. The dashboard does the same with `halo serve --model $NANO --cache results/nemotron_cache.jsonl`.
+The supervisor runs can be replayed exactly with no key and no cost: run the same `bench` command with `--cache-mode replay` (and a new `--out`). Every call is answered from `results/nemotron_cache.jsonl`, so the flights match the published rows apart from timing fields. The dashboard does the same: with no key, `halo serve` replays `results/nemotron_cache.jsonl` with Nemotron 3 Nano.
 
 ## Mission compiler (needs a key, except for the baseline)
 
 ```bash
-halo mission-eval --sets heldout --out results/mission_eval_baseline.json            # regex baseline only, no key
+halo mission-eval --sets heldout --out mission_eval_baseline.json                    # regex baseline only, no key (not committed)
 halo mission-eval --sets heldout --model $NANO         --ai-log results/mission_calls.jsonl --out results/mission_eval_nano.json
 halo mission-eval --sets heldout --model $NANO --think --ai-log results/mission_calls.jsonl --out results/mission_eval_nano_think.json
 halo mission-eval --sets heldout --model $SUPER        --ai-log results/mission_calls.jsonl --out results/mission_eval_super.json
 gzip results/mission_calls.jsonl
 ```
 
-Each file also scores the regex baseline on the same prompts. The mission compiler has no replay cache; the call log keeps every request and reply.
+Each committed file also scores the regex baseline on the same prompts, so the baseline's committed score is inside every `mission_eval_*.json`; the baseline-only command is there for a check without a key. The mission compiler has no replay cache; the call log keeps every request and reply.
 
 The regex baseline and both prompt sets were added in the same first commit, and the baseline has not changed since. The model prompt was tuned on the tuning prompts only; the held-out prompts were first sent to a model in the final evaluation. The same author wrote the prompts, the baseline and the model prompt, so the held-out set is unseen by the model, not by its author.
 

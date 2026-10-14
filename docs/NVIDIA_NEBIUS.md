@@ -8,6 +8,16 @@ Halo Systems uses NVIDIA Nemotron models, served by Nebius Token Factory's OpenA
 | Mission compiler | Operator's plain-language request | Mission plan JSON, or a refusal for non-civilian use | Regex and keyword parser |
 | Test engineer | Every stress test so far, with outcomes | The next batch of tests, each with a reason | Random search; corner search; cross-entropy method |
 
+Nebius services used: Token Factory only, through its OpenAI-compatible chat completions API at `https://api.tokenfactory.nebius.com/v1`. The simulations are numpy on an ordinary CPU and ran outside Nebius.
+
+| Role | Models | Reasoning | Temperature | Token limit | Time limit | Prompt |
+|---|---|---|---|---|---|---|
+| Supervisor | Nemotron 3 Nano (`nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B`); Super (`nvidia/nemotron-3-super-120b-a12b`) as a comparison | Off | 0.2 | 1,200 | 15 s per call, 8 s per attempt | `ai/prompts.py` |
+| Mission compiler | Nano, reasoning off and on; Super | Off, or on in one Nano run | 0 | 1,500; 6,000 with reasoning | 60 s per attempt | `ai/mission.py` |
+| Test engineer | Nano, reasoning off and on | Off, or on in one run | 0.7 | 2,500; 8,000 with reasoning | 180 s per attempt | `ai/tester.py` |
+
+Our feedback on Token Factory and the models, with the numbers behind it, is in [DEVPOST.md](DEVPOST.md#feedback-on-nebius-token-factory-and-nvidia-models).
+
 ## Why the model is not in the control loop
 
 The drones need a new thrust command every 20 ms. A hosted model answers in hundreds of milliseconds to seconds, and sometimes not at all. So the model works only where a decision can wait a few seconds, and where judgement over many signals helps: wind, near misses, radio health, battery, and the corridor ahead. The engine applies each answer only after its measured latency has passed in simulated time, so a slow answer has a real cost in the benchmark.
@@ -22,7 +32,7 @@ Nothing the model says reaches the motors directly. Every directive passes the s
 * **Timeouts and deadlines.** Every request has a timeout, and a supervisor call has a deadline for the whole call, retries and waits included: 15 s with reasoning off (8 s per attempt) and 60 s with it on (one attempt). After that the rules decide that step. The values come from the first tuning round's call log (`results/tuning/round1/calls.jsonl.gz`): most of Super's slow first attempts were rescued by a quick retry (41 of 56 second attempts answered in about 2.5 s), and an answer much later than 15 s describes a swarm that has flown on 75 m.
 * **Retries** use exponential backoff with jitter on network errors and HTTP 408, 409, 425, 429, 500, 502, 503 and 504. `Retry-After` is honoured, up to 20 s. Authentication errors are not retried.
 * **Rate limiting** uses a client-side token bucket of 2 requests per second (bursts of 4) for each client. Benchmark workers each have their own client, so 4 workers can send up to 8 requests per second between them.
-* **JSON mode** is used when the model supports it, with an automatic fallback when it does not.
+* **JSON mode** (`response_format: {"type": "json_object"}`) is used when the model supports it, with an automatic fallback when it does not. It asks for valid JSON, not for a schema, so the fields are checked after parsing.
 * **Responses are validated**: HTTP status, JSON shape, and a non-empty message. Replies are then parsed defensively (reasoning tags and code fences are stripped) and checked field by field.
 * **Graceful failure**: the supervisor falls back to the rule supervisor for that step. In the dashboard, a failed mission-compiler call falls back to the regex parser. The test engineer tops up with random tests. Every fallback is counted.
 * **Structured logging**: one JSON line per call with latency, attempts, tokens, estimated cost, request id, finish reason and outcome.
@@ -65,6 +75,6 @@ A benchmark replay that misses the cache stops that run with an error rather tha
 3. It validates the reply and passes it through the safety validator.
 4. It flies a full scenario with Nemotron supervising.
 
-It writes `evidence/nebius_e2e.json` (each step, pass or fail, usage and cost) and `evidence/nebius_calls.jsonl` (every call, redacted). The usage in `nebius_e2e.json` covers the doctor's own supervisor call only; the flight's calls are in `nebius_calls.jsonl` and the flight record.
+It writes `evidence/latest/nebius_e2e.json` (each step, pass or fail, with the usage and cost of the doctor's own call and of the flight's calls) and `evidence/latest/nebius_calls.jsonl` (every call, redacted). The committed check from 12 October is in `evidence/` itself, written by an earlier build that reported the doctor's own call only; the flight's calls are in its `nebius_calls.jsonl`.
 
 Status: the end-to-end check passed live on 12 October 2026. The model list returned 25 models, 4 of them Nemotron. A supervisor call to Nemotron 3 Nano took 0.97 s and returned a valid directive that the validator accepted. A full forest-trail flight then made 30 calls with no fallbacks, although the flight did not reach the end of the trail because the model kept a grid that did not fit. The first attempt, two minutes earlier, failed with an empty reply; `evidence/README.md` explains both runs. The integration is also tested offline against a fake transport (`tests/test_safety_ai.py`).
