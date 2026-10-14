@@ -14,6 +14,12 @@ Sixteen drones sweep a block of scrub for smouldering hotspots 13 times faster t
 
 Physical AI
 
+## Links
+
+* Repository: `https://github.com/kenzok4000/halo-systems` (public, Apache-2.0; created at export, so check the address before submitting).
+* Video: the public YouTube address, filled in after upload.
+* Everything a judge needs runs from the repository without a key: the README quick start replays the recorded Nemotron flights.
+
 ## Inspiration
 
 In 2025 wildfires burnt over a million hectares in the European Union, its worst season on record, with 7,783 fires in 25 countries ([European Commission, ECHO, 31 March 2026](https://civil-protection-humanitarian-aid.ec.europa.eu/news-stories/news/record-number-wildfires-2025-calls-stronger-eu-action-2026-03-31_en); [Copernicus, European State of the Climate 2025](https://climate.copernicus.eu/esotc/2025/wildfires)). The fire season is getting longer: the Joint Research Centre reports serious wildfires both earlier and later than the traditional June to mid-September season ([JRC, 5 December 2025](https://joint-research-centre.ec.europa.eu/jrc-news-and-updates/europes-fire-season-expanding-new-jrc-report-shows-2025-12-05_en)). Most of the damage is done by the few fires nobody reached in time: the US Forest Service told the Senate that it contains 98% of fires at initial attack, and that the 1 to 2% that escape account for 30% or more of its fire spending ([USDA Forest Service testimony, 3 August 2017](https://www.fs.usda.gov/sites/default/files/fs_media/fs_document/usda-testimony-senr-fire-christiansen-08-03-17.pdf)). A 2026 study of 3,693 California ignitions found that a network of drones could detect 97% of them, 74% within the first hour, for about 5% of the state's annual prevention spending ([arXiv 2609.18556](https://arxiv.org/abs/2609.18556)).
@@ -93,6 +99,17 @@ Answers to the five questions the organisers ask, with the numbers behind them i
 * **What needs work.** Reasoning is on by default, the reasoning comes back in `message.reasoning` and counts against `max_tokens`; when it runs out, `content` is null with `finish_reason: "length"`, which looks like a broken reply. Our first live check failed that way four times in 43 s before we found `enable_thinking`. A note in the quick-start, or a separate reasoning budget, would save newcomers the paid empty replies. Latency has a long tail: in one tuning round 12 of 826 Nano calls timed out at 8 s, and before we added a whole-call deadline 39 of 540 Super calls took over 30 s, the slowest 64 s. A per-request latency hint or a documented p99 would help anyone with a deadline.
 * **How onboarding felt, zero to hello world.** Short, with one trap. Key in the environment, the model list returned 25 models (4 Nemotron), and the first supervisor call failed on the reasoning-token default above, four attempts in 43 s (12 October, 22:34 UTC, `evidence/first-attempt/`). With reasoning switched off by a two-line change (`evidence/thinking-off.patch`) the same check passed two minutes later, the supervisor answering in 0.97 s, and a full supervised flight made 30 calls with no fallbacks.
 * **Would we build with them again, and why.** Yes. For a decision that can wait a few seconds, a 30B open model at this price and latency is the right tool, and running it on Token Factory meant no GPU to manage and every call logged with a request id for replay. We would keep the same rule: measure it against a conventional baseline on held-out seeds, because on five of nine scenarios the model made no difference, and on the mission compiler it clearly did (97.6% of fields right against 83.9% for the regex baseline).
+
+## Gallery
+
+Six images for the Devpost gallery, in this order, each taken at 1920 × 1080 once the Halo Systems name is in the dashboard header:
+
+1. The wildfire sweep from above with the hotspots lit orange (a frame from `docs/wildfire.gif`).
+2. The dashboard in the forest trail with Nemotron's directives in the decision log.
+3. `docs/figures/wildfire-swarm-size-light.png`: time to find every hotspot with 1, 4 and 16 drones, with 95% intervals.
+4. `docs/architecture.png`: the three loops.
+5. The Mission tab with a compiled scouting mission beside a refused request.
+6. `results/crashes.png`: drones lost per configuration on the held-out seeds.
 
 ## Updates during the submission period
 
