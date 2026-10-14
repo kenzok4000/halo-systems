@@ -237,6 +237,40 @@ export class WildfireLayer {
       img.data.set([r, gg, b, 255 * al], ((gr.ny - 1 - iy) * gr.nx + ix) * 4);
     });
     g.putImageData(img, 0, 0);
+    this._drawMapped(e.mapped_cells || [], gr);
+  }
+
+  _drawMapped(cells, gr) {
+    // The ground the drones' downward cameras saw burning, which the forecast starts from: white hatching,
+    // over the bounding box of those cells only.
+    this.mapped = null;
+    if (!cells.length) return;
+    let i0 = Infinity, i1 = -1, j0 = Infinity, j1 = -1;
+    for (const k of cells) {
+      const ix = k % gr.nx, iy = Math.floor(k / gr.nx);
+      i0 = Math.min(i0, ix); i1 = Math.max(i1, ix); j0 = Math.min(j0, iy); j1 = Math.max(j1, iy);
+    }
+    const w = i1 - i0 + 1, h = j1 - j0 + 1;
+    const mask = document.createElement("canvas");
+    mask.width = w; mask.height = h;
+    const mg = mask.getContext("2d"), img = mg.createImageData(w, h);
+    for (const k of cells) {
+      const ix = k % gr.nx - i0, iy = Math.floor(k / gr.nx) - j0;
+      img.data[((h - 1 - iy) * w + ix) * 4 + 3] = 255;
+    }
+    mg.putImageData(img, 0, 0);
+    const s = Math.max(4, Math.round(gr.cell_m * this.view.overlay.px));   // overlay pixels per forecast cell
+    const cv = document.createElement("canvas");
+    cv.width = w * s; cv.height = h * s;
+    const g = cv.getContext("2d");
+    g.strokeStyle = "rgba(240,250,255,.9)"; g.lineWidth = Math.max(1, s * 0.14);
+    g.beginPath();
+    for (let d = -cv.height; d < cv.width; d += Math.max(3, s * 0.5)) { g.moveTo(d, cv.height); g.lineTo(d + cv.height, 0); }
+    g.stroke();
+    g.globalCompositeOperation = "destination-in";
+    g.imageSmoothingEnabled = false;
+    g.drawImage(mask, 0, 0, cv.width, cv.height);
+    this.mapped = { cv, x: gr.x0 + (i0 - 0.5) * gr.cell_m, y: gr.y0 + (j1 + 0.5) * gr.cell_m, w: w * gr.cell_m, h: h * gr.cell_m };
   }
 
   // Painted on the ground overlay: under the camera coverage wash, the forecast bands and the burn scar.
@@ -249,6 +283,10 @@ export class WildfireLayer {
     };
     if (this.bandCv) grid(this.forecast.grid, this.bandCv);
     grid(this.truth, this.burnCv);
+    if (this.mapped) {
+      const m = this.mapped, [u, w] = v._toPx(m.x, m.y);
+      g.drawImage(m.cv, u, w, m.w * o.px, m.h * o.px);
+    }
   }
 
   // On top: alert zones (dashed while waiting for approval, solid once delivered) and located fires.

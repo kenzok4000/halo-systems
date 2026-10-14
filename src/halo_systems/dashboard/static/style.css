@@ -93,6 +93,8 @@ pre { white-space: pre-wrap; font-size: 12px; background: var(--panel-2); paddin
 .band.b120 { background: rgba(250,150,40,.6); } .band.b180 { background: rgba(252,204,80,.6); margin-right: 5px; }
 .dot.phone { background: #eef2f5; box-shadow: 0 0 0 1.5px #1c2a33; }
 .zone { display: inline-block; width: 12px; height: 9px; border: 1.5px dashed rgb(220,40,60); margin-right: 5px; vertical-align: -1px; }
+.mapped { display: inline-block; width: 12px; height: 9px; margin-right: 5px; vertical-align: -1px;
+  background: repeating-linear-gradient(-45deg, #3a2a20 0 2px, #f0faff 2px 3.5px); }
 .chip.station { background: #ffb44a; color: #2a1600; }
 .brief, .alerts { list-style: none; padding: 0; margin: 0 0 8px; font-size: 13px; }
 .brief li { padding: 5px 8px; border-left: 3px solid #ff8a3d; background: var(--panel-2); margin-bottom: 4px; border-radius: 0 6px 6px 0; }
