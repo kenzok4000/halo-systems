@@ -116,7 +116,9 @@ def today_section(by, sizes, w, summary):
     for n in sizes:
         d = drones(n)
         errs = [f["err_m"] for r in by.get((n, "forecast"), []) for f in r["fire_table"] if f["located"] and f["err_m"] is not None]
-        rows.append((f"Halo drones, {n}, one flight", f"{np.median(errs):.0f} m (median, measured)" if errs else "",
+        where = "" if not errs else ("its burning ground (median, measured)" if np.median(errs) < 1.0
+                                     else f"{np.median(errs):.0f} m (median, measured)")
+        rows.append((f"Halo drones, {n}, one flight", where,
                      detect_stats([[(act[s][i], *d[s][i]) for i in range(len(act[s]))] for s in seeds if s in d])))
     top = max(sizes)
     dtop = drones(top)
@@ -137,6 +139,21 @@ def today_section(by, sizes, w, summary):
           f"{fmt(st['under_0_1ha'], 0, pct=True)} | {_cell_minutes(st['after_spread_median_min'])} | "
           f"{'n/a' if size is None else f'{size:,.0f}'} | {where} |")
         summary["today"][label] = st
+    w("")
+    for n in sizes:
+        d = drones(n)
+        first, leads, total = 0, [], 0
+        for s in d:
+            best = earliest(s)
+            for i, (t, _) in enumerate(d[s]):
+                total += 1
+                if t is not None and (best[i][0] is None or t < best[i][0]):
+                    first += 1
+                    leads.append((best[i][0] - t) / 60.0 if best[i][0] is not None else np.inf)
+        lead = float(np.median(leads)) if leads else None
+        w(f"With {n} drone{'s' if n != 1 else ''}, {'the drone' if n == 1 else 'the swarm'} reported {first} of {total} fires before the earliest of "
+          f"today's four" + (f", by a median of {lead:.0f} minutes." if lead is not None else "."))
+        summary["today"][f"drones_{n}_first"] = {"fires": first, "of": total, "lead_median_min": lead}
     w("")
 
 
@@ -177,13 +194,14 @@ def main(path: str) -> int:
         mapped = med([r.get("mapped_ha") for r in g])
         w(f"| {n} | {fmt(found, 1, pct=True)} | {fmt(false, 2)} | {merged:.2f} | "
           f"{'n/a' if err is None else f'{err:.1f}'} | {'n/a' if mapped is None else f'{mapped:.2f}'} | "
-          f"{sum(a is not None for a in alls)} of {len(alls)} flights; median {med(alls) or 0:.0f} s |")
+          + (f"{sum(a is not None for a in alls)} of {len(alls)} flights; median {med(alls):.0f} s |"
+             if any(a is not None for a in alls) else f"none of {len(alls)} flights |"))
         summary["groups"][f"{n}_forecast"] = {"flights": len(g), "fires_found_pct": found, "false_fires": false,
                                               "duplicates_merged": merged, "smoke_fix_error_median_m": err,
                                               "mapped_ha_median": mapped}
     w("")
     w("By where the fire was: share found, share of those found by smoke, and the median time to find it.\n")
-    w("| Fire | " + " | ".join(f"{n} drones" for n in sizes) + " |")
+    w("| Fire | " + " | ".join(f"{n} drone{'s' if n != 1 else ''}" for n in sizes) + " |")
     w("|---|" + "---|" * len(sizes))
     for i, label in enumerate(FIRES):
         cells = []

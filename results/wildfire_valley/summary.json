@@ -1,0 +1,435 @@
+{
+ "seeds": [
+  4000,
+  4001,
+  4002,
+  4003,
+  4004,
+  4005,
+  4006,
+  4007,
+  4008,
+  4009,
+  4010,
+  4011,
+  4012,
+  4013,
+  4014,
+  4015,
+  4016,
+  4017,
+  4018,
+  4019
+ ],
+ "errors": 0,
+ "groups": {
+  "1_forecast": {
+   "flights": 20,
+   "fires_found_pct": [
+    0.5999999999999999,
+    0.5999999999999999,
+    0.5999999999999999
+   ],
+   "false_fires": [
+    0.0,
+    0.0,
+    0.0
+   ],
+   "duplicates_merged": 0.35,
+   "smoke_fix_error_median_m": null,
+   "mapped_ha_median": 0.20500000000000002,
+   "sorensen_1h": [
+    0.7670999999999999,
+    0.7194987500000001,
+    0.8122
+   ],
+   "sorensen_3h": [
+    0.8940999999999999,
+    0.8728499999999999,
+    0.91445125
+   ],
+   "sorensen_3h_all_fires": [
+    0.7614500000000001,
+    0.71475,
+    0.8080999999999999
+   ],
+   "phone_arrival_mae_min": [
+    17.580000000000002,
+    11.620000000000001,
+    25.470125
+   ],
+   "phone_arrival_bias_min": [
+    12.885,
+    5.9399999999999995,
+    21.77
+   ],
+   "brier_60min": [
+    0.037770000000000005,
+    0.021669875,
+    0.05909549999999999
+   ],
+   "warned_in_time": [
+    0.9470404984423676,
+    0.9297655407833274,
+    0.9642358982219498
+   ],
+   "evac_not_reached": [
+    0.10326086956521739,
+    0.04917932090063237,
+    0.18403234649122802
+   ],
+   "lead_median_min": 123.9,
+   "lead_p10_min": 59.55,
+   "evac_lead_median_min": 63.75
+  },
+  "4_forecast": {
+   "flights": 20,
+   "fires_found_pct": [
+    0.7700000000000001,
+    0.72,
+    0.8200000000000001
+   ],
+   "false_fires": [
+    0.3,
+    0.0,
+    0.75
+   ],
+   "duplicates_merged": 0.25,
+   "smoke_fix_error_median_m": 5.65,
+   "mapped_ha_median": 0.2,
+   "sorensen_1h": [
+    0.7372,
+    0.67979875,
+    0.7911525
+   ],
+   "sorensen_3h": [
+    0.8547499999999999,
+    0.8152000000000001,
+    0.89025
+   ],
+   "sorensen_3h_all_fires": [
+    0.7571,
+    0.7121487500000001,
+    0.8025025
+   ],
+   "phone_arrival_mae_min": [
+    20.431578947368422,
+    15.236842105263158,
+    26.473684210526315
+   ],
+   "phone_arrival_bias_min": [
+    12.58421052631579,
+    4.4946052631578945,
+    20.921184210526313
+   ],
+   "brier_60min": [
+    0.03244999999999999,
+    0.020144874999999996,
+    0.047545749999999984
+   ],
+   "warned_in_time": [
+    0.9485981308411215,
+    0.9323429241420382,
+    0.9647782175441624
+   ],
+   "evac_not_reached": [
+    0.1810344827586207,
+    0.08823529411764706,
+    0.2916666666666667
+   ],
+   "lead_median_min": 125.65,
+   "lead_p10_min": 61.849999999999994,
+   "evac_lead_median_min": 84.7
+  },
+  "16_forecast": {
+   "flights": 20,
+   "fires_found_pct": [
+    0.8600000000000001,
+    0.8000000000000002,
+    0.9100000000000001
+   ],
+   "false_fires": [
+    0.45,
+    0.25,
+    0.65
+   ],
+   "duplicates_merged": 0.15,
+   "smoke_fix_error_median_m": 9.3,
+   "mapped_ha_median": 0.19,
+   "sorensen_1h": [
+    0.71415,
+    0.6286487500000001,
+    0.7753525
+   ],
+   "sorensen_3h": [
+    0.8262,
+    0.78574875,
+    0.86445
+   ],
+   "sorensen_3h_all_fires": [
+    0.77135,
+    0.7248987499999999,
+    0.81820125
+   ],
+   "phone_arrival_mae_min": [
+    24.58,
+    17.694625000000002,
+    33.165125
+   ],
+   "phone_arrival_bias_min": [
+    2.1800000000000006,
+    -9.440375,
+    15.160624999999992
+   ],
+   "brier_60min": [
+    0.029449999999999997,
+    0.018444875,
+    0.042450125
+   ],
+   "warned_in_time": [
+    0.9470404984423676,
+    0.9297655407833274,
+    0.9642358982219498
+   ],
+   "evac_not_reached": [
+    0.1987179487179487,
+    0.08945490102861095,
+    0.3217846400372406
+   ],
+   "lead_median_min": 126.05000000000001,
+   "lead_p10_min": 63.5,
+   "evac_lead_median_min": 99.8
+  },
+  "16_distance": {
+   "warned_in_time": [
+    0.9501557632398754,
+    0.9333333333333333,
+    0.9671647621268656
+   ],
+   "evac_not_reached": [
+    0.48523206751054854,
+    0.41181187437106087,
+    0.5713080168776371
+   ]
+  },
+  "16_paired": {
+   "warned_in_time_diff": [
+    -0.1,
+    -0.25,
+    0.0
+   ],
+   "evac_false_diff": [
+    -24.1,
+    -30.25,
+    -18.2
+   ]
+  }
+ },
+ "today": {
+  "Geostationary satellite (GOES, 5-min scans)": {
+   "found": [
+    0.93,
+    0.89,
+    0.97
+   ],
+   "before_spread": [
+    0.0,
+    0.0,
+    0.0
+   ],
+   "under_0_1ha": [
+    0.0,
+    0.0,
+    0.0
+   ],
+   "after_spread_median_min": 54.78499999999999,
+   "size_median_m2": 15700.0
+  },
+  "Polar-orbiting satellites (MODIS, VIIRS)": {
+   "found": [
+    0.89,
+    0.83,
+    0.95
+   ],
+   "before_spread": [
+    0.0,
+    0.0,
+    0.0
+   ],
+   "under_0_1ha": [
+    0.03,
+    0.0,
+    0.06
+   ],
+   "after_spread_median_min": 127.52416666666666,
+   "size_median_m2": 72800.0
+  },
+  "AI camera network, clear view": {
+   "found": [
+    1.0,
+    1.0,
+    1.0
+   ],
+   "before_spread": [
+    0.0,
+    0.0,
+    0.0
+   ],
+   "under_0_1ha": [
+    1.0,
+    1.0,
+    1.0
+   ],
+   "after_spread_median_min": 4.0,
+   "size_median_m2": 200.0
+  },
+  "AI camera network, as deployed (sees 22% of fires)": {
+   "found": [
+    0.24,
+    0.17,
+    0.32
+   ],
+   "before_spread": [
+    0.0,
+    0.0,
+    0.0
+   ],
+   "under_0_1ha": [
+    0.24,
+    0.17,
+    0.32
+   ],
+   "after_spread_median_min": Infinity,
+   "size_median_m2": 150.0
+  },
+  "Public calls (911 / 119)": {
+   "found": [
+    0.99,
+    0.97,
+    1.0
+   ],
+   "before_spread": [
+    0.0,
+    0.0,
+    0.0
+   ],
+   "under_0_1ha": [
+    0.78,
+    0.7,
+    0.86
+   ],
+   "after_spread_median_min": 4.439166666666672,
+   "size_median_m2": 200.0
+  },
+  "Earliest of today's four (camera with a clear view)": {
+   "found": [
+    1.0,
+    1.0,
+    1.0
+   ],
+   "before_spread": [
+    0.0,
+    0.0,
+    0.0
+   ],
+   "under_0_1ha": [
+    1.0,
+    1.0,
+    1.0
+   ],
+   "after_spread_median_min": 4.0,
+   "size_median_m2": 100.0
+  },
+  "Halo drones, 1, one flight": {
+   "found": [
+    0.6,
+    0.6,
+    0.6
+   ],
+   "before_spread": [
+    0.4,
+    0.4,
+    0.4
+   ],
+   "under_0_1ha": [
+    0.43,
+    0.4,
+    0.46
+   ],
+   "after_spread_median_min": 26.101666666666667,
+   "size_median_m2": 4.0
+  },
+  "Halo drones, 4, one flight": {
+   "found": [
+    0.77,
+    0.72,
+    0.82
+   ],
+   "before_spread": [
+    0.55,
+    0.5,
+    0.6
+   ],
+   "under_0_1ha": [
+    0.59,
+    0.53,
+    0.65
+   ],
+   "after_spread_median_min": -18.210833333333333,
+   "size_median_m2": 4.0
+  },
+  "Halo drones, 16, one flight": {
+   "found": [
+    0.86,
+    0.8,
+    0.91
+   ],
+   "before_spread": [
+    0.59,
+    0.52,
+    0.66
+   ],
+   "under_0_1ha": [
+    0.68,
+    0.62,
+    0.74
+   ],
+   "after_spread_median_min": -20.389166666666668,
+   "size_median_m2": 4.0
+  },
+  "Today's four plus 16 drones": {
+   "found": [
+    1.0,
+    1.0,
+    1.0
+   ],
+   "before_spread": [
+    0.59,
+    0.52,
+    0.66
+   ],
+   "under_0_1ha": [
+    1.0,
+    1.0,
+    1.0
+   ],
+   "after_spread_median_min": -20.389166666666668,
+   "size_median_m2": 5.0
+  },
+  "drones_1_first": {
+   "fires": 40,
+   "of": 100,
+   "lead_median_min": 112.13749999999999
+  },
+  "drones_4_first": {
+   "fires": 55,
+   "of": 100,
+   "lead_median_min": 74.23666666666666
+  },
+  "drones_16_first": {
+   "fires": 60,
+   "of": 100,
+   "lead_median_min": 68.73416666666665
+  }
+ }
+}

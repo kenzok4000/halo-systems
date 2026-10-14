@@ -15,6 +15,30 @@ Nothing in this scenario calls a language model, so it costs nothing to run.
 
 ![One flight: the true spread against the forecast, the fires found and the phones alerted](../results/wildfire_valley/map.png)
 
+## Results in brief
+
+Held-out seeds 4000 to 4019 (20 valleys, 100 fires), each flown once with the final code; brackets are 95%
+bootstrap intervals over seeds. Full tables: [REPORT.md](../results/wildfire_valley/REPORT.md).
+
+- **Finding fires before they spread.** Sixteen drones on one flight found 86% of the fires [80, 91], 59%
+  [52, 66] of them while they still smouldered at about 4 m^2, a median 20 minutes before they started to
+  spread (missed fires counted as never found). None of today's methods modelled here finds a fire before it
+  spreads.
+- **Against today's methods, given every benefit of the doubt.** An AI camera with a clear view, or a call
+  from the public, reports a fire about 4 minutes after it starts to spread, at 100 to 200 m^2; a
+  geostationary satellite after 55 minutes, at 1.6 ha; polar satellites after 128 minutes, at 7.3 ha. As
+  deployed in California in 2024, cameras saw 22% of fires. The sixteen drones reported 60 of the 100 fires
+  before the earliest of today's four methods, by a median of 69 minutes.
+- **Forecast.** With sixteen drones, the forecast's median matched the true spread with a Sorensen overlap of
+  0.71 [0.63, 0.78] at 1 hour and 0.83 [0.79, 0.86] at 3 hours. One drone scores 0.77 and 0.89, because it
+  finishes later and forecasts with more of the fire mapped.
+- **Warnings.** 94.7% [93.0, 96.4] of the phones the fire reached were warned before it arrived, a median
+  126 minutes ahead; 32 of the 34 missed were phones without signal. Against alerts by distance alone, the
+  forecast rule told 24 [18, 30] fewer phones per flight to evacuate that the fire did not reach, with the
+  same share warned in time.
+
+![When each fire was reported and how big it was, by the drones and by today's methods](../results/wildfire_valley/detection.png)
+
 ## What is simulated as true
 
 | Part | Model | Where |

@@ -153,7 +153,8 @@ def swarm_size() -> None:
         ax.set_xlabel("drones")
         if top is not None:
             ax.set_ylim(0, top)
-    fig.suptitle("Wildfire valley, held-out seeds: means with 95% bootstrap intervals", fontsize=11)
+    fig.suptitle("Wildfire valley, held-out seeds: means with 95% bootstrap intervals. Each flight's last forecast is "
+                 "scored; fewer drones finish later, so theirs is made later, with more of the fire mapped", fontsize=10)
     fig.tight_layout()
     fig.savefig(OUT / "swarm_size.png")
     plt.close(fig)
@@ -206,7 +207,8 @@ def detection_chart() -> None:
     ax.set_ylim(1.0, 1e6)
     ax.set_xlabel("minutes after the fire started to spread when it was reported (negative: still smouldering)")
     ax.set_ylabel("fire size when reported (m², log scale)")
-    ax.set_title(f"Who finds the fire first: {len(rows)} held-out seeds, {total} fires (large marker: median)", fontsize=11)
+    ax.set_title(f"Who finds the fire first: {len(rows)} held-out seeds, {total} fires "
+                 "(large marker: median of the fires each method found)", fontsize=11)
     ax.grid(True, which="major", alpha=0.25)
     ax.legend(loc="upper left", fontsize=8.5, frameon=False)
     fig.tight_layout()
