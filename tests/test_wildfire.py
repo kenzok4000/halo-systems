@@ -201,6 +201,18 @@ class ValleyFlightTest(unittest.TestCase):
         self.assertTrue(forecast["brief"])
         self.assertIn("terrain", res.world)
 
+    def test_dashboard_hello_carries_the_valley_and_approvals_are_checked(self):
+        from halo_systems.dashboard.server import LiveRun
+        sc = make("wildfire_valley", 2001, n=4)
+        run = LiveRun(sc, "improved+rule", 2001)
+        h = run.hello()
+        truth = h["wildfire"]["fire_truth"]
+        self.assertEqual(len(truth["arrival_s"]), truth["nx"] * truth["ny"])
+        cover = h["world"]["landcover"]
+        self.assertEqual(len(cover["canopy_m"]), cover["nx"] * cover["ny"])
+        self.assertEqual(len(h["scenario"]["wildfire"]["phones"]), len(sc.wildfire.phones))
+        self.assertFalse(run.sim.wildfire.approve(run.sim, 0)["ok"])          # nothing drafted yet
+
     def test_valley_scenario_is_seeded(self):
         a, b = make("wildfire_valley", 2000), make("wildfire_valley", 2000)
         self.assertEqual([f.x for f in a.wildfire.fires], [f.x for f in b.wildfire.fires])

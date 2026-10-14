@@ -178,8 +178,12 @@ class Terrain:
 
     def landcover_dict(self) -> dict:
         ny, nx = self.heights.shape
-        return {"x0": self.x0, "y0": self.y0, "cell_m": self.cell_m, "nx": nx, "ny": ny,
-                "classes": list(COVER_NAMES), "grid": [int(v) for v in self.cover.ravel()]}
+        out = {"x0": self.x0, "y0": self.y0, "cell_m": self.cell_m, "nx": nx, "ny": ny,
+               "classes": list(COVER_NAMES), "grid": [int(v) for v in self.cover.ravel()]}
+        if self.canopy_m is not None:
+            # Tree and scrub heights above the ground, for drawing the forest (drones fly over its top).
+            out["canopy_m"] = [round(float(v) * 2) / 2 for v in self.canopy_m.ravel()]
+        return out
 
 
 def valley(rng: np.random.Generator, extent: tuple[float, float, float, float], cell_m: float = 5.0,
