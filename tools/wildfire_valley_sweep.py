@@ -2,9 +2,9 @@
 
     PYTHONPATH=src python3 tools/wildfire_valley_sweep.py --out results/wildfire_valley/runs.jsonl
 
-Seeds 3000-3019 were never flown while the scenario and the station were built (seeds 2000-2003 were
-used for that), so the station's settings were not tuned on them. Each seed is flown with 1, 4 and 16 drones under
-the forecast alert rule, and with 16 drones under the distance rule (the ablation). Rows already in the
+Seeds 4000-4019 were never flown while the scenario and the station were built (seeds 2000-2011 and 3000-3019
+were used for that), so the station's settings were not tuned on them. Each seed is flown with 1, 4 and 16 drones
+under the forecast alert rule, and with 16 drones under the distance rule (the ablation). Rows already in the
 output are skipped, so an interrupted sweep resumes.
 """
 
@@ -44,7 +44,7 @@ def fly(job):
 def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--out", default="results/wildfire_valley/runs.jsonl")
-    ap.add_argument("--seeds", default="3000-3019")
+    ap.add_argument("--seeds", default="4000-4019")
     ap.add_argument("--sizes", default="1,4,16")
     ap.add_argument("--ablation-sizes", default="16")
     ap.add_argument("--workers", type=int, default=os.cpu_count() or 2)

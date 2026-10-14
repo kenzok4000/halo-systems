@@ -76,20 +76,26 @@ def main(path: str) -> int:
 
     # -- finding --------------------------------------------------------------------------------------------
     w("## Finding the fires\n")
-    w("Five fires per flight. A fire counts as found when the station places one within 60 m of it.\n")
-    w("| Drones | Fires found (%) | False fires per flight | Smoke fix error, median (m) | All found by (s) |")
-    w("|---|---|---|---|---|")
+    w("Five fires per flight. A fire counts as found when the station places one within 60 m of its burning ground "
+      "(its ignition point while it smoulders). A false fire is a location more than 60 m from every fire's burning "
+      "ground, including ones the station later merged into a real fire. Mapped: burning ground the thermal "
+      "cameras mapped by the end of the flight.\n")
+    w("| Drones | Fires found (%) | False fires per flight | Duplicates merged per flight | Smoke fix error, median (m) | Mapped (ha), median | All found by (s) |")
+    w("|---|---|---|---|---|---|---|")
     for n in sizes:
         g = by[(n, "forecast")]
         found = boot([r["fires_located_pct"] / 100 for r in g])
         false = boot([r["false_locations"] for r in g])
         err = med([r["smoke_location_error_m"] for r in g])
         alls = [r["all_located_s"] for r in g]
-        w(f"| {n} | {fmt(found, 1, pct=True)} | {fmt(false, 2)} | "
-          f"{'n/a' if err is None else f'{err:.1f}'} | "
+        merged = np.mean([r.get("duplicates_merged", 0) for r in g])
+        mapped = med([r.get("mapped_ha") for r in g])
+        w(f"| {n} | {fmt(found, 1, pct=True)} | {fmt(false, 2)} | {merged:.2f} | "
+          f"{'n/a' if err is None else f'{err:.1f}'} | {'n/a' if mapped is None else f'{mapped:.2f}'} | "
           f"{sum(a is not None for a in alls)} of {len(alls)} flights; median {med(alls) or 0:.0f} s |")
         summary["groups"][f"{n}_forecast"] = {"flights": len(g), "fires_found_pct": found, "false_fires": false,
-                                              "smoke_fix_error_median_m": err}
+                                              "duplicates_merged": merged, "smoke_fix_error_median_m": err,
+                                              "mapped_ha_median": mapped}
     w("")
     w("By where the fire was: share found, share of those found by smoke, and the median time to find it.\n")
     w("| Fire | " + " | ".join(f"{n} drones" for n in sizes) + " |")
@@ -109,19 +115,21 @@ def main(path: str) -> int:
 
     # -- forecast ---------------------------------------------------------------------------------------------
     w("## The spread forecast\n")
-    w("The last forecast of each flight against the true spread. Sorensen index: overlap between the ground the "
+    w("The last forecast of each flight against the true spread; fewer drones sweep for longer, so their last forecast "
+      "is made later, with more of the fire mapped. Sorensen index: overlap between the ground the "
       "forecast's median says will burn and the ground that does burn, counting only ground that burns after the "
       "forecast (1 is a perfect match). \"Located fires\" compares with the true spread of the fires the station "
-      "had found and knew were spreading; \"all fires\" with every fire, found or not. Phone arrival error: forecast "
+      "knew were spreading (located as spreading, or mapped); \"all fires\" with every fire, found or not. Phone arrival error: forecast "
       "median arrival minus the true arrival, at phones the fire reaches within 3 hours (negative is early). Brier "
       "score: the forecast probability of fire within 60 minutes at each phone against what happened (0 is perfect).\n")
-    w("| Drones | Sorensen, 1 h | Sorensen, 3 h | Sorensen, 3 h, all fires | Phone arrival error, mean abs (min) | Bias (min) | Brier, 60 min |")
-    w("|---|---|---|---|---|---|---|")
+    w("| Drones | Made at (min), median | Sorensen, 1 h | Sorensen, 3 h | Sorensen, 3 h, all fires | Phone arrival error, mean abs (min) | Bias (min) | Brier, 60 min |")
+    w("|---|---|---|---|---|---|---|---|")
     for n in sizes:
         g = by[(n, "forecast")]
         cols = {k: boot([r[k] for r in g]) for k in ("sorensen_1h", "sorensen_3h", "sorensen_3h_all_fires",
                                                      "phone_arrival_mae_min", "phone_arrival_bias_min", "brier_60min")}
-        w(f"| {n} | {fmt(cols['sorensen_1h'], 2)} | {fmt(cols['sorensen_3h'], 2)} | {fmt(cols['sorensen_3h_all_fires'], 2)} | "
+        made = med([r.get("forecast_t_s") for r in g])
+        w(f"| {n} | {'n/a' if made is None else f'{made / 60:.1f}'} | {fmt(cols['sorensen_1h'], 2)} | {fmt(cols['sorensen_3h'], 2)} | {fmt(cols['sorensen_3h_all_fires'], 2)} | "
           f"{fmt(cols['phone_arrival_mae_min'], 1)} | {fmt(cols['phone_arrival_bias_min'], 1)} | {fmt(cols['brier_60min'], 3)} |")
         summary["groups"][f"{n}_forecast"].update(cols)
     w("")
@@ -129,12 +137,14 @@ def main(path: str) -> int:
     # -- warnings ---------------------------------------------------------------------------------------------
     w("## Warnings to phones\n")
     w("Each flight has 63 simulated phones (homes, a campground, hikers, drivers and a ranch); 5% have no signal. "
-      "A phone is reached when fire comes within 50 m of it within 3 hours of take-off. Warned in time: any alert "
-      "(warning or evacuation) delivered before the fire arrives, as a share of the phones reached. Lead time: "
-      "how long before the fire arrives the first alert lands (median over phones, then over flights). Every alert "
-      "passed the alert check and a modelled approval (median 90 s) before delivery.\n")
-    w("| Drones | Phones reached per flight | Warned in time (%) | Missed, with signal | Missed, no signal | Lead time, median (min) | Lead time, 10th pct (min) | Evacuation lead, median (min) | Evacuated but not reached in 3 h (%) | Alerts rejected by the check |")
-    w("|---|---|---|---|---|---|---|---|---|---|")
+      "Alerts go to whole evacuation zones at Japan-style levels (3 prepare, 4 evacuate, 5 emergency), automatically "
+      "by fixed rules once each passes the alert check, and arrive 5 to 30 s later. "
+      "A phone is reached when fire comes within 50 m of it within 3 hours of take-off. Warned in time: an alert "
+      "at Level 3 or above delivered before the fire arrives, as a share of the phones reached. Lead time: "
+      "how long before the fire arrives the first alert lands (median over phones, then over flights). Evacuated: "
+      "told Level 4 or 5.\n")
+    w("| Drones | Phones reached per flight | Warned in time (%) | Missed, with signal | Missed, no signal | Lead time, median (min) | Lead time, 10th pct (min) | Evacuation lead, median (min) | Evacuated but not reached in 3 h (%) | Alerts per flight, Levels 3 / 4 / 5 | Alerts rejected by the check |")
+    w("|---|---|---|---|---|---|---|---|---|---|---|")
     for n in sizes:
         g = by[(n, "forecast")]
         reached = [r["phones_reached_3h"] for r in g]
@@ -145,7 +155,9 @@ def main(path: str) -> int:
         evac = med([r["evac_lead_time_min_median"] for r in g])
         w(f"| {n} | {np.mean(reached):.1f} | {fmt(warned, 1, pct=True)} | {sum(r['phones_missed'] for r in g)} | "
           f"{sum(r['phones_missed_no_signal'] for r in g)} | {lead or 0:.0f} | {lead10 or 0:.0f} | {evac or 0:.0f} | "
-          f"{fmt(evac_false, 0, pct=True)} | {sum(r['alerts_rejected'] for r in g)} of {sum(r['alerts_drafted'] for r in g)} |")
+          f"{fmt(evac_false, 0, pct=True)} | "
+          + " / ".join(f"{np.mean([r.get(f'alerts_level{k}', 0) for r in g]):.1f}" for k in (3, 4, 5))
+          + f" | {sum(r['alerts_rejected'] for r in g)} of {sum(r['alerts_drafted'] for r in g)} |")
         summary["groups"][f"{n}_forecast"].update(warned_in_time=warned, evac_not_reached=evac_false, lead_median_min=lead,
                                                   lead_p10_min=lead10, evac_lead_median_min=evac)
     w("")
@@ -154,8 +166,8 @@ def main(path: str) -> int:
     abl = [n for n in sizes if (n, "distance") in by]
     if abl:
         w("## Forecast against distance (ablation)\n")
-        w("The same flights with the alert rule replaced by distance alone: evacuate within 800 m of a spreading "
-          "fire, warn within 1,600 m of any. Paired by seed; differences are forecast minus distance.\n")
+        w("The same flights with the alert rule replaced by distance alone: Level 5 within 150 m and Level 4 within "
+          "800 m of a spreading fire, Level 3 within 1,600 m of any. Paired by seed; differences are forecast minus distance.\n")
         w("| Drones | Rule | Warned in time (%) | Lead time, median (min) | Phones evacuated per flight | Evacuated but not reached in 3 h (%) | Warned but not reached in 3 h per flight |")
         w("|---|---|---|---|---|---|---|")
         for n in abl:

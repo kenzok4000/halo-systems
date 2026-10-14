@@ -1,0 +1,171 @@
+"""Figures for the wildfire valley: one flight's map, and the sweep by swarm size.
+
+    PYTHONPATH=src python3 tools/wildfire_valley_figures.py --seed 3000 --n 16
+
+Writes results/wildfire_valley/map.png (re-flies one flight; the run is deterministic, so it is the
+sweep's flight) and, when the sweep's summary.json exists, results/wildfire_valley/swarm_size.png.
+"""
+
+from __future__ import annotations
+
+import argparse
+import json
+from pathlib import Path
+
+import matplotlib
+
+matplotlib.use("Agg")
+import matplotlib.pyplot as plt  # noqa: E402
+import numpy as np  # noqa: E402
+from matplotlib.colors import LightSource, ListedColormap  # noqa: E402
+from matplotlib.lines import Line2D  # noqa: E402
+from matplotlib.patches import Patch, Rectangle  # noqa: E402
+
+OUT = Path("results/wildfire_valley")
+COVER_COLOURS = ["#9a958c", "#d9cf8a", "#a8a564", "#4f6b3a", "#c9b79c"]     # rock, grass, scrub, forest, bare
+SHELTER_MARK = {"open": "o", "canopy": "^", "overhang": "s"}
+LEVEL_COLOURS = {3: "#ff2800", 4: "#aa00ff", 5: "#000000"}   # Japan's evacuation alert colours
+
+
+def flight_map(seed: int, n: int) -> dict:
+    from halo_systems.eval.runner import make_controller, make_supervisor
+    from halo_systems.eval.scenarios import wildfire_valley
+    from halo_systems.sim.body import DroneBody
+    from halo_systems.sim.engine import Simulation
+    sc = wildfire_valley(seed, n=n)
+    body = DroneBody()
+    sim = Simulation(sc, make_controller("improved", body, sc.world), make_supervisor("rule"), seed=seed, body=body,
+                     record_hz=1.0)
+    res = sim.run()
+    wf = sim.wildfire
+    terrain = sc.world.terrain
+    ny, nx = terrain.heights.shape
+    ext = (terrain.x0, terrain.x0 + (nx - 1) * terrain.cell_m, terrain.y0, terrain.y0 + (ny - 1) * terrain.cell_m)
+    fig, ax = plt.subplots(figsize=(13, 10), dpi=130)
+    ls = LightSource(azdeg=315, altdeg=40)
+    rgb = np.array([[matplotlib.colors.to_rgb(COVER_COLOURS[c]) for c in row] for row in terrain.cover])
+    shaded = ls.shade_rgb(rgb, terrain.heights, vert_exag=2.0, blend_mode="soft", dx=terrain.cell_m, dy=terrain.cell_m)
+    ax.imshow(shaded, origin="lower", extent=ext, interpolation="bilinear")
+    ax.contour(np.linspace(ext[0], ext[1], nx), np.linspace(ext[2], ext[3], ny), terrain.heights,
+               levels=np.arange(0, terrain.heights.max(), 20), colors="k", linewidths=0.3, alpha=0.35)
+    g = wf.grid
+    xs, ys = g.X[0], g.Y[:, 0]
+    fc = wf.forecasts[-1] if wf.forecasts else None
+    t0 = fc["t"] if fc else sim.t
+    truth = wf.arrival10
+    for hours, colour, alpha in ((3, "#f28e2b", 0.35), (1, "#d62728", 0.55)):
+        burnt = np.where(truth <= t0 + 3600 * hours, 1.0, np.nan)
+        ax.contourf(xs, ys, burnt, levels=[0.5, 1.5], colors=[colour], alpha=alpha)
+    mapped = np.isfinite(wf.mapped_t) & (wf.mapped_t <= t0)
+    if mapped.any():
+        ax.contour(xs, ys, mapped.astype(float), levels=[0.5], colors="#00e5ff", linewidths=1.4)
+    if fc is not None:
+        p50 = fc["active"]["p50"]
+        for hours, style in ((1, "-"), (3, "--")):
+            ax.contour(xs, ys, np.where(np.isfinite(p50), p50 - t0, 1e9), levels=[3600 * hours], colors="k",
+                       linewidths=1.6, linestyles=style)
+    bx0, by0, bx1, by1 = sc.sensor.area
+    ax.add_patch(Rectangle((bx0, by0), bx1 - bx0, by1 - by0, fill=False, ec="white", lw=1.2, ls=":"))
+    path = np.array(sc.waypoints)
+    ax.plot(path[:, 0], path[:, 1], color="white", lw=0.8, alpha=0.7)
+    for i, f in enumerate(sc.wildfire.fires):
+        ax.scatter(f.x, f.y, marker=SHELTER_MARK[f.shelter], s=110, c="#ffdd00", edgecolors="k", lw=1.2, zorder=6)
+    for loc in wf.located:
+        ax.scatter(loc["x"], loc["y"], marker="x", s=90, c="#00e5ff" if loc["method"] == "smoke" else "white",
+                   lw=2.2, zorder=7)
+    # Evacuation zones, outlined in the colour of the highest level they reached (Japan's colours).
+    zone_max = {}
+    for a in wf.alerts:
+        if a["state"] in ("delivered", "cancelled") and a.get("delivered") is not None:
+            zone_max[a["zone"]] = max(zone_max.get(a["zone"], 0), a["level"])
+    for z in wf.zones:
+        poly = np.array(z["polygon"] + z["polygon"][:1])
+        lv = zone_max.get(z["code"], 0)
+        ax.plot(poly[:, 0], poly[:, 1], color=LEVEL_COLOURS[lv] if lv else "white", lw=2.2 if lv else 0.6,
+                alpha=0.95 if lv else 0.5, zorder=4)
+        ax.annotate(z["code"], (poly[:, 0].min() + 8, poly[:, 1].max() - 8), va="top", fontsize=8, color="white",
+                    path_effects=[matplotlib.patheffects.withStroke(linewidth=2, foreground="k")], zorder=4)
+    level = np.zeros(len(wf.phones), dtype=int)
+    for ph, deliveries in wf.phone_delivered.items():
+        level[ph] = max(c for c, _, _ in deliveries)
+    reached = (wf.phone_truth_s > 0) & (wf.phone_truth_s <= 3 * 3600)
+    colours = [LEVEL_COLOURS.get(int(v), "#bbbbbb") if v else "#bbbbbb" for v in level]
+    ax.scatter(wf.phone_xy[:, 0], wf.phone_xy[:, 1], s=26, c=colours, edgecolors=np.where(reached, "white", "none"),
+               lw=1.0, zorder=5)
+    for pl in sc.wildfire.places:
+        ax.annotate(pl["name"], (pl["x"], pl["y"]), xytext=(6, 6), textcoords="offset points", fontsize=9,
+                    color="white", weight="bold", path_effects=[matplotlib.patheffects.withStroke(linewidth=2.5, foreground="k")])
+    for c in sc.world.cylinders[:1]:
+        ax.scatter(c.x, c.y, marker="*", s=120, c="white", edgecolors="k", zorder=6)
+    ax.set_xlim(ext[0], ext[1])
+    ax.set_ylim(ext[2], ext[3])
+    ax.set_aspect("equal")
+    ax.set_xlabel("east (m)")
+    ax.set_ylabel("north (m)")
+    m = res.metrics
+    ax.set_title(f"Wildfire valley, seed {seed}, {n} drones: {m['fires_located']} of {m['fires_total']} fires found, "
+                 f"forecast at {t0 / 60:.0f} min against the true spread", fontsize=12)
+    handles = [
+        Patch(color="#d62728", alpha=0.55, label="true burnt area, 1 h after the forecast"),
+        Patch(color="#f28e2b", alpha=0.35, label="true burnt area, 3 h after"),
+        Line2D([], [], color="#00e5ff", lw=1.4, label="burning ground mapped by the thermal cameras"),
+        Line2D([], [], color="k", lw=1.6, label="forecast median, 1 h"),
+        Line2D([], [], color="k", lw=1.6, ls="--", label="forecast median, 3 h"),
+        Line2D([], [], marker="o", ls="", mfc="#ffdd00", mec="k", label="fire, open"),
+        Line2D([], [], marker="^", ls="", mfc="#ffdd00", mec="k", label="fire, under trees"),
+        Line2D([], [], marker="s", ls="", mfc="#ffdd00", mec="k", label="fire, under a rock overhang"),
+        Line2D([], [], marker="x", ls="", color="white", mew=2, label="located by thermal camera"),
+        Line2D([], [], marker="x", ls="", color="#00e5ff", mew=2, label="located by smoke"),
+        Line2D([], [], marker="o", ls="", mfc=LEVEL_COLOURS[5], mec="white", label="phone and zone at Level 5, emergency (ringed: fire reaches it)"),
+        Line2D([], [], marker="o", ls="", mfc=LEVEL_COLOURS[4], mec="none", label="Level 4, evacuate now"),
+        Line2D([], [], marker="o", ls="", mfc=LEVEL_COLOURS[3], mec="none", label="Level 3, prepare to leave"),
+        Line2D([], [], marker="o", ls="", mfc="#bbbbbb", mec="none", label="phone not alerted"),
+        Line2D([], [], color="white", ls=":", label="survey block and sweep"),
+        Line2D([], [], marker="*", ls="", mfc="white", mec="k", ms=11, label="radio mast (obstacle)"),
+    ]
+    leg = ax.legend(handles=handles, loc="lower left", fontsize=8, framealpha=0.85, ncol=2)
+    leg.get_frame().set_edgecolor("none")
+    fig.tight_layout()
+    OUT.mkdir(parents=True, exist_ok=True)
+    fig.savefig(OUT / "map.png")
+    plt.close(fig)
+    return m
+
+
+def swarm_size() -> None:
+    path = OUT / "summary.json"
+    if not path.exists():
+        return
+    s = json.loads(path.read_text())["groups"]
+    sizes = sorted(int(k.split("_")[0]) for k in s if k.endswith("_forecast"))
+    fig, axes = plt.subplots(1, 4, figsize=(16, 4), dpi=130)
+    panels = (("fires_found_pct", "Fires found (%)", 100.0, 105.0),
+              ("sorensen_1h", "Forecast overlap, 1 h (Sorensen)", 1.0, 1.05),
+              ("phone_arrival_mae_min", "Arrival error at phones (min)", 1.0, None),
+              ("warned_in_time", "Phones warned before the fire (%)", 100.0, 105.0))
+    for ax, (key, label, k, top) in zip(axes, panels):
+        vals = [s[f"{n}_forecast"].get(key) or [None, None, None] for n in sizes]
+        mid = [v[0] * k if v[0] is not None else 0 for v in vals]
+        err = [[(v[0] - v[1]) * k if v[0] is not None else 0 for v in vals],
+               [(v[2] - v[0]) * k if v[0] is not None else 0 for v in vals]]
+        ax.bar([str(n) for n in sizes], mid, yerr=err, color="#d9542b", capsize=4)
+        ax.set_title(label, fontsize=11)
+        ax.set_xlabel("drones")
+        if top is not None:
+            ax.set_ylim(0, top)
+    fig.suptitle("Wildfire valley, held-out seeds: means with 95% bootstrap intervals", fontsize=11)
+    fig.tight_layout()
+    fig.savefig(OUT / "swarm_size.png")
+    plt.close(fig)
+
+
+if __name__ == "__main__":
+    import matplotlib.patheffects  # noqa: F401
+    ap = argparse.ArgumentParser()
+    ap.add_argument("--seed", type=int, default=3000)
+    ap.add_argument("--n", type=int, default=16)
+    ap.add_argument("--no-map", action="store_true")
+    a = ap.parse_args()
+    if not a.no_map:
+        print(json.dumps({k: v for k, v in flight_map(a.seed, a.n).items() if k != "fire_table"}))
+    swarm_size()

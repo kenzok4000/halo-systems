@@ -44,7 +44,8 @@ class TerrainTest(unittest.TestCase):
 class FireTest(unittest.TestCase):
     def test_rothermel_matches_anderson_table(self):
         for model, row in anderson_check().items():
-            self.assertTrue(0.75 <= row["ratio"] <= 1.25, f"fuel model {model}: {row['ratio']:.2f} of Anderson's rate")
+            limit = 0.08 if model in (1, 6, 10) else 0.2       # the valley's three fuels, and the rest
+            self.assertLessEqual(abs(row["ratio"] - 1.0), limit, f"fuel model {model}: {row['ratio']:.2f} of Anderson's rate")
 
     def test_spread_is_faster_downwind_and_upslope(self):
         flat = SpreadGrid(flat_terrain(), 5.0)
@@ -126,11 +127,12 @@ class AlertCheckTest(unittest.TestCase):
         self.policy = AlertPolicy()
         self.phones = np.array([[0.0, 0.0], [10.0, 5.0], [500.0, 500.0]])
         zone = buffered_zone(self.phones[:2], 100.0)
-        self.alert = {"id": 0, "t": 100.0, "level": "evacuate", "forecast_id": 3, "hazard": "wildfire",
-                      "area": "Cedar Flat homes and around", "action": "Leave now.", "authority": "Valley Fire District",
-                      "expires_in_s": 6 * 3600, "expires": "in 6 hours", "zone": zone.tolist(),
+        self.alert = {"id": 0, "t": 100.0, "level": 4, "zone": "F4", "forecast_id": 3, "hazard": "wildfire",
+                      "area": "Valley floor 4 (Cedar Flat homes)", "action": "Leave now.",
+                      "authority": "Valley Fire District", "channel": "cell broadcast (simulated)",
+                      "expires_in_s": 6 * 3600, "expires": "in 6 hours", "polygon": zone.tolist(),
                       "phones": [int(i) for i in np.nonzero(inside(zone, self.phones))[0]], "max_prob": 0.8,
-                      "message": "Valley Fire District: EVACUATE NOW. Fire near Cedar Flat homes. Leave now."}
+                      "message": "Valley Fire District: Level 4 EVACUATE NOW. Wildfire near zone F4. Leave now."}
         self.forecast = {"id": 3}
 
     def test_a_good_alert_passes_and_its_zone_holds_its_phones(self):
@@ -145,6 +147,8 @@ class AlertCheckTest(unittest.TestCase):
             "threshold": {"max_prob": 0.1},
             "expiry": {"expires_in_s": 60},
             "recipients": {"phones": []},
+            "simulated": {"channel": "cell broadcast"},
+            "level must": {"level": 2},
         }
         for word, change in cases.items():
             result = check.check({**self.alert, **change}, self.forecast, [])
@@ -152,6 +156,10 @@ class AlertCheckTest(unittest.TestCase):
             self.assertTrue(any(word in r for r in result.reasons), (word, result.reasons))
         dup = check.check({**self.alert, "t": 300.0}, self.forecast, [{**self.alert, "id": 7}])
         self.assertFalse(dup.ok)
+        # Automatic alerts only raise a zone's level; Level 5 needs even odds within 15 minutes.
+        self.assertFalse(check.check(self.alert, self.forecast, [], zone_level=4).ok)
+        self.assertTrue(check.check({**self.alert, "level": 5, "max_prob": 0.6}, self.forecast, [], zone_level=4).ok)
+        self.assertFalse(check.check({**self.alert, "level": 5, "max_prob": 0.4}, self.forecast, [], zone_level=4).ok)
 
     def test_sorensen(self):
         a = np.array([1, 1, 0, 0], dtype=bool)
@@ -200,6 +208,72 @@ class ValleyFlightTest(unittest.TestCase):
         self.assertEqual(len(forecast["p50_arrival_s"]), g["nx"] * g["ny"])
         self.assertTrue(forecast["brief"])
         self.assertIn("terrain", res.world)
+
+    def test_thermal_map_scoring_and_event_rate(self):
+        sc = make("wildfire_valley", 2001, n=16)
+        sc.duration_s = 120.0
+        body = DroneBody()
+        sim = Simulation(sc, make_controller("improved", body, sc.world), make_supervisor("rule"), seed=2001, body=body,
+                         record_hz=0)
+        res = sim.run()
+        wf = sim.wildfire
+        # The cameras map burning ground, and what they map is burning (a cell's slip from navigation error aside).
+        mapped = np.isfinite(wf.mapped_t)
+        self.assertGreater(int(mapped.sum()), 0)
+        burnt = np.zeros_like(mapped)
+        for dy in (-1, 0, 1):
+            for dx in (-1, 0, 1):
+                burnt |= np.roll(np.roll(wf.arrival10 <= wf.mapped_t, dy, axis=0), dx, axis=1)
+        self.assertGreaterEqual(float(np.mean(burnt[mapped])), 0.95)
+        self.assertGreater(res.metrics["mapped_ha"], 0.0)
+        # A point on a spreading fire's burning ground counts as that fire, however far from where it started.
+        i = int(np.argmin([f.t_active_s for f in wf.fires]))
+        cells = np.flatnonzero((wf.fire_arrival[i] <= sim.t).ravel())
+        far = cells[np.argmax(np.hypot(wf._gx[cells] - wf.fires[i].x, wf._gy[cells] - wf.fires[i].y))]
+        truth, err = wf._match_truth(float(wf._gx[far]), float(wf._gy[far]), sim.t)
+        self.assertEqual(truth, i)
+        self.assertLess(err, 1.0)
+        # Located fires keep unique ids through merges; smoke events are rate-limited per drone.
+        ids = [l["id"] for l in wf.located + wf.merged]
+        self.assertEqual(len(ids), len(set(ids)))
+        last = {}
+        for e in res.events:
+            if e["kind"] == "smoke_sighted":
+                self.assertGreaterEqual(e["t"] - last.get(e["drone"], -1e9), 10.0 - 1e-6)
+                last[e["drone"]] = e["t"]
+        for e in res.events:
+            if e["kind"] == "alert_drafted":
+                self.assertNotIn("about 0 min", e["message"])
+                self.assertNotIn("about -", e["message"])
+                self.assertIn("Simulated", e["message"])
+        # Alerts go out automatically by zone, each one checked, with levels that only rise.
+        sent = [a for a in wf.alerts if a["state"] == "delivered"]
+        self.assertTrue(sent)
+        for a in sent:
+            self.assertTrue(a["check"]["ok"])
+            self.assertEqual(a["approved_by"], "automatic (fixed rules)")
+            self.assertGreater(a["level"], a["raised_from"])
+            k = [z["code"] for z in wf.zones].index(a["zone"])
+            self.assertEqual(set(a["phones"]), set(np.nonzero(wf.zone_of_phone == k)[0].tolist()))
+        # An operator can withdraw an alert and clear a zone; both reach the zone's phones and are checked.
+        a = sent[0]
+        out = wf.cancel(sim, a["id"])
+        self.assertTrue(out["ok"])
+        self.assertEqual(a["state"], "cancelled")
+        k = [z["code"] for z in wf.zones].index(a["zone"])
+        self.assertEqual(wf.zone_level[k], 0)
+        self.assertFalse(wf.all_clear(sim, a["zone"])["ok"])                 # nothing left in force there
+        other = next((b for b in sent if b["zone"] != a["zone"]), None)
+        if other is not None:
+            self.assertTrue(wf.all_clear(sim, other["zone"])["ok"])
+        self.assertTrue(all(n["check"]["ok"] for n in wf.notices))
+        self.assertIn("zones", wf.hello())
+
+    def test_distance_to_a_plume_line(self):
+        from halo_systems.sim.wildfire import _to_segment
+        self.assertAlmostEqual(_to_segment(5.0, 3.0, 0.0, 0.0, 10.0, 0.0), 3.0)
+        self.assertAlmostEqual(_to_segment(-4.0, 3.0, 0.0, 0.0, 10.0, 0.0), 5.0)
+        self.assertAlmostEqual(_to_segment(1.0, 1.0, 0.0, 0.0, 0.0, 0.0), math.sqrt(2.0))
 
     def test_dashboard_hello_carries_the_valley_and_approvals_are_checked(self):
         from halo_systems.dashboard.server import LiveRun
