@@ -151,7 +151,8 @@ async function film() {
   const frames = Math.round(seconds * fps);
   for (let k = 0; k < frames; k++) {
     await page.evaluate(([dv, ds]) => window.haloFilm.step(dv, ds), [1 / fps, k ? playback / fps : 0]);
-    await page.screenshot({ path: join(dir, `f${String(k).padStart(5, "0")}.jpg`), type: "jpeg", quality: 94 });
+    // The first frame also compiles every shader, which takes a while without a GPU.
+    await page.screenshot({ path: join(dir, `f${String(k).padStart(5, "0")}.jpg`), type: "jpeg", quality: 94, timeout: 300000 });
     if (k % fps === 0) process.stdout.write(`\r${k}/${frames} frames`);
   }
   await browser.close();

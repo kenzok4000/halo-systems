@@ -7,7 +7,7 @@
 // (the scorched patch marks every hotspot); the particles drift with the simulated wind.
 import * as THREE from "three";
 import { OrbitControls } from "/static/vendor/OrbitControls.js";
-import { mergeGeometries, canvasTexture, hash, fbm, ridge, smooth } from "/static/util3d.js";
+import { mergeGeometries, canvasTexture, hash, fbm, ridge, smooth, conifer } from "/static/util3d.js";
 import { WildfireLayer } from "/static/wildfire3d.js";
 import { loadDroneModel, DRONE_MODEL_URL } from "/static/drone_model.js";
 
@@ -46,9 +46,6 @@ float gNoise(vec2 p) { vec2 i = floor(p), f = fract(p), u = f * f * (3.0 - 2.0 *
   };
 }
 
-// Cutaway for tree crowns near the swarm: an instanced crown within `radius` of the swarm (horizontally)
-// shrinks smoothly into its base, so drones under the canopy stay visible; trunks, the collision
-// obstacles, are always drawn. Shadows keep the full crowns.
 // The lowest value within r cells of each cell of an nx by ny grid (a square window, done row then column).
 function minFilter(z, nx, ny, r) {
   const a = new Float32Array(nx * ny), b = new Float32Array(nx * ny);
@@ -69,6 +66,9 @@ function minFilter(z, nx, ny, r) {
   return b;
 }
 
+// Cutaway for tree crowns near the swarm: an instanced crown within `radius` of the swarm (horizontally)
+// shrinks smoothly into its base, so drones under the canopy stay visible; trunks, the collision
+// obstacles, are always drawn. Shadows keep the full crowns.
 function addCrownCutaway(material, uniforms) {
   material.onBeforeCompile = (shader) => {
     shader.uniforms.uFocus = uniforms.focus;
@@ -207,7 +207,7 @@ export class SwarmView {
       if (this.hello) this._buildDrones(this.hello);
     }).catch((err) => { this.modelState = "failed"; console.warn("drone model not loaded; drawing simple drones", err); });
     this.smoke = new Particles(5000, false, this.puffTex);
-    this.flames = new Particles(1600, true, this.flameTex);
+    this.flames = new Particles(4000, true, this.flameTex);
     for (const p of [this.smoke, this.flames]) p.points.material.uniforms.fogDensity.value = scene.fog.density;
     this.smoke.points.renderOrder = 3; this.flames.points.renderOrder = 4;
     scene.add(this.smoke.points, this.flames.points);
@@ -435,16 +435,16 @@ export class SwarmView {
         (d < 420 ? near : far).push([jx, jy, h]);
       }
     }
-    const crownGeo = mergeGeometries([
+    // Near trees get the detailed conifer; far ones, a few pixels tall, two plain cones.
+    const crownGeo = conifer(), farGeo = mergeGeometries([
       new THREE.ConeGeometry(1, 0.62, 7, 1, true).translate(0, 0.31, 0),
-      new THREE.ConeGeometry(0.74, 0.55, 7, 1, true).translate(0, 0.66, 0),
-      new THREE.CylinderGeometry(0.09, 0.12, 0.2, 5, 1, true).translate(0, 0.0, 0)]);
-    crownGeo.computeVertexNormals();
-    const leaf = new THREE.MeshLambertMaterial({ color: 0xffffff, flatShading: true });
+      new THREE.ConeGeometry(0.74, 0.55, 7, 1, true).translate(0, 0.66, 0)]);
+    farGeo.computeVertexNormals();
+    const leaf = new THREE.MeshLambertMaterial({ color: 0xffffff, vertexColors: true }), farLeaf = new THREE.MeshLambertMaterial({ color: 0xffffff });
     const m = new THREE.Object3D(), tc = new THREE.Color();
     for (const [list, shadow] of [[near, true], [far, false]]) {
       if (!list.length) continue;
-      const im = new THREE.InstancedMesh(crownGeo, leaf, list.length);
+      const im = new THREE.InstancedMesh(shadow ? crownGeo : farGeo, shadow ? leaf : farLeaf, list.length);
       list.forEach(([x, y, h], i) => {
         const s = 7 + 9 * hash(x, y), w = s * (0.32 + 0.1 * hash(y, x));
         m.position.set(x, h - 0.5, -y); m.rotation.set(0, hash(x, 7) * 6.28, 0); m.scale.set(w, s * 1.15, w); m.updateMatrix();
@@ -516,7 +516,7 @@ export class SwarmView {
     const dry = new THREE.Color(0xcbb67e), scrub = new THREE.Color(0x8c8a55), pine = new THREE.Color(0x4b5a33),
       rock = new THREE.Color(0x8c857c), c = new THREE.Color(), d = new THREE.Color();
     // Land-cover classes by name (rock, grass, scrub, forest, bare): dry-season colours.
-    const COVER = { rock: 0x8f8579, grass: 0xcfb878, scrub: 0x9c9258, forest: 0x56603b, bare: 0xbfa98a };
+    const COVER = { rock: 0x8f8579, grass: 0xbdb07c, scrub: 0x8f8c56, forest: 0x515c38, bare: 0xb5a488 };
     const coverCol = lc ? lc.classes.map((name) => new THREE.Color(COVER[name] ?? 0xb8a57c)) : null;
     for (let k = 0; k < pos.count; k++) {
       const x = pos.getX(k) + t.origin[0] + w / 2, y = -pos.getZ(k) + t.origin[1] + h / 2;
@@ -568,13 +568,8 @@ export class SwarmView {
     }
     const m = new THREE.Object3D(), tc = new THREE.Color();
     if (trees.length) {
-      const crownGeo = mergeGeometries([
-        new THREE.ConeGeometry(1, 0.55, 8).translate(0, 0.3, 0),
-        new THREE.ConeGeometry(0.78, 0.5, 8).translate(0, 0.58, 0),
-        new THREE.ConeGeometry(0.5, 0.4, 8).translate(0, 0.84, 0),
-        new THREE.CylinderGeometry(0.07, 0.1, 0.3, 5).translate(0, 0.12, 0)]);
-      crownGeo.computeVertexNormals();
-      const im = new THREE.InstancedMesh(crownGeo, new THREE.MeshLambertMaterial({ color: 0xffffff, flatShading: true }), trees.length);
+      const crownGeo = conifer();
+      const im = new THREE.InstancedMesh(crownGeo, new THREE.MeshLambertMaterial({ color: 0xffffff, vertexColors: true }), trees.length);
       trees.forEach(([x, y, h], i) => {
         const s = h * (0.92 + 0.16 * hash(x, y)), wd = s * (0.26 + 0.08 * hash(y, x));
         m.position.set(x, this.groundAt(x, y) - 0.3, -y); m.rotation.set(0, hash(x, 7) * 6.28, 0); m.scale.set(wd, s, wd); m.updateMatrix();
@@ -583,17 +578,16 @@ export class SwarmView {
       });
       im.castShadow = true; im.receiveShadow = true;
       this.world.add(im);
+      this.forestTrees = { im, xy: trees };   // the wildfire layer chars the trees the fire reaches
     }
     if (bushes.length) {
-      const sg = mergeGeometries([new THREE.IcosahedronGeometry(1, 0), new THREE.IcosahedronGeometry(0.7, 0).translate(0.6, -0.1, 0.3),
-        new THREE.IcosahedronGeometry(0.6, 0).translate(-0.5, -0.15, -0.4)]);
-      sg.computeVertexNormals();
+      const sg = new THREE.SphereGeometry(1, 7, 5);   // smooth-shaded, so it reads as a bush rather than a rock
       const im = new THREE.InstancedMesh(sg, new THREE.MeshLambertMaterial({ color: 0xffffff }), bushes.length);
       bushes.forEach(([x, y, h], i) => {
         const s = Math.max(0.5, h * 0.55) * (0.7 + 0.6 * hash(x, y));
         m.position.set(x, this.groundAt(x, y) + s * 0.35, -y); m.rotation.set(0, hash(y, 2) * 6.28, 0); m.scale.set(s, s * 0.75, s);
         m.updateMatrix(); im.setMatrixAt(i, m.matrix);
-        tc.setHSL(0.15 + 0.08 * hash(x * 0.3, y * 0.7), 0.25 + 0.2 * hash(y, x), 0.17 + 0.08 * hash(x + 2, y)); im.setColorAt(i, tc);
+        tc.setHSL(0.19 + 0.07 * hash(x * 0.3, y * 0.7), 0.3 + 0.15 * hash(y, x), 0.15 + 0.06 * hash(x + 2, y)); im.setColorAt(i, tc);
       });
       im.receiveShadow = true;
       this.world.add(im);
@@ -617,7 +611,7 @@ export class SwarmView {
     this.world = new THREE.Group();
     this.scene.add(this.world);
     this.smoke.clear(); this.flames.clear();
-    this.footprints = null; this.ride = null;
+    this.footprints = null; this.ride = null; this.forestTrees = null;
     // Terrain (heights[iy * nx + ix] on a grid from (x0, y0)) and land cover, when the run has them.
     const wt = hello.world.terrain;
     this.terrain = wt ? { origin: [wt.x0, wt.y0], cell_m: wt.cell_m, nx: wt.nx, ny: wt.ny, z: wt.heights } : null;
@@ -656,12 +650,8 @@ export class SwarmView {
       const bark = new THREE.MeshStandardMaterial({ color: 0x5a4636, roughness: 0.95 });
       const trunkGeo = new THREE.CylinderGeometry(1, 1.15, 1, 7, 1); trunkGeo.translate(0, 0.5, 0);
       const trunks = new THREE.InstancedMesh(trunkGeo, bark, trees.length);
-      const crownGeo = mergeGeometries([
-        new THREE.ConeGeometry(1, 0.62, 9).translate(0, 0.31, 0),
-        new THREE.ConeGeometry(0.78, 0.55, 9).translate(0, 0.62, 0),
-        new THREE.ConeGeometry(0.52, 0.42, 9).translate(0, 0.9, 0)]);
-      crownGeo.computeVertexNormals();
-      const leaf = new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.9, flatShading: true });
+      const crownGeo = conifer();
+      const leaf = new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.9, vertexColors: true });
       addCrownCutaway(leaf, this.fade);
       const crowns = new THREE.InstancedMesh(crownGeo, leaf, trees.length);
       const m = new THREE.Object3D(), c = new THREE.Color();
@@ -1125,7 +1115,7 @@ export class SwarmView {
       mCol.setXYZ(i, col.r, col.g, col.b);
       const dist = this.camera.position.distanceTo(m.position);
       mAlpha.setX(i, 1 - smooth(16, 30, (2.6 * R * pxPerM) / Math.max(1, dist)));
-      const slot = f.slots[i];
+      const slot = this.mode === "ride" ? null : f.slots[i];   // riding along, the slot rings would fill the frame
       if (slot) {
         m.position.copy(toV(slot)); m.rotation.set(Math.PI / 2, 0, 0); m.scale.setScalar(1); m.updateMatrix();
         slots.setMatrixAt(i, m.matrix);

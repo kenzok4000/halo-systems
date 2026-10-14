@@ -9,8 +9,11 @@ import { hash } from "/static/util3d.js";
 const FLAME_S = 300;   // a cell is drawn flaming for this long after the fire reaches it, then charred
 // Forecast bands: the station's median arrival time within 30, 60, 120 and 180 minutes, soonest reddest.
 export const BANDS = [[30, [214, 40, 32, 0.34]], [60, [240, 96, 32, 0.26]], [120, [250, 150, 40, 0.2]], [180, [252, 204, 80, 0.15]]];
-const LEVEL_RGB = { evacuate: "220,40,60", warning: "245,140,30" };
-const PHONE_RGB = [[0.93, 0.95, 0.97], [1.0, 0.62, 0.12], [1.0, 0.24, 0.24]];   // no alert, warning, evacuate
+// Evacuation zones in Japan's alert colours: Level 3 red, Level 4 purple, Level 5 black.
+export const ZONE_RGB = { 3: "214,40,40", 4: "142,52,178", 5: "22,22,28" };
+const LEVEL_RGB = { evacuate: "220,40,60", warning: "245,140,30", ...ZONE_RGB };
+// A phone's dot, by the latest alert level it received (0: none or cleared).
+const PHONE_RGB = { 0: [0.93, 0.95, 0.97], 1: [1.0, 0.62, 0.12], 2: [1.0, 0.24, 0.24], 3: [1.0, 0.26, 0.22], 4: [0.74, 0.38, 1.0], 5: [0.2, 0.2, 0.24] };
 
 export class WildfireLayer {
   constructor(view, hello) {
@@ -21,7 +24,9 @@ export class WildfireLayer {
     this.truth = hello.wildfire.fire_truth;
     this.state = wf.fires.map(() => ({ area_m2: 0, smoke_top_m: 0, active: false }));
     this.located = [];
-    this.alerts = new Map();     // alert id -> { level, zone, state }
+    this.alerts = new Map();     // alert id -> { level, zone, poly, state }
+    this.zones = hello.wildfire.zones || wf.zones || [];   // fixed evacuation zones {code, name, polygon}
+    this.zoneLevel = this.zones.map(() => 0);
     this.forecast = null;        // the latest forecast event
     this.t = 0;
     this.group = new THREE.Group();
@@ -43,6 +48,30 @@ export class WildfireLayer {
     }
     this.labels = new Map();     // located fire id -> label sprite
     this._sightLines();
+    this._forest(view.forestTrees);
+  }
+
+  _forest(ft) {
+    // The forest's trees, in the order the fire reaches them: lit orange as the front passes, then charred.
+    this.trees = null;
+    if (!ft) return;
+    const { nx, ny, cell_m: c, x0, y0, arrival_s: a } = this.truth;
+    const list = [], base = new Float32Array(ft.xy.length * 3), col = new THREE.Color();
+    ft.xy.forEach(([x, y], i) => {
+      ft.im.getColorAt(i, col); base.set([col.r, col.g, col.b], i * 3);
+      const ix = Math.round((x - x0) / c), iy = Math.round((y - y0) / c);
+      if (ix < 0 || iy < 0 || ix >= nx || iy >= ny || a[iy * nx + ix] === null) return;
+      list.push([a[iy * nx + ix], i]);
+    });
+    list.sort((p, q) => p[0] - q[0]);
+    this.trees = { im: ft.im, list, base, reached: 0, settled: 0 };
+  }
+
+  _canopy(x, y) {
+    const lc = this.view.landcover;
+    if (!lc || !lc.canopy_m) return 0;
+    const ix = Math.round((x - lc.x0) / lc.cell_m), iy = Math.round((y - lc.y0) / lc.cell_m);
+    return ix < 0 || iy < 0 || ix >= lc.nx || iy >= lc.ny ? 0 : lc.canopy_m[iy * lc.nx + ix] || 0;
   }
 
   // -- built once ---------------------------------------------------------------------------------
@@ -109,7 +138,7 @@ export class WildfireLayer {
 
   _colourPhones(level) {
     const c = this.phones.geometry.attributes.aColor;
-    level.forEach((l, i) => c.setXYZ(i, ...PHONE_RGB[l] || PHONE_RGB[0]));
+    level.forEach((l, i) => c.setXYZ(i, ...(PHONE_RGB[l] || PHONE_RGB[0])));
     c.needsUpdate = true;
   }
 
@@ -136,6 +165,7 @@ export class WildfireLayer {
       for (let s = 0; s < (1.3 * top) / rise; s += 0.5) { this._smoke(0.5); this.view.smoke.update(0.5, this.view.wind); }
     }
     if (f.phones_alerted) this._colourPhones(f.phones_alerted);
+    if (f.zones_level && f.zones_level.some((l, i) => l !== this.zoneLevel[i])) { this.zoneLevel = f.zones_level.slice(); this.view.overlayDirty = true; }
     if (f.alerts) for (const a of f.alerts) {
       const known = this.alerts.get(a.id);
       if (known && known.state !== a.state) { known.state = a.state; this.view.overlayDirty = true; }
@@ -152,7 +182,12 @@ export class WildfireLayer {
       this._drawBands();
       this.view.overlayDirty = true;
     } else if (e.kind === "alert_drafted") {
-      this.alerts.set(e.alert, { level: e.level, zone: e.zone, state: "checked" });
+      const poly = Array.isArray(e.polygon) ? e.polygon : Array.isArray(e.zone) ? e.zone : null;
+      this.alerts.set(e.alert, { level: e.level, zone: e.zone, poly, state: "checked" });
+      this.view.overlayDirty = true;
+    } else if (e.kind === "alert_cancelled" || e.kind === "all_clear") {
+      const a = e.alert != null && this.alerts.get(e.alert);
+      if (a) a.state = "cancelled";
       this.view.overlayDirty = true;
     } else if (e.kind === "alert_check" && !e.ok) {
       const a = this.alerts.get(e.alert);
@@ -221,6 +256,23 @@ export class WildfireLayer {
     }
     g.putImageData(img, 0, 0);
     this.view.overlayDirty = true;
+    this._charTrees(t);
+  }
+
+  _charTrees(t) {
+    const tr = this.trees;
+    if (!tr) return;
+    while (tr.reached < tr.list.length && tr.list[tr.reached][0] <= t) tr.reached++;
+    const c = new THREE.Color(), hot = new THREE.Color(1, 0.45, 0.14), ember = new THREE.Color(0.32, 0.12, 0.05), soot = new THREE.Color(0.075, 0.065, 0.06);
+    for (let j = tr.settled; j < tr.reached; j++) {
+      const [ta, i] = tr.list[j], age = t - ta;
+      if (age >= FLAME_S) { tr.im.setColorAt(i, soot); if (j === tr.settled) tr.settled++; continue; }
+      if (age < 25) c.setRGB(tr.base[i * 3], tr.base[i * 3 + 1], tr.base[i * 3 + 2]).lerp(hot, Math.min(1, age / 6));
+      else if (age < 90) c.copy(hot).lerp(ember, (age - 25) / 65);
+      else c.copy(ember).lerp(soot, (age - 90) / (FLAME_S - 90));
+      tr.im.setColorAt(i, c);
+    }
+    if (tr.im.instanceColor) tr.im.instanceColor.needsUpdate = true;
   }
 
   _drawBands() {
@@ -292,12 +344,33 @@ export class WildfireLayer {
   // On top: alert zones (dashed while waiting for approval, solid once delivered) and located fires.
   drawOver(g) {
     const v = this.view, px = v.overlay.px;
-    for (const a of this.alerts.values()) {
-      if (a.state === "rejected") continue;
-      const rgb = LEVEL_RGB[a.level] || LEVEL_RGB.warning;
+    const path = (poly) => {
       g.beginPath();
-      a.zone.forEach((p, k) => { const [u, w] = v._toPx(p[0], p[1]); k ? g.lineTo(u, w) : g.moveTo(u, w); });
+      poly.forEach((p, k) => { const [u, w] = v._toPx(p[0], p[1]); k ? g.lineTo(u, w) : g.moveTo(u, w); });
       g.closePath();
+    };
+    // The evacuation zones: a faint outline and code each, filled in their alert level's colour once raised.
+    this.zones.forEach((z, i) => {
+      const lvl = this.zoneLevel[i], rgb = ZONE_RGB[lvl];
+      path(z.polygon);
+      if (rgb) {
+        g.fillStyle = `rgba(${rgb},${lvl === 5 ? 0.3 : 0.2})`; g.fill();
+        g.lineWidth = Math.max(2.5, 1.1 * px); g.strokeStyle = `rgba(${rgb},.95)`; g.stroke();
+      } else {
+        g.lineWidth = Math.max(1, 0.4 * px); g.strokeStyle = "rgba(255,255,255,.45)";
+        g.setLineDash([3 * px, 3 * px]); g.stroke(); g.setLineDash([]);
+      }
+      const [cu, cw] = z.polygon.reduce(([a, b], p) => { const [u, w] = v._toPx(p[0], p[1]); return [a + u / z.polygon.length, b + w / z.polygon.length]; }, [0, 0]);
+      g.font = `600 ${Math.round(9 * px)}px Inter, system-ui, sans-serif`; g.textAlign = "center"; g.textBaseline = "middle";
+      g.lineWidth = Math.max(2, 0.8 * px); g.strokeStyle = "rgba(20,20,24,.55)"; g.strokeText(z.code, cu, cw);
+      g.fillStyle = rgb ? "rgba(255,255,255,.95)" : "rgba(255,255,255,.7)"; g.fillText(z.code, cu, cw);
+    });
+    // Alerts: with zones, only one still waiting for approval is drawn (dashed); the zone's fill shows the rest.
+    for (const a of this.alerts.values()) {
+      if (a.state === "rejected" || a.state === "cancelled" || !a.poly) continue;
+      if (this.zones.length && a.state !== "checked") continue;
+      const rgb = LEVEL_RGB[a.level] || LEVEL_RGB.warning;
+      path(a.poly);
       g.fillStyle = `rgba(${rgb},${a.state === "delivered" ? 0.13 : 0.06})`; g.fill();
       g.lineWidth = Math.max(2.5, 1.1 * px); g.strokeStyle = `rgba(${rgb},.95)`;
       g.setLineDash(a.state === "delivered" ? [] : [5 * px, 3 * px]); g.stroke(); g.setLineDash([]);
@@ -323,18 +396,33 @@ export class WildfireLayer {
     const v = this.view, t = this.t;
     const chance = (rate) => { const e = rate * dt; return Math.floor(e) + (Math.random() < e - Math.floor(e) ? 1 : 0); };
     const ember = new THREE.Color();
-    // Flames on the cells the fire reached in the last few minutes.
+    // Flames on the cells the fire reached in the last few minutes, strongest just behind the front; where
+    // the cell is forest, the front's flames climb into the trees for the first half minute. When the cells
+    // would need more flames than the pool holds, fewer and bigger ones are drawn.
     const { nx, cell_m: c, x0, y0, arrival_s: a } = this.truth;
+    const cells = [];
+    let demand = 0;
     for (let i = this.burnNext - 1; i >= 0; i--) {
       const k = this.order[i], age = t - a[k];
       if (age > FLAME_S) break;
-      const s = 1 - age / FLAME_S;
-      const cx = x0 + (k % nx) * c, cy = y0 + Math.floor(k / nx) * c;
-      for (let q = chance(14 * s + 2); q > 0; q--) {
+      const s = 1 - age / FLAME_S, cx = x0 + (k % nx) * c, cy = y0 + Math.floor(k / nx) * c;
+      const crown = age < 30 ? this._canopy(cx, cy) : 0;
+      cells.push([cx, cy, s, crown]);
+      demand += (14 * s + 2) * 0.8 + (crown > 3 ? 10 * 1.0 : 0);
+    }
+    const scale = Math.min(1, (0.85 * v.flames.max) / Math.max(1, demand)), grow = 1 / Math.sqrt(scale);
+    for (const [cx, cy, s, crown] of cells) {
+      for (let q = chance((14 * s + 2) * scale); q > 0; q--) {
         const x = cx + (Math.random() - 0.5) * c, y = cy + (Math.random() - 0.5) * c;
         ember.setHSL(0.02 + 0.08 * Math.random(), 1, 0.5 + 0.15 * Math.random());
         v.flames.emit(x, v.groundAt(x, y) + 0.3, -y, 0, 1.5 + 2.5 * Math.random() * s, 0,
-          0.5 + 0.6 * Math.random(), 1.6 + 2.2 * s, -0.6, 0.9, ember);
+          0.5 + 0.6 * Math.random(), (1.6 + 2.2 * s) * grow, -0.6, 0.9, ember);
+      }
+      if (crown > 3) for (let q = chance(10 * scale); q > 0; q--) {
+        const x = cx + (Math.random() - 0.5) * c, y = cy + (Math.random() - 0.5) * c;
+        ember.setHSL(0.03 + 0.07 * Math.random(), 1, 0.52 + 0.15 * Math.random());
+        v.flames.emit(x, v.groundAt(x, y) + crown * (0.2 + 0.7 * Math.random()), -y, 0, 2 + 3 * Math.random(), 0,
+          0.6 + 0.6 * Math.random(), (2.4 + 2 * Math.random()) * grow, -0.8, 0.9, ember);
       }
     }
     // Embers where a fire smoulders.

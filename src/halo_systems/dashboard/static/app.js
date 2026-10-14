@@ -39,6 +39,10 @@ $("#scale-note").textContent = `Drones drawn ${DRONE_SCALE}x actual size`;
 // ---------------------------------------------------------------- live run
 let run = null, source = null, spark = [], scenarios = [], status = null, compiled = null;
 let valley = null;   // the wildfire valley's station state for the panel: located fires, alerts, smoke reports
+// How the wildfire valley's evacuation alerts go out: "manual", each waits for the incident commander's tap
+// here; "auto", the station's fixed rules send each checked alert at once (the commander can still cancel it
+// or give a zone the all-clear). ?approval=auto or ?approval=manual in the address picks one.
+const APPROVAL = new URLSearchParams(location.search).get("approval") === "auto" ? "auto" : "manual";
 
 function fmt(x, d = 1, unit = "") { return x === null || x === undefined ? "–" : `${Number(x).toFixed(d)}${unit}`; }
 
@@ -129,20 +133,21 @@ function onValleyEvent(e) {
       return true;
     }
     case "alert_drafted":
-      valley.alerts.set(e.alert, { id: e.alert, level: e.level, phones: e.phones, message: e.message, state: "checked", check: null });
-      logItem("station", `<span class="chip station">station</span> ${t} drafted alert ${e.alert + 1}: ${esc(e.level)} for ${e.phones} simulated phones` +
-        `<div class="why">${esc(e.message)}</div>`);
+      valley.alerts.set(e.alert, { id: e.alert, level: e.level, zone: typeof e.zone === "string" ? e.zone : null, phones: e.phones,
+        message: e.message, state: "checked", check: null });
+      logItem("station", `<span class="chip station">station</span> ${t} drafted alert ${e.alert + 1}: ${levelName(e.level)}${zoneText(e.zone)} for ${e.phones} simulated phones` +
+        `${e.channel ? ` by ${esc(e.channel)}` : ""}<div class="why">${esc(e.message)}</div>`);
       drawValley();
       return true;
     case "alert_check": {
       const a = valley.alerts.get(e.alert);
       if (a) { a.check = e; if (!e.ok) a.state = "rejected"; }
-      logItem("station", `<span class="chip station">station</span> ${t} alert ${e.alert + 1} ${e.ok ? "passed the alert check; waiting for approval" : `rejected by the alert check: ${esc((e.reasons || []).join("; "))}`}`);
+      logItem("station", `<span class="chip station">station</span> ${t} alert ${e.alert + 1} ${e.ok ? `passed the alert check${valley.approval === "auto" ? "" : "; waiting for approval"}` : `rejected by the alert check: ${esc((e.reasons || []).join("; "))}`}`);
       drawValley();
       return true;
     }
     case "alert_approved":
-      logItem("station", `<span class="chip station">station</span> ${t} alert ${e.alert + 1} approved by ${esc(e.by)}`);
+      logItem("station", `<span class="chip station">station</span> ${t} alert ${e.alert + 1} ${/^automatic/.test(e.by || "") ? "sent at once by the station's fixed rules" : `approved by ${esc(e.by)}`}`);
       return true;
     case "alert_delivered": {
       const a = valley.alerts.get(e.alert);
@@ -151,8 +156,30 @@ function onValleyEvent(e) {
       drawValley();
       return true;
     }
+    case "alert_cancelled": case "all_clear": {
+      const a = e.alert != null ? valley.alerts.get(e.alert) : null;
+      if (a) a.state = "cancelled";
+      const what = e.kind === "all_clear" ? `all-clear for${zoneText(e.zone)}` : `alert ${e.alert + 1}${zoneText(e.zone)} cancelled`;
+      logItem("station", `<span class="chip station">station</span> ${t} ${what} by ${esc(e.by || "the station")}; ${e.phones ?? 0} simulated phones told` +
+        `${e.message ? `<div class="why">${esc(e.message)}</div>` : ""}`);
+      drawValley();
+      return true;
+    }
   }
   return false;
+}
+
+// Alert levels: Japan's five-level evacuation information, of which the station raises Levels 3, 4 and 5
+// (runs from before the zones used "warning" and "evacuate").
+function levelName(l) {
+  if (typeof l !== "number") return l === "evacuate" ? "Evacuate" : "Warning";
+  const lv = valley.levels && valley.levels[String(l)];
+  return `Level ${l}${lv && lv.tag ? ` (${esc(lv.tag)})` : ""}`;
+}
+function zoneText(code) {
+  if (typeof code !== "string") return "";
+  const z = valley.zones.find((q) => q.code === code);
+  return ` in zone ${esc(code)}${z && z.name ? ` ${esc(z.name)}` : ""}`;
 }
 
 function drawValley() {
@@ -161,12 +188,24 @@ function drawValley() {
   const brief = valley.brief.length ? valley.brief.map((b) => `<li>${esc(b.text)}</li>`).join("")
     : '<li class="muted">Waiting for the first fire to be located…</li>';
   if (brief !== valley.briefHtml) { $("#brief").innerHTML = valley.briefHtml = brief; }
-  const items = [...valley.alerts.values()].map((a) => {
+  // Raised zones, highest level first, each with the incident commander's all-clear.
+  let zones = "";
+  if (valley.zones.length) {
+    const up = valley.zones.map((z, i) => ({ ...z, level: valley.zonesLevel[i] || 0 })).filter((z) => z.level > 0).sort((a, b) => b.level - a.level);
+    zones = up.length ? up.map((z) => `<li class="zone-row"><span class="lvl l${z.level}">Level ${z.level}</span> ${esc(z.code)} ${esc(z.name || "")}` +
+      `${valley.ended ? "" : ` <button data-allclear="${esc(z.code)}">All clear</button>`}</li>`).join("")
+      : '<li class="muted">No zone raised yet.</li>';
+  }
+  if (zones !== valley.zonesHtml) { $("#zones").innerHTML = valley.zonesHtml = zones; }
+  // The latest alerts, newest first.
+  const items = [...valley.alerts.values()].reverse().slice(0, 6).map((a) => {
     const state = a.state === "delivered" ? (a.delivered != null ? `delivered to ${a.delivered} of ${a.of} phones` : "delivered")
-      : a.state === "rejected" ? "rejected by the alert check"
-      : valley.ended ? "not approved before the flight ended" : "checked; waiting for the incident commander";
-    const btn = a.state === "checked" && !valley.ended ? `<button data-approve="${a.id}">Approve and send</button>` : "";
-    return `<li class="alert ${esc(a.level)} ${esc(a.state)}"><b>${a.level === "evacuate" ? "Evacuate" : "Warning"}</b> · ${a.phones} phones · ${state}` +
+      : a.state === "rejected" ? "rejected by the alert check" : a.state === "cancelled" ? "cancelled"
+      : valley.ended ? "not approved before the flight ended" : valley.approval === "auto" ? "checked; sending" : "checked; waiting for the incident commander";
+    const btn = valley.ended ? "" : a.state === "checked" && valley.approval !== "auto" ? `<button data-approve="${a.id}">Approve and send</button>`
+      : a.state === "delivered" && a.zone ? `<button data-cancel="${a.id}">Cancel alert</button>` : "";
+    const lvl = typeof a.level === "number" ? `<span class="lvl l${a.level}">${levelName(a.level)}</span>` : `<b>${levelName(a.level)}</b>`;
+    return `<li class="alert ${esc(String(a.level))} ${esc(a.state)}">${lvl}${a.zone ? ` · ${esc(a.zone)}` : ""} · ${a.phones} phones · ${state}` +
       `<div class="why">${esc(a.message)}</div>${btn}</li>`;
   });
   const html = items.length ? items.join("") : '<li class="muted">No alert drafted yet.</li>';
@@ -174,18 +213,22 @@ function drawValley() {
   $("#valley-stats").textContent = `${valley.located} fires located · ${valley.smoke} smoke reports from the drones · ${valley.warned} phones alerted`;
 }
 
-// Approve a checked alert as the incident commander: it then goes to the simulated phones in its zone.
-// Returns the server's answer, so the recorder can tell whether it worked.
-async function approveAlert(id) {
+// The incident commander's actions on alerts (simulated phones only): approve a checked alert, cancel a
+// sent one, or give a zone the all-clear. Each returns the server's answer, so the recorder can tell
+// whether it worked; the recorder acts through these, the same actions as the panel's buttons.
+async function commanderAction(route, body, what) {
   if (!run) return { ok: false, reason: "no flight" };
   try {
-    const out = await api(`/api/runs/${run.id}/approve`, { alert: id });
+    const out = await api(`/api/runs/${run.id}/${route}`, body);
     if (!out.ok) throw new Error(out.reason);
-    logItem("operator", `<span class="chip">you</span> approved alert ${id + 1} as the incident commander`);
+    logItem("operator", `<span class="chip">you</span> ${what} as the incident commander`);
     return out;
   } catch (err) { alert(err.message); return { ok: false, reason: err.message }; }
 }
-window.haloApprove = approveAlert;   // the recorder approves through the same action as the button
+const approveAlert = (id) => commanderAction("approve", { alert: id }, `approved alert ${id + 1}`);
+const cancelAlert = (id) => commanderAction("cancel", { alert: id }, `cancelled alert ${id + 1}`);
+const allClear = (zone) => commanderAction("allclear", { zone }, `gave zone ${esc(zone)} the all-clear`);
+Object.assign(window, { haloApprove: approveAlert, haloCancel: cancelAlert, haloAllClear: allClear });
 
 function drawSpark() {
   const cv = $("#spark");
@@ -216,6 +259,7 @@ function onFrame(f) {
   if (valley) {
     valley.located = (f.located || []).length;
     valley.warned = (f.phones_alerted || []).filter((l) => l > 0).length;
+    if (f.zones_level) valley.zonesLevel = f.zones_level;
     scout = `, fires located ${valley.located}, area ${fmt(m.coverage_pct, 0)}%`;
     // "delivered" comes with its phone counts in the alert_delivered event, just after this frame.
     if (f.alerts) for (const a of f.alerts) { const k = valley.alerts.get(a.id); if (k && k.state !== a.state && a.state !== "approved" && a.state !== "delivered") k.state = a.state; }
@@ -236,15 +280,15 @@ async function start(extra = {}) {
   const speed = Number($("#speed .active").dataset.speed);
   try {
     const drones = Number($("#drones").value) || undefined;   // blank = the scenario's own swarm size
-    // In the wildfire valley every evacuation alert waits for a person to approve it on this page.
     run = await api("/api/runs", { scenario: $("#scenario").value, config: $("#config").value, seed: Number($("#seed").value), speed, n: drones,
-      approval: "manual", ...extra });
+      approval: APPROVAL, ...extra });
   } catch (err) { alert(err.message); return; }
   view.build(run);
   $$(".scout-only").forEach((el) => { el.style.display = run.sensor ? "" : "none"; });
   $$(".hotspot-only").forEach((el) => { el.style.display = run.sensor && !run.wildfire ? "" : "none"; });
   $$(".valley-only").forEach((el) => { el.hidden = !run.wildfire; });
-  valley = run.wildfire ? { located: 0, smoke: 0, warned: 0, brief: [], briefT: null, alerts: new Map() } : null;
+  valley = run.wildfire ? { located: 0, smoke: 0, warned: 0, brief: [], briefT: null, alerts: new Map(), approval: APPROVAL,
+    zones: run.wildfire.zones || [], levels: run.wildfire.levels || {}, zonesLevel: [] } : null;
   drawValley();
   view.setSpeed(speed); view.setPaused(false);
   setHud(run.scenario.title, run.directive);
@@ -313,8 +357,14 @@ $$("[data-inject]").forEach((b) => b.addEventListener("click", async () => {
   } catch (err) { alert(err.message); }
 }));
 $("#alerts").addEventListener("click", (e) => {
-  const b = e.target.closest("[data-approve]");
-  if (b) { b.disabled = true; approveAlert(Number(b.dataset.approve)); }
+  const b = e.target.closest("[data-approve], [data-cancel]");
+  if (!b) return;
+  b.disabled = true;
+  if (b.dataset.approve) approveAlert(Number(b.dataset.approve)); else cancelAlert(Number(b.dataset.cancel));
+});
+$("#zones").addEventListener("click", (e) => {
+  const b = e.target.closest("[data-allclear]");
+  if (b) { b.disabled = true; allClear(b.dataset.allclear); }
 });
 $("#order").addEventListener("click", async () => {
   if (!run) return;

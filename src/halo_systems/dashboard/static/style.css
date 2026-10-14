@@ -103,3 +103,10 @@ pre { white-space: pre-wrap; font-size: 12px; background: var(--panel-2); paddin
 .alerts li.rejected { opacity: .6; }
 .alerts li button { margin-top: 6px; }
 
+
+/* Evacuation zones and alert levels, in Japan's colours: Level 3 red, Level 4 purple, Level 5 black. */
+.zones { list-style: none; padding: 0; margin: 0 0 6px; }
+.zones li { display: flex; align-items: center; gap: 6px; padding: 3px 0; font-size: 13px; }
+.zones li button { margin-left: auto; font-size: 12px; padding: 2px 8px; }
+.lvl { display: inline-block; color: #fff; font-size: 11px; font-weight: 600; padding: 1px 6px; border-radius: 3px; white-space: nowrap; }
+.lvl.l3 { background: rgb(214,40,40); } .lvl.l4 { background: rgb(142,52,178); } .lvl.l5 { background: rgb(22,22,28); }

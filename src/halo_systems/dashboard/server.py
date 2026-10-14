@@ -282,8 +282,9 @@ class State:
                 raise ValueError(f"unknown scenario {name!r}")
             n = body.get("n")
             scenario = make(name, seed, n=int(n)) if n else make(name, seed)
-            if scenario.wildfire is not None and body.get("approval") in ("manual", "modelled"):
-                # "manual": evacuation alerts wait for the incident commander's tap on the page.
+            if scenario.wildfire is not None and body.get("approval") in ("auto", "manual", "modelled"):
+                # "auto": the station's fixed rules send each checked alert at once; "manual": alerts wait for
+                # the incident commander's tap on the page.
                 scenario.wildfire.alerts.approval = body["approval"]
         kw = {}
         if "nemotron" in config:
@@ -320,10 +321,12 @@ def make_handler(state: State, host: str = "127.0.0.1"):
     GET  /api/runs/<id>/stream         Server-Sent Events: hello, frame, event, directive, ai, end
     GET  /api/runs/<id>/export         the run's result with its time series
     POST /api/runs                     {scenario, n} or {mission, mission_text}, with config, seed, speed;
-                                       the wildfire valley also takes approval: "manual" or "modelled"
+                                       the wildfire valley also takes approval: "auto", "manual" or "modelled"
     POST /api/runs/<id>/inject         {kind, ...}: motor_failure, gust, blackout or directive
     POST /api/runs/<id>/control        {speed, paused, stop}
     POST /api/runs/<id>/approve        {alert}: approve a checked evacuation alert (simulated phones only)
+    POST /api/runs/<id>/cancel         {alert}: cancel a sent evacuation alert (simulated phones only)
+    POST /api/runs/<id>/allclear       {zone}: give an evacuation zone the all-clear (simulated phones only)
     POST /api/compile                  {text}: the mission compiler
 
     Every POST must be JSON from the dashboard's own page (see ``_not_from_this_page``).
@@ -453,6 +456,20 @@ def make_handler(state: State, host: str = "127.0.0.1"):
                             if run.sim.ended or run.stop:
                                 return self._json({"ok": False, "reason": "the flight has ended"})
                             out = run.sim.wildfire.approve(run.sim, alert, by="incident commander (dashboard)")
+                        return self._json(out)
+                    if parts[3] in ("cancel", "allclear"):
+                        # The incident commander cancels a sent alert, or gives a zone the all-clear (simulated phones).
+                        if run.sim.wildfire is None:
+                            return self._error("this run has no alerts")
+                        key = "alert" if parts[3] == "cancel" else "zone"
+                        what = body.get(key)
+                        if isinstance(what, bool) or not isinstance(what, (int, str)) or (key == "alert" and not isinstance(what, int)):
+                            return self._error(f"{key} must be an alert number" if key == "alert" else "zone must be a zone code")
+                        with run.lock:
+                            if run.sim.ended or run.stop:
+                                return self._json({"ok": False, "reason": "the flight has ended"})
+                            act = run.sim.wildfire.cancel if parts[3] == "cancel" else run.sim.wildfire.all_clear
+                            out = act(run.sim, what, by="incident commander (dashboard)")
                         return self._json(out)
                     if parts[3] == "control":
                         if "speed" in body:
