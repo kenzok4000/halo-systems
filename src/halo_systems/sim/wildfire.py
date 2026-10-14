@@ -48,6 +48,7 @@ from dataclasses import dataclass, field
 
 import numpy as np
 
+from .detection import today_methods
 from .fire import Moisture, Period, SpreadGrid
 from .smoke import (SmokeConfig, bearing_fix, cluster, fix_is_sound, plume_points, plume_top, pm_concentration,
                     triangulate)
@@ -1186,6 +1187,7 @@ class Wildfire:
         out["mapped_ha"] = round(float(np.count_nonzero(np.isfinite(self.mapped_t))) * self.grid.cell_m ** 2 / 1e4, 2)
         out.update(self._forecast_skill())
         out.update(self._warning_scores())
+        out["today"] = today_methods(self, sim.seed)          # the same fires, found by today's methods
         return out
 
     def _forecast_skill(self) -> dict:

@@ -8,6 +8,7 @@ import numpy as np
 from halo_systems.eval.runner import make_controller, make_supervisor, run_one
 from halo_systems.eval.scenarios import make
 from halo_systems.sim.body import DroneBody
+from halo_systems.sim.detection import COMBUSTION_KG_PER_MJ, FirePower, TodayConfig, fuel_load, today_methods
 from halo_systems.sim.engine import Simulation
 from halo_systems.sim.fire import FUEL_MODELS, Moisture, Period, SpreadGrid, anderson_check
 from halo_systems.sim.scenario import Scenario, SensorConfig, Target
@@ -188,6 +189,40 @@ class CoverTest(unittest.TestCase):
         self.assertTrue(math.isnan(found[1.0]))
 
 
+class TodayMethodsTest(unittest.TestCase):
+    def test_fire_power_follows_the_fuel_burnt(self):
+        arrival = np.array([[0.0, 60.0, 120.0], [180.0, np.inf, 240.0]])
+        power = FirePower(arrival, np.full(arrival.shape, 1.5), 100.0, 300.0)
+        # by t = 240 s five cells of 100 m^2 at 1.5 kg/m^2 have burnt, all within the last 300 s
+        self.assertAlmostEqual(float(power.frp_mw(240.0)), 5 * 150.0 / 300.0 / COMBUSTION_KG_PER_MJ)
+        self.assertAlmostEqual(float(power.frp_mw(-1.0)), 0.0)
+        self.assertAlmostEqual(float(power.frp_mw(1000.0)), 0.0)          # nothing burns in the last 5 min
+
+    def test_rules_are_seeded_and_never_see_a_fire_before_it_spreads(self):
+        sc = make("wildfire_valley", 2001, n=1)
+        body = DroneBody()
+        sim = Simulation(sc, make_controller("improved", body, sc.world), make_supervisor("rule"), seed=2001,
+                         body=body, record_hz=0)
+        wf, cfg = sim.wildfire, TodayConfig()
+        a, b = today_methods(wf, 2001), today_methods(wf, 2001)
+        self.assertEqual(a, b)
+        self.assertNotEqual(a, today_methods(wf, 2002))                 # the random parts follow the seed
+        load = fuel_load(wf)
+        for i, (f, row) in enumerate(zip(wf.fires, a)):
+            for m, v in row.items():
+                if v["t"] is None:
+                    continue
+                self.assertGreaterEqual(v["t"], f.t_active_s)
+                self.assertLessEqual(v["t"], wf.cfg.horizon_s)
+                self.assertGreater(v["area_m2"], f.smoulder_area_m2)
+            if f.t_active_s + cfg.camera_delay_s <= wf.cfg.horizon_s:
+                self.assertAlmostEqual(row["camera"]["t"], round(f.t_active_s + cfg.camera_delay_s, 1))
+            if row["geostationary"]["t"] is not None:
+                scan = row["geostationary"]["t"] - cfg.geo_latency_s
+                power = FirePower(wf.fire_arrival[i], load, wf.grid.cell_m ** 2, cfg.frp_window_s)
+                self.assertGreaterEqual(float(power.frp_mw(scan)), cfg.geo_frp_mw)
+
+
 class ValleyFlightTest(unittest.TestCase):
     def test_short_valley_flight_finds_fires_forecasts_and_checks_alerts(self):
         row, res = run_one("wildfire_valley", 2001, "improved+rule", n=16, keep_result=True, duration_s=60.0)
@@ -208,6 +243,8 @@ class ValleyFlightTest(unittest.TestCase):
         self.assertEqual(len(forecast["p50_arrival_s"]), g["nx"] * g["ny"])
         self.assertTrue(forecast["brief"])
         self.assertIn("terrain", res.world)
+        self.assertEqual(len(row["today"]), len(row["fire_table"]))
+        self.assertEqual(set(row["today"][0]), {"geostationary", "polar", "camera", "public", "camera_deployed"})
 
     def test_thermal_map_scoring_and_event_rate(self):
         sc = make("wildfire_valley", 2001, n=16)
