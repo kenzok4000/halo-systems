@@ -97,10 +97,12 @@ degrees, hour-to-hour errors and a fuel moisture error).
    a channel marked as simulated; a zone polygon under 5,000 ha; 1 to 5,000 recipients; an expiry of 1 to 12
    hours; a Level 4 or 5 that cites the current forecast at its threshold; a level above the zone's current
    one; and no duplicate in the last 10 minutes. A checked alert goes out at once, by cell broadcast to every
-   phone in the zone (simulated phones only), arriving 5 to 30 s later. No language model takes part. An
-   operator can cancel an alert (a false alarm: the zone's phones are told, and the rules hold off that zone
-   for 30 minutes unless it reaches Level 5) or give a zone the all-clear; both messages pass a check too. A
-   manual mode, where each alert waits for a tap, is kept for drills.
+   phone in the zone (simulated phones only), arriving 5 to 30 s later; it replaces the zone's earlier alert.
+   No language model takes part. An operator can cancel the alert in force (a false alarm: the zone's phones
+   are told, and for 30 minutes the rules re-alert that zone only above the level withdrawn, and at Level 5 at
+   least) or give a zone the all-clear (for 30 minutes, only a level above the one it had goes out); both
+   messages pass a check too. A manual mode, where each alert waits for a tap and the zone is raised only once
+   it is sent, is kept for drills.
 
 ## How results are scored
 

@@ -132,7 +132,8 @@ class AlertPolicy:
     distance_warn_m: float = 1600.0
     distance_emergency_m: float = 150.0
     approval: str = "auto"            # "auto" (sent once checked), "manual" (a tap), or "modelled" (a modelled delay)
-    hold_after_cancel_s: float = 1800.0    # after an operator's cancel, rules re-alert that zone only at Level 5
+    hold_after_cancel_s: float = 1800.0    # after a cancel or all-clear the rules re-alert that zone only above
+                                           # the level it had (after a cancel, at Level 5 at least)
     approval_median_s: float = 90.0
     approval_sigma: float = 0.5
     delivery_s: tuple[float, float] = (5.0, 30.0)
@@ -299,7 +300,7 @@ class AlertCheck:
                 reasons.append(f"forecast probability below the Level {level} threshold")
         for r in recent:
             if r.get("zone") == alert.get("zone") and r.get("level") == level and alert.get("t", 0) - r["t"] < 600:
-                reasons.append(f"duplicate of alert {r['id']} from the last 10 minutes")
+                reasons.append(f"duplicate of alert {r['id'] + 1} from the last 10 minutes")
                 break
         return AlertCheckResult(not reasons, reasons)
 
@@ -407,6 +408,7 @@ class Wildfire:
             self.zone_of_phone[hit] = k
         self.zone_level = np.zeros(len(self.zones), dtype=int)      # the level last issued (and checked) per zone
         self.zone_hold_until = np.full(len(self.zones), -math.inf)
+        self.zone_hold_level = np.zeros(len(self.zones), dtype=int)  # during a hold, only a level above this goes out
         self.contacts = 0
         self.next_station_t = 0.0
         self.next_forecast_t = math.inf
@@ -1022,10 +1024,12 @@ class Wildfire:
             if not len(members):
                 continue
             target = int(level[members].max())
-            if t0 < self.zone_hold_until[k] and target < 5:
-                continue                                        # an operator cancelled here recently
+            if t0 < self.zone_hold_until[k] and target <= self.zone_hold_level[k]:
+                continue                                        # an operator cancelled or cleared here recently
             if target < 3 or target <= self.zone_level[k]:
                 continue
+            if any(a["state"] == "checked" and a["zone"] == zone["code"] and a["level"] >= target for a in self.alerts):
+                continue                                        # one is already waiting for approval
             at = members[level[members] >= target]
             soon = float(np.min(eta[at])) if len(at) else math.inf
             eta_min = None if not math.isfinite(soon) or soon > 1e10 else max(0, int(round(soon / 60.0)))
@@ -1053,7 +1057,10 @@ class Wildfire:
             sim.event("alert_check", None, alert=alert["id"], **result.to_dict())
             if not result.ok:
                 continue
-            self.zone_level[k] = target
+            for b in self.alerts[:-1]:                          # a higher alert replaces one still waiting
+                if b["state"] == "checked" and b["zone"] == zone["code"]:
+                    b["state"] = "superseded"
+                    b["superseded_by"] = alert["id"]
             if pol.approval == "auto":
                 self.approve(sim, alert["id"], by="automatic (fixed rules)")
             elif pol.approval == "modelled":
@@ -1082,7 +1089,29 @@ class Wildfire:
         sim.event("alert_delivered", None, alert=alert_id, phones=delivered, of=len(a["phones"]), level=a["level"],
                   zone=a["zone"])
         a["state"] = "delivered"
+        for b in self.alerts:                                   # the zone's earlier alerts are replaced by this one
+            if b["id"] != alert_id and b["zone"] == a["zone"] and b["state"] == "delivered":
+                b["state"] = "superseded"
+                b["superseded_by"] = alert_id
+        k = self._zone_index(a["zone"])
+        self.zone_level[k] = max(int(self.zone_level[k]), int(a["level"]))
         return {"ok": True, "delivered": delivered}
+
+    def _zone_index(self, code: str) -> int | None:
+        return next((i for i, z in enumerate(self.zones) if z["code"] == code), None)
+
+    def _close_zone(self, k: int, state: str, t: float) -> None:
+        """Retire every alert in a zone: those sent take ``state``; any still waiting are cancelled unsent."""
+        code = self.zones[k]["code"]
+        for b in self.alerts:
+            if b["zone"] != code:
+                continue
+            if b["state"] in ("delivered", "superseded") and b.get("delivered") is not None:
+                b["state"] = state
+                b[f"{state}_t"] = round(t, 2)
+            elif b["state"] == "checked":
+                b["state"] = "cancelled"
+                b["cancelled_t"] = round(t, 2)
 
     def _broadcast(self, phones, level: int, t: float, t_auto: float) -> int:
         lo, hi = self.cfg.alerts.delivery_s
@@ -1111,39 +1140,58 @@ class Wildfire:
         notice["delivered"] = self._broadcast(phones, 0, sim.t, sim.t)
         notice["state"] = "delivered"
         self.notices.append(notice)
-        self.zone_level[k] = 0
         sim.event(kind, None, zone=zone["code"], alert=alert_id, by=by, phones=notice["delivered"], message=notice["message"])
         return {"ok": True, "delivered": notice["delivered"]}
 
     def cancel(self, sim, alert_id: int, by: str = "incident commander") -> dict:
-        """An operator withdraws an alert (a false alarm): its zone gets a cancellation and is held from re-alerting."""
+        """An operator withdraws an alert (a false alarm). If it was sent, every alert in its zone is withdrawn and
+        the phones told. The zone is then held for a while: the rules re-alert it only at a level above the one
+        withdrawn, and never below Level 5."""
         if not 0 <= alert_id < len(self.alerts):
             return {"ok": False, "reason": "no such alert"}
         a = self.alerts[alert_id]
+        if a["state"] == "superseded":
+            newer = a.get("superseded_by")
+            return {"ok": False, "reason": "a newer alert replaced it" + (f" (alert {newer + 1})" if newer is not None else "")}
         if a["state"] not in ("checked", "delivered"):
             return {"ok": False, "reason": f"alert is {a['state']}"}
-        k = next(i for i, z in enumerate(self.zones) if z["code"] == a["zone"])
-        was = a["state"]
-        a["state"] = "cancelled"
-        a["cancelled_t"] = round(sim.t, 2)
-        self.zone_hold_until[k] = sim.t + self.cfg.alerts.hold_after_cancel_s
-        if was == "checked":                                   # never sent: nothing to tell the phones
-            self.zone_level[k] = 0
+        k = self._zone_index(a["zone"])
+        if a["state"] == "checked":                            # never sent: nothing to tell the phones
+            a["state"] = "cancelled"
+            a["cancelled_t"] = round(sim.t, 2)
+            self._hold(k, sim.t, max(4, int(a["level"])))
             sim.event("alert_cancelled", None, zone=a["zone"], alert=alert_id, by=by, phones=0, message="")
             return {"ok": True, "delivered": 0}
         stamp = f"{int(a['t'] // 60):d} min into the flight"
-        return self._notice(sim, "alert_cancelled", k, f"CANCELLED. The {LEVELS[a['level']][0]} alert for zone "
-                            f"{a['zone']} sent {stamp} is withdrawn. Follow official instructions.", by, alert_id)
+        out = self._notice(sim, "alert_cancelled", k, f"CANCELLED. The {LEVELS[a['level']][0]} alert for zone "
+                           f"{a['zone']} sent {stamp} is withdrawn; no alert is in force for this zone. "
+                           "Follow official instructions.", by, alert_id)
+        if out["ok"]:
+            self._close_zone(k, "cancelled", sim.t)
+            self._hold(k, sim.t, max(4, int(self.zone_level[k])))
+            self.zone_level[k] = 0
+        return out
+
+    def _hold(self, k: int, t: float, level: int) -> None:
+        """Hold a zone from automatic alerts at or below ``level`` for the policy's hold time."""
+        self.zone_hold_until[k] = t + self.cfg.alerts.hold_after_cancel_s
+        self.zone_hold_level[k] = level
 
     def all_clear(self, sim, zone_code: str, by: str = "incident commander") -> dict:
-        """An operator ends the danger in a zone; its phones are told they may return when roads reopen."""
-        k = next((i for i, z in enumerate(self.zones) if z["code"] == zone_code), None)
+        """An operator ends the danger in a zone; its phones are told they may return when roads reopen. The zone
+        is then held from automatic alerts at or below the level it had, unless the fire gets worse than that."""
+        k = self._zone_index(zone_code)
         if k is None:
             return {"ok": False, "reason": "no such zone"}
         if self.zone_level[k] == 0:
             return {"ok": False, "reason": "zone has no alert in force"}
-        return self._notice(sim, "all_clear", k, f"ALL CLEAR for zone {zone_code}, {self.zones[k]['name']}. "
-                            "The wildfire danger has passed. Return only when roads reopen.", by)
+        out = self._notice(sim, "all_clear", k, f"ALL CLEAR for zone {zone_code}, {self.zones[k]['name']}. "
+                           "The wildfire danger has passed. Return only when roads reopen.", by)
+        if out["ok"]:
+            self._hold(k, sim.t, int(self.zone_level[k]))
+            self._close_zone(k, "cleared", sim.t)
+            self.zone_level[k] = 0
+        return out
 
     def finish(self, sim) -> None:
         """At the end of a flight, alerts still waiting for their modelled approval are approved when due."""
@@ -1255,7 +1303,8 @@ class Wildfire:
         evac_lead = (truth[evac_in_time] - first_evac[evac_in_time]) / 60.0
         evacuated = np.isfinite(first_evac)
         warned = np.isfinite(first_any)
-        delivered = [a for a in self.alerts if a["state"] in ("delivered", "cancelled") and a.get("delivered") is not None]
+        delivered = [a for a in self.alerts if a["state"] in ("delivered", "superseded", "cancelled", "cleared")
+                     and a.get("delivered") is not None]
         latency = [a["approved_t"] - a["t"] for a in delivered if a.get("approved_t") is not None]
         return {
             "phones_total": int(len(self.phones)),
