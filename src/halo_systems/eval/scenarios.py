@@ -287,7 +287,7 @@ def _pick(rng, terrain, box, want, tries=400):
     return x, y
 
 
-def wildfire_valley(seed: int = 0, n: int = 16, alert_rule: str = "forecast", approval: str = "modelled") -> Scenario:
+def wildfire_valley(seed: int = 0, n: int = 16, alert_rule: str = "forecast", approval: str = "auto") -> Scenario:
     """Scout a mountain valley for lightning fires, forecast their spread and warn the phones in their way.
 
     The morning after dry lightning, five fires smoulder in a valley between two ridges: one already
@@ -296,13 +296,14 @@ def wildfire_valley(seed: int = 0, n: int = 16, alert_rule: str = "forecast", ap
     sweeps the block with thermal cameras looking down (as ``wildfire_scout``) while its forward cameras
     watch for smoke; the ground station locates fires from both, forecasts their spread with an ensemble of
     Rothermel runs under the forecast weather, briefs the fire crews, and drafts evacuation alerts for the
-    phones in their path, which are checked and approved before they go out (simulated phones only).
+    phones in their path: zone alerts at Japan-style levels, issued by fixed rules once checked (simulated
+    phones only), which an operator can cancel or clear.
     Everything that is true here (spread, smoke, weather) is hidden from the station except through the
     drones' sensors and a weather forecast with errors; ``docs/WILDFIRE.md`` lists every assumption.
     """
     from ..sim.fire import Moisture, Period
     from ..sim.terrain import FOREST, GRASS, SCRUB, valley
-    from ..sim.wildfire import AlertPolicy, FireSpec, Phone, WildfireConfig
+    from ..sim.wildfire import AlertPolicy, FireSpec, Phone, WildfireConfig, grid_zones
     rng = _rng(seed, 21)
     terrain = valley(rng, VALLEY_EXTENT, cell_m=5.0, block=VALLEY_BLOCK)
     bx0, by0, bx1, by1 = VALLEY_BLOCK
@@ -413,14 +414,17 @@ def wildfire_valley(seed: int = 0, n: int = 16, alert_rule: str = "forecast", ap
     world = World(cylinders=cyls, boxes=boxes, geofence_lo=(x0, y0, 0.0),
                   geofence_hi=(x1, y1, float(terrain.heights.max()) + 150.0), terrain=terrain)
     w0 = weather[6].wind_mps
+    # Fixed evacuation zones: south slopes, valley floor and north slopes, four across from west to east.
+    zones = grid_zones([x0, bx0, 0.5 * (bx0 + bx1), bx1, x1], [y0, by0 - 30.0, by1 + 30.0, y1],
+                       [("S", "South slopes"), ("F", "Valley floor"), ("N", "North slopes")], places)
     wildfire = WildfireConfig(fires=fires, weather=weather, weather_forecast=told, phones=phones, places=places,
-                              overhangs=overhangs, alerts=AlertPolicy(rule=alert_rule, approval=approval))
+                              overhangs=overhangs, zones=zones, alerts=AlertPolicy(rule=alert_rule, approval=approval))
     return Scenario(
         name="wildfire_valley",
         title="Wildfire valley",
         description=f"Lightning fires in a mountain valley: a {bx1 - bx0:.0f} x {by1 - by0:.0f} m thermal sweep line "
                     f"abreast at {SCOUT_ALTITUDE_M:.0f} m above the trees, smoke watch on the forward cameras, a spread "
-                    f"forecast for the fire crews and checked evacuation alerts for {len(phones)} simulated phones.",
+                    f"forecast for the fire crews and automatic, checked zone alerts for {len(phones)} simulated phones.",
         n=n, duration_s=float(min(2400.0, 90.0 + 1.6 * length / SCOUT_SPEED_MPS)), waypoints=path,
         directive=Directive("line", SCOUT_SPACING_M, SCOUT_SPEED_MPS, SCOUT_ALTITUDE_M, 1.0, source="mission"),
         world=world,

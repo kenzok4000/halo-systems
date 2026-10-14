@@ -12,25 +12,31 @@ What is true (the simulation's ground truth):
 
 What the ground station knows, and does with it:
 
-1. **Locate.** A thermal find gives a fire's position to within the navigation error. Smoke sightings
-   give bearings: a sighting that points along the plume of a fire already located sizes that fire from
-   the height of the smoke it saw; the rest are triangulated (``smoke.triangulate``), and a cluster of
+1. **Locate and map.** A thermal find gives a fire's position to within the navigation error, and each
+   drone's thermal camera maps the burning ground it flies over (``_map_thermal``), so a spreading fire's
+   shape and size are known where the swarm has been. Smoke sightings give bearings: a sighting that points
+   along the plume of exactly one located fire, and could not be any other's, sizes that fire from the
+   height of the smoke it saw; the rest are triangulated (``smoke.triangulate``), and a cluster of
    crossings becomes a fire only when a least-squares fix from several drones holds up without any one of
    them (``smoke.fix_is_sound``), which rejects the ghost crossings of two plumes' bearings. The fix is
-   then moved upwind by the plume's drift. A smoke location is upgraded when a thermal find lands near it.
-2. **Forecast.** For the located fires, an ensemble of spread runs (perturbed wind, fuel moisture,
-   spread rate and position) gives, per map cell, the median arrival time and the probability the
+   then moved upwind by the plume's drift, using the swarm's own wind estimate. A smoke location is
+   upgraded when a thermal find lands near it.
+2. **Forecast.** From the mapped burning ground and the located fires, an ensemble of spread runs
+   (perturbed wind, fuel moisture, spread rate and position) gives, per map cell, the median arrival time and the probability the
    fire arrives within 30, 60, 120 and 180 minutes. It is run twice: for the fires the station believes
    are spreading, and for every located fire as if the smouldering ones took off now. The weather inputs
    are the drones' own wind estimate for now and a weather forecast for later, which is not the true
    weather, and the station never sees the patchy spread-rate multiplier the truth burns with.
 3. **Brief.** Per fire: how it was found, how fast its head runs, how big it will be in one and two
    hours, which way it is going, and which places it reaches and when.
-4. **Alert.** Phones where the spreading-fire forecast gives at least ``prob_threshold`` of fire within
-   60 minutes get an evacuation alert; phones where the take-off forecast gives that within 180 minutes
-   get a warning. Each alert is drafted for a zone, checked like every other decision (``AlertCheck``),
-   and sent only after a person approves it: an incident commander's tap in the dashboard, or a modelled
-   approval delay in batch runs. Alerts go to simulated phones only.
+4. **Alert.** The valley is divided into fixed evacuation zones. After every forecast, fixed rules give each
+   zone a level in the spirit of Japan's five-level evacuation scale: Level 3 (prepare; those who need longer
+   should leave) when the forecast gives at least ``prob_threshold`` of fire reaching a phone in the zone
+   within 3 hours, counting smouldering fires as if they took off; Level 4 (everyone leave now) within 60
+   minutes from the spreading fires; Level 5 (fire is here; get to safety) at even odds within 15 minutes.
+   A zone's level only rises automatically. Each alert passes ``AlertCheck`` and then goes out at once, by
+   cell broadcast to every phone in the zone (simulated phones only). An operator can cancel an alert or
+   give a zone the all-clear; a manual approval mode is kept for drills.
 
 Nothing here calls a language model; the forecast and the alert rules are deterministic given the seed.
 """
@@ -45,10 +51,12 @@ import numpy as np
 from .fire import Moisture, Period, SpreadGrid
 from .smoke import (SmokeConfig, bearing_fix, cluster, fix_is_sound, plume_points, plume_top, pm_concentration,
                     triangulate)
-from .terrain import Terrain, smooth_noise
+from .terrain import FOREST, Terrain, smooth_noise
 
 SMOULDER_AREA_M2 = 50.0      # the station treats a fire estimated smaller than this as smouldering, not spreading
-MATCH_M = 60.0               # a located fire within this of a true fire counts as finding it (scoring only)
+MATCH_M = 60.0               # a located fire within this of a true fire's burning ground counts as finding it (scoring only)
+MAP_JOIN_M = 60.0            # mapped burning ground within this of a located fire belongs to it
+EVENT_GAP_S = 10.0           # smoke_sighted / smoke_contact events per drone at most this often (sightings are all kept)
 
 
 @dataclass
@@ -91,19 +99,39 @@ class ForecastConfig:
     measured_wind_sigma_mps: float = 0.5
     measured_dir_sigma_deg: float = 5.0
     elevation_sigma_deg: float = 1.0      # error on the angle up to a plume's top, used to size the fire
+    size_top_sigma_max_m: float = 12.0    # a plume top known worse than this (seen from too far) does not size a fire
+    size_top_cap: float = 0.9             # tops above this share of the highest plume give only a lower bound on area
+
+
+@dataclass
+class MappingConfig:
+    fov_deg: float = 45.0                 # the scout's thermal camera looking down, as for the hotspot finder
+    forest_seen: float = 0.4              # chance one look through tree crowns sees the fire burning under them
+    every_s: float = 1.0
+
+
+LEVELS = {
+    3: ("Level 3", "PREPARE TO LEAVE",
+        "Older people, families with children and anyone who needs longer: leave now. Everyone else: get ready."),
+    4: ("Level 4", "EVACUATE NOW", "Everyone: leave now by the valley road, away from the smoke."),
+    5: ("Level 5", "EMERGENCY", "Fire is here. If you cannot get out safely, shelter in a cleared area or a solid building."),
+}
 
 
 @dataclass
 class AlertPolicy:
     rule: str = "forecast"            # "forecast", or "distance" (the ablation: alert by distance alone)
     prob_threshold: float = 0.3
-    evacuate_within_s: float = 3600.0
-    warn_within_s: float = 3 * 3600.0
+    evacuate_within_s: float = 3600.0      # Level 4
+    warn_within_s: float = 3 * 3600.0      # Level 3
+    emergency_within_s: float = 900.0      # Level 5, at even odds
+    emergency_prob: float = 0.5
     danger_radius_m: float = 50.0     # fire this close to a phone counts as reaching it
     distance_evacuate_m: float = 800.0
     distance_warn_m: float = 1600.0
-    zone_buffer_m: float = 100.0
-    approval: str = "modelled"        # "modelled" (batch runs) or "manual" (dashboard tap)
+    distance_emergency_m: float = 150.0
+    approval: str = "auto"            # "auto" (sent once checked), "manual" (a tap), or "modelled" (a modelled delay)
+    hold_after_cancel_s: float = 1800.0    # after an operator's cancel, rules re-alert that zone only at Level 5
     approval_median_s: float = 90.0
     approval_sigma: float = 0.5
     delivery_s: tuple[float, float] = (5.0, 30.0)
@@ -112,6 +140,7 @@ class AlertPolicy:
     max_zone_ha: float = 5000.0
     max_chars: int = 360              # Wireless Emergency Alerts and EU-Alert carry up to 360 characters
     authority: str = "Valley Fire District"
+    channel: str = "cell broadcast (simulated)"
 
 
 @dataclass
@@ -122,9 +151,11 @@ class WildfireConfig:
     phones: list[Phone] = field(default_factory=list)
     places: list[dict] = field(default_factory=list)
     overhangs: list[dict] = field(default_factory=list)
+    zones: list[dict] = field(default_factory=list)     # evacuation zones: {code, name, polygon [[x, y], ...]}
     smoke: SmokeConfig = field(default_factory=SmokeConfig)
     forecast: ForecastConfig = field(default_factory=ForecastConfig)
     alerts: AlertPolicy = field(default_factory=AlertPolicy)
+    mapping: MappingConfig = field(default_factory=MappingConfig)
     truth_cell_m: float = 5.0
     horizon_s: float = 4 * 3600.0     # truth is computed this far; forecasts made during the flight look 3 h ahead
     heterogeneity_sigma: float = 0.3
@@ -135,10 +166,24 @@ class WildfireConfig:
             "phones": [p.to_dict() for p in self.phones],
             "places": self.places,
             "overhangs": self.overhangs,
+            "zones": self.zones,
             "smoke_model": {"rise_mps": self.smoke.rise_mps, "top_ref_m": self.smoke.top_ref_m,
                             "ref_area_m2": self.smoke.ref_area_m2, "top_max_m": self.smoke.top_max_m},
             "alert_rule": self.alerts.rule,
         }
+
+
+def grid_zones(x_edges, y_edges, row_names, places=()) -> list[dict]:
+    """Fixed evacuation zones on a grid of rectangles, coded by row letter and column number (west to east)."""
+    zones = []
+    for r, (y0, y1) in enumerate(zip(y_edges, y_edges[1:])):
+        letter, label = row_names[r]
+        for c, (x0, x1) in enumerate(zip(x_edges, x_edges[1:])):
+            inside_places = [p["name"] for p in places if x0 <= p["x"] < x1 and y0 <= p["y"] < y1]
+            name = f"{label} {c + 1}" + (f" ({', '.join(inside_places)})" if inside_places else "")
+            zones.append({"code": f"{letter}{c + 1}", "name": name,
+                          "polygon": [[x0, y0], [x1, y0], [x1, y1], [x0, y1]]})
+    return zones
 
 
 def compass(dx: float, dy: float) -> str:
@@ -208,25 +253,30 @@ class AlertCheckResult:
 
 
 class AlertCheck:
-    """Every alert passes this before anyone can approve it, as every directive passes the safety validator."""
+    """Every alert passes this before it goes out, as every directive passes the safety validator."""
 
     REQUIRED = ("hazard", "area", "action", "expires", "authority")
 
     def __init__(self, policy: AlertPolicy):
         self.policy = policy
 
-    def check(self, alert: dict, forecast: dict | None, recent: list[dict]) -> AlertCheckResult:
+    def check(self, alert: dict, forecast: dict | None, recent: list[dict], zone_level: int = 0) -> AlertCheckResult:
         p = self.policy
         reasons = []
         text = alert.get("message", "")
         if not text or len(text) > p.max_chars:
             reasons.append(f"message must be 1 to {p.max_chars} characters (is {len(text)})")
+        if "simulated" not in alert.get("channel", ""):
+            reasons.append("channel must say it is simulated")
         for part in self.REQUIRED:
             if not alert.get(part):
                 reasons.append(f"missing {part}")
-        if alert.get("level") not in ("evacuate", "warning"):
-            reasons.append("level must be evacuate or warning")
-        zone = np.asarray(alert.get("zone", []), dtype=float).reshape(-1, 2)
+        level = alert.get("level")
+        if level not in LEVELS:
+            reasons.append("level must be 3, 4 or 5")
+        elif level <= zone_level:
+            reasons.append(f"zone is already at Level {zone_level}; an automatic alert can only raise it")
+        zone = np.asarray(alert.get("polygon", []), dtype=float).reshape(-1, 2)
         area_ha = polygon_area(zone) / 1e4
         if len(zone) < 3 or area_ha <= 0:
             reasons.append("zone is not a polygon")
@@ -239,17 +289,31 @@ class AlertCheck:
             reasons.append(f"{n} recipients is more than {p.max_recipients}; needs escalation")
         if not 3600 <= alert.get("expires_in_s", 0) <= 12 * 3600:
             reasons.append("expiry must be 1 to 12 hours")
-        if p.rule == "forecast" and alert.get("level") == "evacuate":
+        if p.rule == "forecast" and level in (4, 5):
             # An evacuation must rest on the forecast it cites.
+            need = p.emergency_prob if level == 5 else p.prob_threshold
             if forecast is None or forecast.get("id") != alert.get("forecast_id"):
                 reasons.append("evacuation must cite the current forecast")
-            elif max(alert.get("max_prob", 0.0), 0.0) < p.prob_threshold:
-                reasons.append("forecast probability below the evacuation threshold")
+            elif max(alert.get("max_prob", 0.0), 0.0) < need:
+                reasons.append(f"forecast probability below the Level {level} threshold")
         for r in recent:
-            if r["level"] == alert.get("level") and set(alert.get("phones", [])) <= set(r["phones"]) \
-                    and alert.get("t", 0) - r["t"] < 600:
+            if r.get("zone") == alert.get("zone") and r.get("level") == level and alert.get("t", 0) - r["t"] < 600:
                 reasons.append(f"duplicate of alert {r['id']} from the last 10 minutes")
                 break
+        return AlertCheckResult(not reasons, reasons)
+
+    def check_notice(self, notice: dict) -> AlertCheckResult:
+        """A cancellation or all-clear: short, from the authority, for a zone, simulated."""
+        reasons = []
+        text = notice.get("message", "")
+        if not text or len(text) > self.policy.max_chars:
+            reasons.append(f"message must be 1 to {self.policy.max_chars} characters (is {len(text)})")
+        if "simulated" not in notice.get("channel", ""):
+            reasons.append("channel must say it is simulated")
+        if not notice.get("authority") or not notice.get("zone"):
+            reasons.append("missing authority or zone")
+        if not notice.get("phones"):
+            reasons.append("no recipients")
         return AlertCheckResult(not reasons, reasons)
 
 
@@ -260,6 +324,14 @@ def _wrap(a):
 def area_from_top(top_m: float, cfg: SmokeConfig) -> float:
     """Burning area (m^2) whose plume reaches ``top_m``: the inverse of ``smoke.plume_top``."""
     return float(cfg.ref_area_m2 * (max(top_m, 1.0) / cfg.top_ref_m) ** (1 / 0.35))
+
+
+def _to_segment(x: float, y: float, ax: float, ay: float, bx: float, by: float) -> float:
+    """Distance from (x, y) to the segment from (ax, ay) to (bx, by)."""
+    dx, dy = bx - ax, by - ay
+    L2 = dx * dx + dy * dy
+    u = 0.0 if L2 == 0.0 else min(max(((x - ax) * dx + (y - ay) * dy) / L2, 0.0), 1.0)
+    return math.hypot(x - ax - u * dx, y - ay - u * dy)
 
 
 def sorensen(a: np.ndarray, b: np.ndarray) -> float | None:
@@ -316,10 +388,24 @@ class Wildfire:
         self._pool: list[int] = []                # camera sightings no located fire explains yet
         self._next_triangulate = 0.0
         self.located: list[dict] = []
+        self.merged: list[dict] = []              # located fires found to be part of another (mapped ground joins them)
+        self._loc_id = 0
+        self._fix_src: list | None = None         # scoring only: the true fires behind a smoke fix's bearings
+        self._wind_now = np.zeros(2)
         self.forecasts: list[dict] = []
         self.alerts: list[dict] = []
-        self.phone_level = np.zeros(len(self.phones), dtype=int)     # 0 none, 1 warning, 2 evacuate (drafted)
-        self.phone_delivered: dict[int, list] = {}                   # phone -> [(level, t)]
+        self.notices: list[dict] = []                                # cancellations and all-clears
+        self.phone_delivered: dict[int, list] = {}                   # phone -> [(level, t, t_without_approval)]
+        # Evacuation zones: fixed areas; an alert goes to every phone inside one.
+        self.zones = cfg.zones or grid_zones([self.grid.X.min(), self.grid.X.max() + 1.0],
+                                             [self.grid.Y.min(), self.grid.Y.max() + 1.0], [("Z", "Zone")])
+        self.zone_polys = [np.asarray(z["polygon"], dtype=float) for z in self.zones]
+        self.zone_of_phone = np.full(len(self.phones), -1, dtype=int)
+        for k, poly in enumerate(self.zone_polys):
+            hit = inside(poly, self.phone_xy) & (self.zone_of_phone < 0)
+            self.zone_of_phone[hit] = k
+        self.zone_level = np.zeros(len(self.zones), dtype=int)      # the level last issued (and checked) per zone
+        self.zone_hold_until = np.full(len(self.zones), -math.inf)
         self.contacts = 0
         self.next_station_t = 0.0
         self.next_forecast_t = math.inf
@@ -327,6 +413,14 @@ class Wildfire:
         self._heading = np.zeros((sim.n, 2))
         self._heading[:, 0] = 1.0
         self._thermal_seen = np.zeros(nf, dtype=bool)
+        # Thermal map: when a drone's camera first saw each 10 m cell burning (inf: not seen burning).
+        self.mapped_t = np.full(self.grid.z.shape, np.inf)
+        self._forest10 = np.asarray(self.terrain.cover_at(self.grid.X, self.grid.Y)) == FOREST
+        self._gx, self._gy = self.grid.X.ravel(), self.grid.Y.ravel()
+        self._next_map_t = 0.0
+        self._mapped_dirty = False
+        self._loc_cells: dict[int, np.ndarray] = {}           # located fire id -> flat indices of its mapped cells
+        self._last_event: dict = {}
 
     # -- truth queries ----------------------------------------------------------------------------
     @staticmethod
@@ -357,9 +451,116 @@ class Wildfire:
         act = np.nonzero(sim.active_mask())[0]
         if len(act) and len(self.fires):
             self._sense_smoke(sim, act, area, elapsed)
+            if t >= self._next_map_t:
+                self._next_map_t = t + self.cfg.mapping.every_s
+                self._map_thermal(sim, act)
         if t >= self.next_station_t:
             self.next_station_t = t + 1.0
             self._station(sim, area)
+
+    def _map_thermal(self, sim, act: np.ndarray) -> None:
+        """Each drone's thermal camera marks the 10 m cells under it that are burning or burnt (still hot).
+
+        The footprint is the camera's field of view at the drone's height above the ground; a cell under tree
+        crowns is seen burning only some of the time. Cells are placed by the drone's own position estimate.
+        """
+        t = sim.t
+        burning = self.arrival10 <= t
+        if not burning.any():
+            return
+        g, mc = self.grid, self.cfg.mapping
+        tan = math.tan(math.radians(mc.fov_deg / 2.0))
+        for d in act:
+            x, y, z = (float(v) for v in sim.p[d])
+            agl = z - float(self.terrain.height(x, y))
+            if agl <= 0.0:
+                continue
+            r = agl * tan + 0.5 * g.cell_m
+            near = burning & ((g.X - x) ** 2 + (g.Y - y) ** 2 <= r * r)
+            if not near.any():
+                continue
+            iy, ix = np.nonzero(near)
+            under = self._forest10[iy, ix]
+            if under.any():
+                keep = ~under | (self.rng.random(len(iy)) < mc.forest_seen)
+                iy, ix = iy[keep], ix[keep]
+            est = sim.obs.p_est[d] if sim.obs is not None else sim.p[d]
+            jy, jx = g.cell_of(g.X[iy, ix] + float(est[0]) - x, g.Y[iy, ix] + float(est[1]) - y)
+            fresh = ~np.isfinite(self.mapped_t[jy, jx])
+            if fresh.any():
+                self.mapped_t[jy[fresh], jx[fresh]] = t
+                self._mapped_dirty = True
+
+    def _components(self) -> list[np.ndarray]:
+        """Groups of mapped cells, joined when within two cells of each other, as flat index arrays."""
+        g = self.grid
+        mask = np.isfinite(self.mapped_t).ravel()
+        seen = np.zeros_like(mask)
+        out = []
+        for start in np.flatnonzero(mask):
+            if seen[start]:
+                continue
+            seen[start] = True
+            stack, comp = [int(start)], []
+            while stack:
+                c = stack.pop()
+                comp.append(c)
+                cy, cx = divmod(c, g.nx)
+                for ny_ in range(max(cy - 2, 0), min(cy + 3, g.ny)):
+                    row = ny_ * g.nx
+                    for nx_ in range(max(cx - 2, 0), min(cx + 3, g.nx)):
+                        n = row + nx_
+                        if mask[n] and not seen[n]:
+                            seen[n] = True
+                            stack.append(n)
+            out.append(np.array(comp, dtype=int))
+        return out
+
+    def _assign_mapped(self, sim) -> bool:
+        """Give each group of mapped cells to the located fire it belongs to; a group near none is a new fire."""
+        if not self._mapped_dirty:
+            return False
+        self._mapped_dirty = False
+        new = False
+        cell2 = self.grid.cell_m ** 2
+        groups: dict[int, list] = {}
+        for comp in self._components():
+            xs, ys = self._gx[comp], self._gy[comp]
+            best, bd, near = None, MAP_JOIN_M, []
+            for loc in self.located:
+                dist = float(np.min(np.hypot(xs - loc["x"], ys - loc["y"])))
+                if dist <= MAP_JOIN_M:
+                    near.append(loc)
+                if dist <= bd:
+                    best, bd = loc, dist
+            if len(near) > 1:
+                # One patch of burning ground with several located fires on it is one fire: keep the first found,
+                # at the best (thermal) position, and fold the others into it.
+                keep = min(near, key=lambda l: (l["t"], l["id"]))
+                thermal = [l for l in near if l["method"] == "thermal"]
+                if keep["method"] == "smoke" and thermal:
+                    th = min(thermal, key=lambda l: (l["t"], l["id"]))
+                    keep.update(x=th["x"], y=th["y"], err_m=th["err_m"], method="thermal", upgraded_t=round(sim.t, 2))
+                for l in near:
+                    if l is not keep:
+                        keep["seen_m2"] = max(keep["seen_m2"], l["seen_m2"])
+                        l["merged_into"] = keep["id"]
+                        self.located.remove(l)
+                        self.merged.append(l)
+                        sim.event("fire_merged", None, fire=l["id"], into=keep["id"])
+                best, new = keep, True
+            if best is None:
+                if len(comp) < 2:
+                    continue                    # one hot cell alone is not called a fire
+                cx, cy = float(xs.mean()), float(ys.mean())
+                new |= self._locate(sim, cx, cy, self.grid.cell_m, "thermal", len(comp) * cell2)
+                best = min(self.located, key=lambda l: math.hypot(l["x"] - cx, l["y"] - cy))
+            groups.setdefault(best["id"], []).append(comp)
+        self._loc_cells = {k: np.concatenate(v) for k, v in groups.items()}
+        for loc in self.located:
+            cells = self._loc_cells.get(loc["id"])
+            loc["mapped_m2"] = float(len(cells)) * cell2 if cells is not None else 0.0
+        return new
 
     def _sense_smoke(self, sim, act: np.ndarray, area: np.ndarray, elapsed: float) -> None:
         cfg = self.cfg.smoke
@@ -411,8 +612,10 @@ class Wildfire:
                 e_low = float(elev[d_local, f, low]) + el_sigma * float(sim.rng_misc.normal())
                 est = sim.obs.p_est[d] if sim.obs is not None else sim.p[d]
                 self.sightings.append((t, int(d), float(est[0]), float(est[1]), float(est[2]), b, e, "camera", e_low, f))
-                sim.event("smoke_sighted", int(d), bearing_deg=round(math.degrees(b) % 360.0, 1),
-                          range_hint_m=int(round(r, -1)))
+                if t - self._last_event.get((int(d), "camera"), -math.inf) >= EVENT_GAP_S:
+                    self._last_event[(int(d), "camera")] = t
+                    sim.event("smoke_sighted", int(d), bearing_deg=round(math.degrees(b) % 360.0, 1),
+                              range_hint_m=int(round(r, -1)))
         # Particulate sensor: inside a plume, the source is upwind.
         conc = pm_concentration(p, self.base, area, wind, cfg)
         hit = conc >= cfg.pm_threshold_ugm3
@@ -427,7 +630,9 @@ class Wildfire:
             upwind = math.atan2(-wind[1], -wind[0]) + math.radians(10.0) * float(sim.rng_misc.normal())
             est = sim.obs.p_est[d] if sim.obs is not None else sim.p[d]
             self.sightings.append((t, d, float(est[0]), float(est[1]), float(est[2]), upwind, 0.0, "particulate", 0.0, -1))
-            sim.event("smoke_contact", d, pm25_ugm3=int(conc[d_local]), upwind_deg=round(math.degrees(upwind) % 360, 1))
+            if t - self._last_event.get((d, "pm"), -math.inf) >= EVENT_GAP_S:
+                self._last_event[(d, "pm")] = t
+                sim.event("smoke_contact", d, pm25_ugm3=int(conc[d_local]), upwind_deg=round(math.degrees(upwind) % 360, 1))
 
     # -- the ground station, once a second ----------------------------------------------------------
     def _station(self, sim, area: np.ndarray) -> None:
@@ -441,10 +646,17 @@ class Wildfire:
             err = float(np.linalg.norm(est[:2] - sim.p[by, :2]))
             x = float(self.fires[j].x + est[0] - sim.p[by, 0])
             y = float(self.fires[j].y + est[1] - sim.p[by, 1])
-            seen_area = float(area[j]) * (1.0 - self.fires[j].cover) * float(np.exp(0.2 * sim.rng_misc.normal()))
+            # One image shows the hot ground inside the camera's footprint, not a large fire's whole extent.
+            agl = float(sim.p[by, 2]) - float(self.terrain.height(sim.p[by, 0], sim.p[by, 1]))
+            foot = float(sim.sc.sensor.footprint_radius(max(agl, 1.0)))
+            seen_area = min(float(area[j]), math.pi * foot * foot) * (1.0 - self.fires[j].cover) \
+                * float(np.exp(0.2 * sim.rng_misc.normal()))
             new |= self._locate(sim, x, y, err + 1.0, "thermal", seen_area)
+        # Burning ground the thermal cameras have mapped: joined to the fires it belongs to.
+        new |= self._assign_mapped(sim)
         # New camera sightings: explained by a located fire (they size it), or kept for triangulation.
         wind = self._wind_estimate(sim)
+        self._wind_now = wind
         for i in range(self._next_sighting, len(self.sightings)):
             if self.sightings[i][7] == "camera" and not self._associate(self.sightings[i], wind):
                 self._pool.append(i)
@@ -462,18 +674,35 @@ class Wildfire:
                     if not fix_is_sound(fix):
                         continue
                     x, y = self._drift_back(sim, fix, [self._pool[i] for i in fix["used"]])
+                    self._fix_src = sorted({int(self.sightings[self._pool[i]][9]) for i in fix["used"]})
                     new |= self._locate(sim, x, y, max(fix["err_m"], 3.0), "smoke", None)
+                    self._fix_src = None
                 self._pool = [i for i in self._pool if not self._associate(self.sightings[i], wind)]
-        # Sizes from the latest plume tops (up to 30, from the last two minutes).
+        # Sizes. Mapped burning ground and the hotspot image measure a fire directly; the plume top only infers
+        # it (area grows as the top to the power 2.9, and the tallest plumes all look alike), so it sizes a
+        # fire only when nothing direct is known, from well-measured tops (up to 30, from the last two minutes).
+        fcfg = self.cfg.forecast
         for loc in self.located:
-            tops = [h for tt, h, _src in loc["tops"][-30:] if t - tt <= 120.0]
-            if len(tops) >= 3:
-                est_area = area_from_top(float(np.median(tops)), self.cfg.smoke)
-                if loc["method"] == "smoke" or est_area > loc["area_m2"]:
-                    was = loc["area_m2"] >= SMOULDER_AREA_M2
-                    loc["area_m2"] = est_area
-                    if (est_area >= SMOULDER_AREA_M2) != was:
-                        new = True              # a fire taking off (or found smaller) changes the forecast
+            mapped = loc.get("mapped_m2", 0.0)
+            good = [(h, d) for tt, h, _src, sig, d in loc["tops"][-30:] if t - tt <= 120.0 and sig <= fcfg.size_top_sigma_max_m]
+            plume = None
+            # Three drones at least: one drone's line of sight can line up with another fire's plume by chance.
+            if len(good) >= 3 and len({d for _, d in good}) >= 3:
+                top = min(float(np.median([h for h, _ in good])), fcfg.size_top_cap * self.cfg.smoke.top_max_m)
+                plume = area_from_top(top, self.cfg.smoke)
+            if mapped > 0.0:
+                est_area = max(mapped, loc["seen_m2"])
+            elif plume is None:
+                continue
+            elif loc["method"] == "smoke":
+                est_area = plume
+            else:
+                est_area = max(loc["seen_m2"], plume)
+            if est_area != loc["area_m2"]:
+                was = loc["area_m2"] >= SMOULDER_AREA_M2
+                loc["area_m2"] = est_area
+                if (est_area >= SMOULDER_AREA_M2) != was:
+                    new = True              # a fire taking off (or found smaller) changes the forecast
         if new:
             last = self.forecasts[-1]["t"] if self.forecasts else -math.inf
             self.next_forecast_t = min(self.next_forecast_t, max(t, last + self.cfg.forecast.min_gap_s))
@@ -486,9 +715,14 @@ class Wildfire:
                 self.approve(sim, a["id"], by="incident commander (modelled)")
 
     def _wind_estimate(self, sim) -> np.ndarray:
-        """The swarm's own wind estimate (what the station knows), or the true wind before it has one."""
-        wind = np.asarray(sim._ambient_est[:2], dtype=float)
-        return wind if np.any(wind) else np.asarray(self.wind_at(sim.t), dtype=float)
+        """The swarm's own wind estimate: the mean of its last 5 s of ambient-wind measurements.
+
+        Until the swarm has a second of them, the station uses the weather forecast it was given.
+        """
+        samples = [w[:2] for _, w in sim._wind_window]
+        if len(samples) >= 10:
+            return np.mean(np.asarray(samples, dtype=float), axis=0)
+        return np.asarray(self.wind_at(sim.t, self.cfg.weather_forecast), dtype=float)
 
     def _drift_back(self, sim, fix: dict, used: list[int]) -> tuple[float, float]:
         """Move a smoke fix from the smoke the drones saw back to the fire under it.
@@ -511,62 +745,94 @@ class Wildfire:
 
         A drone may see only the upper part of a plume (the base out of view or behind a rise), and the wind
         bends the plume downwind, so the bearing is tested against the whole predicted centreline, from the
-        fire up to half again its estimated top. A sighting explained by exactly one fire records the height
-        of the plume top it saw, which sizes that fire; one explained by two fires in line sizes neither.
+        fire up to half again its estimated top. A sighting explained by any located fire is not triangulated
+        again. It sizes a fire only when that fire is the only one whose plume, at any size, it could be: the
+        height of the top it saw is solved for the plume's drift, with its uncertainty from the range.
         """
         if not self.located:
             return False
         t, _d, x, y, z, b, e = s[:7]
         cfg = self.cfg.smoke
         sigma = math.radians(cfg.bearing_sigma_deg)
-        frac = np.linspace(0.0, 1.5, 7)
-        hits = []
+        hits, could = [], 0
         for loc in self.located:
-            top = float(plume_top(max(loc["area_m2"], 1.0), cfg))
-            px = loc["x"] + wind[0] * top * frac / cfg.rise_mps
-            py = loc["y"] + wind[1] * top * frac / cfg.rise_mps
-            r = np.maximum(np.hypot(px - x, py - y), 1.0)
-            tol = 3.0 * sigma + np.arctan2(max(loc["err_m"], 25.0), r)
-            if np.any(np.abs(_wrap(b - np.arctan2(py - y, px - x))) <= tol):
-                hits.append((loc,))
+            if self._on_plume(loc, float(plume_top(max(loc["area_m2"], 1.0), cfg)), x, y, b, wind, sigma, 7):
+                hits.append(loc)
+            if self._on_plume(loc, cfg.top_max_m, x, y, b, wind, sigma, 13):
+                could += 1
         if not hits:
             return False
-        if len(hits) == 1:
+        if len(hits) == 1 and could == 1:
             # The top the drone saw is drifted downwind by its own height: solve for that height.
-            loc = hits[0][0]
+            loc = hits[0]
             g = float(self.terrain.height(loc["x"], loc["y"]))
             h = float(plume_top(max(loc["area_m2"], 1.0), cfg))
+            r_top = 1.0
             for _ in range(4):
                 r_top = math.hypot(loc["x"] + wind[0] * h / cfg.rise_mps - x, loc["y"] + wind[1] * h / cfg.rise_mps - y)
-                h = min(max(z + r_top * math.tan(e) - g, 0.0), 2.0 * cfg.top_max_m)
-            loc["tops"].append((t, h, s[9]))
+                h = min(max(z + r_top * math.tan(e) - g, 0.0), cfg.top_max_m)
+            sig = r_top * math.radians(self.cfg.forecast.elevation_sigma_deg) + loc["err_m"] * abs(math.tan(e))
+            loc["tops"].append((t, h, s[9], sig, s[1]))
         return True
+
+    def _on_plume(self, loc: dict, top: float, x: float, y: float, b: float, wind: np.ndarray, sigma: float,
+                  k: int) -> bool:
+        """Whether bearing b from (x, y) points at the centreline of a plume of this top rising from loc."""
+        cfg = self.cfg.smoke
+        frac = np.linspace(0.0, 1.5, k)
+        px = loc["x"] + wind[0] * top * frac / cfg.rise_mps
+        py = loc["y"] + wind[1] * top * frac / cfg.rise_mps
+        r = np.maximum(np.hypot(px - x, py - y), 1.0)
+        tol = 3.0 * sigma + np.arctan2(max(loc["err_m"], 25.0), r)
+        return bool(np.any(np.abs(_wrap(b - np.arctan2(py - y, px - x))) <= tol))
 
     def _locate(self, sim, x: float, y: float, err: float, method: str, area_est: float | None) -> bool:
         """Add or refine a located fire; True when something new was learnt."""
         for loc in self.located:
             gap = math.hypot(loc["x"] - x, loc["y"] - y)
-            # Two thermal finds are the same fire only when their positions agree; a smoke fix is coarser.
-            same = gap <= (3.0 * (loc["err_m"] + err) + 5.0 if method == loc["method"] == "thermal" else 60.0)
+            cells = self._loc_cells.get(loc["id"])
+            if cells is not None and len(cells):
+                gap = min(gap, float(np.min(np.hypot(self._gx[cells] - x, self._gy[cells] - y))))
+            # Two thermal finds are the same fire only when they agree; a smoke fix is coarser, and a large fire
+            # (its mapped ground, or its estimated radius) is wider than one point. A smoke fix on the downwind
+            # line of a known fire's plume is most likely that plume, seen without its base.
+            reach = 60.0 + math.sqrt(max(loc["area_m2"], 0.0) / math.pi)
+            if method == "smoke":
+                top = 1.5 * float(plume_top(max(loc["area_m2"], 1.0), self.cfg.smoke))
+                end = np.array([loc["x"], loc["y"]]) + self._wind_now * top / self.cfg.smoke.rise_mps
+                gap = min(gap, _to_segment(x, y, loc["x"], loc["y"], float(end[0]), float(end[1])))
+            same = gap <= (3.0 * (loc["err_m"] + err) + 5.0 if method == loc["method"] == "thermal" else reach)
             if same:
                 if method == "thermal" and loc["method"] == "smoke":
                     loc.update(x=x, y=y, err_m=err, method="thermal", upgraded_t=round(sim.t, 2),
-                               area_m2=max(loc["area_m2"], area_est or 0.0))
+                               area_m2=max(loc["area_m2"], area_est or 0.0), seen_m2=area_est or 0.0)
                     sim.event("fire_located", None, fire=loc["id"], x=round(x, 1), y=round(y, 1), err_m=round(err, 1),
                               by="thermal", upgraded=True)
                     return True
+                if method == "thermal":
+                    loc["seen_m2"] = max(loc["seen_m2"], area_est or 0.0)
                 return False
-        truth = None
-        if len(self.base):
-            d = np.hypot(self.base[:, 0] - x, self.base[:, 1] - y)
-            truth = int(np.argmin(d)) if d.min() <= MATCH_M else None
-        truth_err = round(float(math.hypot(self.base[truth, 0] - x, self.base[truth, 1] - y)), 1) if truth is not None else None
-        loc = {"id": len(self.located), "x": x, "y": y, "err_m": err, "method": method, "t": round(sim.t, 2),
+        truth, truth_err = self._match_truth(x, y, sim.t)
+        loc = {"id": self._loc_id, "x": x, "y": y, "err_m": err, "method": method, "t": round(sim.t, 2),
                "area_m2": area_est if area_est is not None else 0.5 * SMOULDER_AREA_M2, "tops": [],
-               "truth": truth, "first_method": method, "truth_err_m": truth_err}
+               "seen_m2": area_est if method == "thermal" and area_est is not None else 0.0, "mapped_m2": 0.0,
+               "truth": truth, "first_method": method, "truth_err_m": truth_err, "fix_src": self._fix_src}
+        self._loc_id += 1
         self.located.append(loc)
         sim.event("fire_located", None, fire=loc["id"], x=round(x, 1), y=round(y, 1), err_m=round(err, 1), by=method)
         return True
+
+    def _match_truth(self, x: float, y: float, t: float) -> tuple[int | None, float | None]:
+        """The true fire whose burning ground (or ignition point) at time t is nearest; scoring only."""
+        best, bd = None, math.inf
+        for i, f in enumerate(self.fires):
+            d = math.hypot(f.x - x, f.y - y)
+            burnt = (self.fire_arrival[i] <= t).ravel()
+            if burnt.any():
+                d = min(d, float(np.min(np.hypot(self._gx[burnt] - x, self._gy[burnt] - y))))
+            if d < bd:
+                best, bd = i, d
+        return (best, round(bd, 1)) if best is not None and bd <= MATCH_M else (None, None)
 
     # -- forecast -------------------------------------------------------------------------------------
     def _members(self, t0: float) -> list[list[Period]]:
@@ -613,10 +879,13 @@ class Wildfire:
         horizon = t0 + fc.horizon_s
         members = self._members(t0)
         spreading = [l["area_m2"] >= SMOULDER_AREA_M2 for l in located]
+        # Ground the thermal cameras saw burning is burning now, in every member.
+        mapped = np.flatnonzero(np.isfinite(self.mapped_t))
+        burning = [(float(self._gx[c]), float(self._gy[c]), t0) for c in mapped]
         act, pot = [], []
         for weather in members:
             scale = float(np.exp(fc.ros_sigma * self.rng.normal() - 0.5 * fc.ros_sigma ** 2))
-            seeds_act, seeds_all = [], []
+            seeds_act, seeds_all = list(burning), list(burning)
             for loc, on in zip(located, spreading):
                 jx, jy = self.rng.normal(0.0, loc["err_m"], 2)
                 pts = self._seeds(loc, float(jx), float(jy), t0)
@@ -628,7 +897,8 @@ class Wildfire:
             act.append(a)
             pot.append(a if all(spreading) else self.grid.arrival(seeds_all, weather, horizon, scale=scale, cache=False))
         return {"t": t0, "active": self._stats(np.array(act), t0), "potential": self._stats(np.array(pot), t0),
-                "located": [{k: v for k, v in l.items() if k != "tops"} for l in located]}
+                "located": [{k: v for k, v in l.items() if k != "tops"} for l in located],
+                "mapped_cells": [int(c) for c in mapped]}
 
     def _stats(self, stack: np.ndarray, t0: float) -> dict:
         finite = np.where(np.isfinite(stack), stack, 1e12)
@@ -653,7 +923,7 @@ class Wildfire:
                   p50_arrival_s=[None if not math.isfinite(v) else int(round(float(v) - t0)) for v in act["p50"].ravel()],
                   prob_reach_60min=[round(float(v), 2) for v in act["probs"][60].ravel()],
                   potential_prob_180min=[round(float(v), 2) for v in pot["probs"][180].ravel()],
-                  isochrones_min=[30, 60, 120, 180], brief=brief)
+                  isochrones_min=[30, 60, 120, 180], mapped_cells=fc["mapped_cells"], brief=brief)
         self._draft_alerts(sim, fc)
 
     def _brief(self, fc: dict) -> list[dict]:
@@ -674,9 +944,12 @@ class Wildfire:
             grow = {h: float(np.count_nonzero(mine & (p50 <= t0 + 60 * h))) * g.cell_m ** 2 / 1e4 for h in (60, 120)}
             reach = mine & (p50 <= t0 + 3600)
             if reach.any():
+                # Head speed: how much further out the front is in an hour than now (mapped ground burns now).
                 far = np.hypot(g.X[reach] - l["x"], g.Y[reach] - l["y"])
+                now = mine & (p50 <= t0 + 60.0)
+                far0 = float(np.max(np.hypot(g.X[now] - l["x"], g.Y[now] - l["y"]))) if now.any() else 0.0
                 k = int(np.argmax(far))
-                head_m_min = float(far[k]) / 60.0
+                head_m_min = max(float(far[k]) - far0, 0.0) / 60.0
                 direction = compass(float(g.X[reach][k] - l["x"]), float(g.Y[reach][k] - l["y"]))
             else:
                 head_m_min, direction = 0.0, "not spreading"
@@ -684,13 +957,14 @@ class Wildfire:
             for pl in self.cfg.places:
                 iy, ix = g.cell_of(pl["x"], pl["y"])
                 if owner[iy, ix] == i and p50[iy, ix] <= t0 + self.cfg.forecast.horizon_s:
-                    places.append({"name": pl["name"], "eta_min": int(round((float(p50[iy, ix]) - t0) / 60.0))})
+                    places.append({"name": pl["name"], "eta_min": max(0, int(round((float(p50[iy, ix]) - t0) / 60.0)))})
             places.sort(key=lambda p: p["eta_min"])
             text = (f"Fire {l['id'] + 1} ({l['method']} find, {state}): "
                     + ("if it takes off, " if state == "smouldering" else "")
                     + f"head runs about {head_m_min:.1f} m/min {direction}"
                     + f"; about {grow[60]:.1f} ha in 1 h and {grow[120]:.1f} ha in 2 h"
-                    + ("; reaches " + ", ".join(f"{p['name']} in about {p['eta_min']} min" for p in places) if places else "")
+                    + ("; reaches " + ", ".join(f"{p['name']} " + ("now" if p["eta_min"] < 1 else f"in about {p['eta_min']} min")
+                                                 for p in places) if places else "")
                     + ".")
             out.append({"fire": l["id"], "method": l["method"], "state": state, "head_m_per_min": round(head_m_min, 2),
                         "direction": direction, "area_1h_ha": round(grow[60], 2), "area_2h_ha": round(grow[120], 2),
@@ -698,65 +972,91 @@ class Wildfire:
         return out
 
     # -- alerts ------------------------------------------------------------------------------------------
-    def _draft_alerts(self, sim, fc: dict) -> None:
+    def _zone_targets(self, fc: dict) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+        """The level each phone's situation calls for under the rule, with its probability and median arrival."""
         pol = self.cfg.alerts
-        if not len(self.phones):
-            return
         t0 = fc["t"]
         act, pot = fc["active"], fc["potential"]
-        p_evac = (act["phone_arrivals"] <= t0 + pol.evacuate_within_s).mean(axis=0)
-        p_warn = (pot["phone_arrivals"] <= t0 + pol.warn_within_s).mean(axis=0)
-        locs = fc["located"]
+        n = len(self.phones)
+        level = np.zeros(n, dtype=int)
+        prob = np.zeros(n)
+        eta = np.full(n, np.inf)
         if pol.rule == "distance":
+            locs = fc["located"]
+            if not locs:
+                return level, prob, eta
             lx = np.array([l["x"] for l in locs])
             ly = np.array([l["y"] for l in locs])
             dist = np.sqrt((self.phone_xy[:, 0, None] - lx[None]) ** 2 + (self.phone_xy[:, 1, None] - ly[None]) ** 2)
             spreading = np.array([l["area_m2"] >= SMOULDER_AREA_M2 for l in locs])
-            evac = np.where(spreading[None, :], dist, np.inf).min(axis=1) <= pol.distance_evacuate_m
-            warn = (dist.min(axis=1) <= pol.distance_warn_m) & ~evac
+            near_spreading = np.where(spreading[None, :], dist, np.inf).min(axis=1)
+            level[dist.min(axis=1) <= pol.distance_warn_m] = 3
+            level[near_spreading <= pol.distance_evacuate_m] = 4
+            level[near_spreading <= pol.distance_emergency_m] = 5
+            prob[level > 0] = 1.0
         else:
-            evac = p_evac >= pol.prob_threshold
-            warn = (p_warn >= pol.prob_threshold) & ~evac
-        for level, want, code in (("evacuate", evac, 2), ("warning", warn, 1)):
-            new = want & (self.phone_level < code)
-            if not new.any():
+            p3 = np.maximum((pot["phone_arrivals"] <= t0 + pol.warn_within_s).mean(axis=0),
+                            (act["phone_arrivals"] <= t0 + pol.warn_within_s).mean(axis=0))
+            p4 = (act["phone_arrivals"] <= t0 + pol.evacuate_within_s).mean(axis=0)
+            p5 = (act["phone_arrivals"] <= t0 + pol.emergency_within_s).mean(axis=0)
+            level[p3 >= pol.prob_threshold] = 3
+            level[p4 >= pol.prob_threshold] = 4
+            level[p5 >= pol.emergency_prob] = 5
+            prob = np.select([level == 5, level == 4, level == 3], [p5, p4, p3], 0.0)
+        for src in (act, pot):
+            arr = src["phone_arrivals"]
+            if arr.size:
+                eta = np.minimum(eta, np.median(np.where(np.isfinite(arr), arr, 1e12), axis=0) - t0)
+        return level, prob, eta
+
+    def _draft_alerts(self, sim, fc: dict) -> None:
+        """Raise each zone to the level the rules call for; alerts go out once checked (and approved, if manual)."""
+        pol = self.cfg.alerts
+        if not len(self.phones):
+            return
+        t0 = fc["t"]
+        level, prob, eta = self._zone_targets(fc)
+        for k, zone in enumerate(self.zones):
+            members = np.nonzero(self.zone_of_phone == k)[0]
+            if not len(members):
                 continue
-            src = act if level == "evacuate" else pot
-            cells = np.argwhere(src["probs"][60 if level == "evacuate" else 180] >= pol.prob_threshold)
-            pts = [self.phone_xy[new]]
-            if len(cells) and pol.rule == "forecast":
-                pts.append(np.stack([self.grid.X[cells[:, 0], cells[:, 1]], self.grid.Y[cells[:, 0], cells[:, 1]]], axis=1))
-            zone = buffered_zone(np.concatenate(pts), pol.zone_buffer_m)
-            phones = [int(i) for i in np.nonzero(inside(zone, self.phone_xy) & (self.phone_level < code))[0]]
-            place = self._nearest_place(self.phone_xy[new].mean(axis=0))
-            arr = src["phone_arrivals"][:, new]
-            med = np.median(np.where(np.isfinite(arr), arr, 1e12), axis=0)
-            eta = float(np.min(med)) - t0
-            action = ("Leave now by the valley road, away from the smoke." if level == "evacuate"
-                      else "Be ready to leave. Pack essentials and watch for an evacuation order.")
+            target = int(level[members].max())
+            if t0 < self.zone_hold_until[k] and target < 5:
+                continue                                        # an operator cancelled here recently
+            if target < 3 or target <= self.zone_level[k]:
+                continue
+            at = members[level[members] >= target]
+            soon = float(np.min(eta[at])) if len(at) else math.inf
+            eta_min = None if not math.isfinite(soon) or soon > 1e10 else max(0, int(round(soon / 60.0)))
+            tag, head, action = LEVELS[target]
+            when = ("" if eta_min is None or target == 5 else ", may already be close" if eta_min < 1
+                    else f", may reach it within about {eta_min} min")
+            area = zone["name"]
             alert = {
-                "id": len(self.alerts), "t": round(t0, 2), "level": level, "forecast_id": fc["id"], "rule": pol.rule,
-                "hazard": "wildfire", "area": f"{place} and around", "action": action,
-                "authority": pol.authority, "expires_in_s": 6 * 3600,
-                "expires": "in 6 hours", "zone": [[round(float(a), 1), round(float(b), 1)] for a, b in zone],
-                "phones": phones, "max_prob": float(np.max((p_evac if level == "evacuate" else p_warn)[new])),
-                "eta_min": None if eta > 1e10 else int(round(eta / 60.0)),
+                "id": len(self.alerts), "t": round(t0, 2), "level": target, "level_name": f"{tag} {head.lower()}",
+                "zone": zone["code"], "polygon": zone["polygon"], "forecast_id": fc["id"], "rule": pol.rule,
+                "hazard": "wildfire", "area": area, "action": action, "authority": pol.authority,
+                "channel": pol.channel, "expires_in_s": 6 * 3600, "expires": "in 6 hours",
+                "phones": [int(i) for i in members], "max_prob": float(np.max(prob[at])) if len(at) else 0.0,
+                "eta_min": eta_min, "raised_from": int(self.zone_level[k]),
             }
-            alert["message"] = (f"{pol.authority}: {'EVACUATE NOW' if level == 'evacuate' else 'WILDFIRE WARNING'}. "
-                                f"Fire near {alert['area']}"
-                                + (f", expected within about {alert['eta_min']} min" if alert["eta_min"] is not None else "")
-                                + f". {action} Alert expires {alert['expires']}.")
-            result = self.check.check(alert, fc, [a for a in self.alerts if a["state"] != "rejected"])
+            alert["message"] = (f"{pol.authority}: {tag} {head}. Wildfire near zone {zone['code']}, {area}{when}. "
+                                f"{action} Alert expires {alert['expires']}. (Simulated alert)")
+            recent = [a for a in self.alerts if a["state"] not in ("rejected",)]
+            result = self.check.check(alert, fc, recent, int(self.zone_level[k]))
             alert["check"] = result.to_dict()
             alert["state"] = "checked" if result.ok else "rejected"
             self.alerts.append(alert)
-            sim.event("alert_drafted", None, alert=alert["id"], level=level, phones=len(phones), zone=alert["zone"],
-                      message=alert["message"])
+            sim.event("alert_drafted", None, alert=alert["id"], level=target, zone=zone["code"], phones=len(members),
+                      polygon=zone["polygon"], message=alert["message"], channel=pol.channel)
             sim.event("alert_check", None, alert=alert["id"], **result.to_dict())
-            if result.ok:
-                self.phone_level[phones] = np.maximum(self.phone_level[phones], code)
-                if pol.approval == "modelled":
-                    alert["approve_at"] = t0 + float(pol.approval_median_s * np.exp(pol.approval_sigma * self.rng.normal()))
+            if not result.ok:
+                continue
+            self.zone_level[k] = target
+            if pol.approval == "auto":
+                self.approve(sim, alert["id"], by="automatic (fixed rules)")
+            elif pol.approval == "modelled":
+                alert["approve_at"] = t0 + float(pol.approval_median_s * np.exp(pol.approval_sigma * self.rng.normal()))
 
     def _nearest_place(self, xy) -> str:
         if not self.cfg.places:
@@ -765,7 +1065,7 @@ class Wildfire:
         return self.cfg.places[int(np.argmin(d))]["name"]
 
     def approve(self, sim, alert_id: int, by: str = "incident commander") -> dict:
-        """A person approves a checked alert; it then goes to the phones in its zone (simulated)."""
+        """Send a checked alert to the phones in its zone (simulated): at once when automatic, or on approval."""
         if not 0 <= alert_id < len(self.alerts):
             return {"ok": False, "reason": "no such alert"}
         a = self.alerts[alert_id]
@@ -775,20 +1075,74 @@ class Wildfire:
         a["state"] = "approved"
         a["approved_t"] = round(t, 2)
         a["approved_by"] = by
+        delivered = self._broadcast(a["phones"], a["level"], t, a["t"])
+        a["delivered"] = delivered
+        sim.event("alert_approved", None, alert=alert_id, by=by)
+        sim.event("alert_delivered", None, alert=alert_id, phones=delivered, of=len(a["phones"]), level=a["level"],
+                  zone=a["zone"])
+        a["state"] = "delivered"
+        return {"ok": True, "delivered": delivered}
+
+    def _broadcast(self, phones, level: int, t: float, t_auto: float) -> int:
         lo, hi = self.cfg.alerts.delivery_s
-        code = 2 if a["level"] == "evacuate" else 1
         delivered = 0
-        for ph in a["phones"]:
+        for ph in phones:
             if self.unreachable[ph]:
                 continue
             lag = float(self.rng.uniform(lo, hi))
-            self.phone_delivered.setdefault(ph, []).append((code, t + lag, a["t"] + lag))
+            self.phone_delivered.setdefault(int(ph), []).append((int(level), t + lag, t_auto + lag))
             delivered += 1
-        a["delivered"] = delivered
-        sim.event("alert_approved", None, alert=alert_id, by=by)
-        sim.event("alert_delivered", None, alert=alert_id, phones=delivered, of=len(a["phones"]))
-        a["state"] = "delivered"
-        return {"ok": True, "delivered": delivered}
+        return delivered
+
+    def _notice(self, sim, kind: str, k: int, text: str, by: str, alert_id: int | None = None) -> dict:
+        pol = self.cfg.alerts
+        zone = self.zones[k]
+        phones = [int(i) for i in np.nonzero(self.zone_of_phone == k)[0]]
+        notice = {"id": len(self.notices), "kind": kind, "t": round(sim.t, 2), "zone": zone["code"], "alert": alert_id,
+                  "authority": pol.authority, "channel": pol.channel, "phones": phones, "by": by,
+                  "message": f"{pol.authority}: {text} (Simulated alert)"}
+        result = self.check.check_notice(notice)
+        notice["check"] = result.to_dict()
+        if not result.ok:
+            notice["state"] = "rejected"
+            self.notices.append(notice)
+            return {"ok": False, "reason": "; ".join(result.reasons)}
+        notice["delivered"] = self._broadcast(phones, 0, sim.t, sim.t)
+        notice["state"] = "delivered"
+        self.notices.append(notice)
+        self.zone_level[k] = 0
+        sim.event(kind, None, zone=zone["code"], alert=alert_id, by=by, phones=notice["delivered"], message=notice["message"])
+        return {"ok": True, "delivered": notice["delivered"]}
+
+    def cancel(self, sim, alert_id: int, by: str = "incident commander") -> dict:
+        """An operator withdraws an alert (a false alarm): its zone gets a cancellation and is held from re-alerting."""
+        if not 0 <= alert_id < len(self.alerts):
+            return {"ok": False, "reason": "no such alert"}
+        a = self.alerts[alert_id]
+        if a["state"] not in ("checked", "delivered"):
+            return {"ok": False, "reason": f"alert is {a['state']}"}
+        k = next(i for i, z in enumerate(self.zones) if z["code"] == a["zone"])
+        was = a["state"]
+        a["state"] = "cancelled"
+        a["cancelled_t"] = round(sim.t, 2)
+        self.zone_hold_until[k] = sim.t + self.cfg.alerts.hold_after_cancel_s
+        if was == "checked":                                   # never sent: nothing to tell the phones
+            self.zone_level[k] = 0
+            sim.event("alert_cancelled", None, zone=a["zone"], alert=alert_id, by=by, phones=0, message="")
+            return {"ok": True, "delivered": 0}
+        stamp = f"{int(a['t'] // 60):d} min into the flight"
+        return self._notice(sim, "alert_cancelled", k, f"CANCELLED. The {LEVELS[a['level']][0]} alert for zone "
+                            f"{a['zone']} sent {stamp} is withdrawn. Follow official instructions.", by, alert_id)
+
+    def all_clear(self, sim, zone_code: str, by: str = "incident commander") -> dict:
+        """An operator ends the danger in a zone; its phones are told they may return when roads reopen."""
+        k = next((i for i, z in enumerate(self.zones) if z["code"] == zone_code), None)
+        if k is None:
+            return {"ok": False, "reason": "no such zone"}
+        if self.zone_level[k] == 0:
+            return {"ok": False, "reason": "zone has no alert in force"}
+        return self._notice(sim, "all_clear", k, f"ALL CLEAR for zone {zone_code}, {self.zones[k]['name']}. "
+                            "The wildfire danger has passed. Return only when roads reopen.", by)
 
     def finish(self, sim) -> None:
         """At the end of a flight, alerts still waiting for their modelled approval are approved when due."""
@@ -802,21 +1156,25 @@ class Wildfire:
         out: dict = {}
         nf = len(self.fires)
         first = {}
-        for loc in self.located:
+        made = sorted(self.located + self.merged, key=lambda l: l["id"])
+        for loc in made:
             if loc["truth"] is not None and loc["truth"] not in first:
                 first[loc["truth"]] = loc
         fires = []
         for i, f in enumerate(self.fires):
             loc = first.get(i)
-            fires.append({"shelter": f.shelter, "active_at_start": f.t_active_s <= 0.0,
+            fires.append({"shelter": f.shelter, "active_at_start": f.t_active_s <= 0.0, "t_active_s": round(f.t_active_s, 1),
                           "located": loc is not None, "t": loc["t"] if loc else None,
+                          "area_m2": round(float(self.area(loc["t"])[i]), 1) if loc else None,
                           "by": loc["first_method"] if loc else None, "err_m": loc["truth_err_m"] if loc else None})
         out["fires_total"] = nf
         out["fires_located"] = len(first)
         out["fires_located_pct"] = round(100.0 * len(first) / nf, 1) if nf else None
         out["fires_located_by_smoke"] = sum(1 for f in fires if f["by"] == "smoke")
         out["fires_located_by_thermal"] = sum(1 for f in fires if f["by"] == "thermal")
-        out["false_locations"] = sum(1 for l in self.located if l["truth"] is None)
+        out["false_locations"] = sum(1 for l in made if l["truth"] is None)          # every false fix, merged or not
+        out["false_locations_standing"] = sum(1 for l in self.located if l["truth"] is None)
+        out["duplicates_merged"] = len(self.merged)
         out["all_located_s"] = max(f["t"] for f in fires) if fires and all(f["located"] for f in fires) else None
         smoke_err = [f["err_m"] for f in fires if f["by"] == "smoke"]
         out["smoke_location_error_m"] = round(float(np.median(smoke_err)), 1) if smoke_err else None
@@ -824,6 +1182,8 @@ class Wildfire:
         out["smoke_contacts"] = self.contacts
         out["fire_table"] = fires
         out["forecasts"] = len(self.forecasts)
+        out["forecast_t_s"] = round(self.forecasts[-1]["t"], 1) if self.forecasts else None
+        out["mapped_ha"] = round(float(np.count_nonzero(np.isfinite(self.mapped_t))) * self.grid.cell_m ** 2 / 1e4, 2)
         out.update(self._forecast_skill())
         out.update(self._warning_scores())
         return out
@@ -837,7 +1197,11 @@ class Wildfire:
         fc = self.forecasts[-1]
         t0 = fc["t"]
         p50 = fc["active"]["p50"]
+        # The fires the station knew were spreading: located as spreading, or with burning ground it mapped.
         spreading = {l["truth"] for l in fc["located"] if l["truth"] is not None and l["area_m2"] >= SMOULDER_AREA_M2}
+        cells = np.asarray(fc["mapped_cells"], dtype=int)
+        if len(cells):
+            spreading |= {i for i in range(len(self.fires)) if np.any(self.fire_arrival[i].ravel()[cells] <= t0)}
         known = [self.fire_arrival[i] for i in sorted(spreading) if self.fires[i].t_active_s <= t0]
         truth_known = np.min(known, axis=0) if known else np.full(p50.shape, np.inf)
         out = {}
@@ -877,9 +1241,10 @@ class Wildfire:
         first_any_auto = np.full(len(self.phones), np.inf)
         for ph, deliveries in self.phone_delivered.items():
             for code, td, td_auto in deliveries:
-                first_any[ph] = min(first_any[ph], td)
-                first_any_auto[ph] = min(first_any_auto[ph], td_auto)
-                if code == 2:
+                if code >= 3:
+                    first_any[ph] = min(first_any[ph], td)
+                    first_any_auto[ph] = min(first_any_auto[ph], td_auto)
+                if code >= 4:
                     first_evac[ph] = min(first_evac[ph], td)
         in_time = reached & (first_any < truth)
         lead = (truth[in_time] - first_any[in_time]) / 60.0
@@ -888,7 +1253,8 @@ class Wildfire:
         evac_lead = (truth[evac_in_time] - first_evac[evac_in_time]) / 60.0
         evacuated = np.isfinite(first_evac)
         warned = np.isfinite(first_any)
-        delivered = [a for a in self.alerts if a["state"] == "delivered"]
+        delivered = [a for a in self.alerts if a["state"] in ("delivered", "cancelled") and a.get("delivered") is not None]
+        latency = [a["approved_t"] - a["t"] for a in delivered if a.get("approved_t") is not None]
         return {
             "phones_total": int(len(self.phones)),
             "phones_reached_3h": int(reached.sum()),
@@ -906,6 +1272,12 @@ class Wildfire:
             "alerts_drafted": len(self.alerts),
             "alerts_rejected": sum(1 for a in self.alerts if a["state"] == "rejected"),
             "alerts_delivered": len(delivered),
+            "alerts_level3": sum(1 for a in delivered if a["level"] == 3),
+            "alerts_level4": sum(1 for a in delivered if a["level"] == 4),
+            "alerts_level5": sum(1 for a in delivered if a["level"] == 5),
+            "zones_alerted": len({a["zone"] for a in delivered}),
+            "alert_send_delay_s_median": round(float(np.median(latency)), 1) if latency else None,
+            "phones_level5": int(sum(1 for ph, d in self.phone_delivered.items() if any(c == 5 for c, _, _ in d))),
             "first_alert_s": round(min(float(first_any.min()), 1e12), 1) if np.isfinite(first_any).any() else None,
         }
 
@@ -916,26 +1288,38 @@ class Wildfire:
         return {"fire_truth": {"x0": g.x0, "y0": g.y0, "cell_m": g.cell_m, "nx": g.nx, "ny": g.ny,
                                "arrival_s": [None if not math.isfinite(v) else int(round(float(v)))
                                              for v in self.arrival10.ravel()]},
-                "phones_unreachable": [int(i) for i in np.nonzero(self.unreachable)[0]]}
+                "phones_unreachable": [int(i) for i in np.nonzero(self.unreachable)[0]],
+                "zones": [{**z, "phones": [int(i) for i in np.nonzero(self.zone_of_phone == k)[0]]}
+                          for k, z in enumerate(self.zones)],
+                "levels": {str(k): {"tag": v[0], "head": v[1], "action": v[2]} for k, v in LEVELS.items()}}
 
     def frame(self, sim) -> dict:
         t = sim.t
         area = self.area(t)
+        # Each phone shows the latest message it has received: 0 none or cleared, else the alert level.
         level = np.zeros(len(self.phones), dtype=int)
-        for ph, deliveries in self.phone_delivered.items():
-            for code, td, _ in deliveries:
-                if td <= t:
-                    level[ph] = max(level[ph], code)
+        when = np.full(len(self.phones), -np.inf)
+        for ph, deliveries in list(self.phone_delivered.items()):   # an operator's action may arrive on another thread
+            for code, td, _ in list(deliveries):
+                if when[ph] < td <= t:
+                    level[ph], when[ph] = code, td
+        recent = []
+        for s in reversed(self.sightings):
+            if t - s[0] > 5.0 or len(recent) >= 40:
+                break
+            recent.append({"drone": s[1], "bearing_deg": round(math.degrees(s[5]) % 360, 1), "t": round(s[0], 2),
+                           "kind": s[7]})
         return {
             "fires_state": [{"id": i, "area_m2": round(float(a), 1),
                              "smoke_top_m": round(float(plume_top(a, self.cfg.smoke)), 1),
                              "active": bool(t >= f.t_active_s)} for i, (f, a) in enumerate(zip(self.fires, area))],
             "located": [{"id": l["id"], "x": round(l["x"], 1), "y": round(l["y"], 1), "err_m": round(l["err_m"], 1),
-                         "by": l["method"], "area_m2": round(l["area_m2"], 1)} for l in self.located],
-            "sightings": [{"drone": s[1], "bearing_deg": round(math.degrees(s[5]) % 360, 1), "t": round(s[0], 2),
-                           "kind": s[7]} for s in self.sightings if t - s[0] <= 5.0][-40:],
-            "alerts": [{"id": a["id"], "state": a["state"], "level": a["level"], "phones": len(a["phones"])}
-                       for a in self.alerts],
+                         "by": l["method"], "area_m2": round(l["area_m2"], 1),
+                         "mapped_m2": round(l.get("mapped_m2", 0.0), 1)} for l in self.located],
+            "sightings": recent[::-1],
+            "alerts": [{"id": a["id"], "state": a["state"], "level": a["level"], "zone": a["zone"],
+                        "phones": len(a["phones"])} for a in self.alerts],
+            "zones_level": [int(v) for v in self.zone_level],
             "phones_alerted": level.tolist(),
             "forecast_id": self.forecasts[-1]["id"] if self.forecasts else None,
         }

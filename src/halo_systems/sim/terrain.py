@@ -42,8 +42,30 @@ def _max_filter(a: np.ndarray, radius_cells: int) -> np.ndarray:
     return out
 
 
+def _blur(a: np.ndarray, sigma_cells: float) -> np.ndarray:
+    """Separable Gaussian blur with reflected edges."""
+    if sigma_cells < 0.5:
+        return a
+    r = int(math.ceil(3 * sigma_cells))
+    k = np.exp(-0.5 * (np.arange(-r, r + 1) / sigma_cells) ** 2)
+    k /= k.sum()
+    out = a
+    for axis in (0, 1):
+        if out.shape[axis] < 2:
+            continue
+        pad = [(0, 0), (0, 0)]
+        pad[axis] = (r, r)
+        p = np.pad(out, pad, mode="reflect" if out.shape[axis] > r else "edge")
+        out = np.apply_along_axis(lambda v: np.convolve(v, k, mode="valid"), axis, p)
+    return out
+
+
 def smooth_noise(rng: np.random.Generator, shape: tuple[int, int], scale_cells: float, octaves: int = 3) -> np.ndarray:
-    """Smooth random field in [-1, 1]: a few octaves of bilinearly upsampled white noise."""
+    """Smooth random field, roughly in [-1, 1]: a few octaves of upsampled white noise, each blurred.
+
+    Each octave is bilinearly upsampled from a coarse lattice and then Gaussian-blurred over half its
+    lattice spacing, so the field has no lattice lines or terraces (which show up as stripes in shaded relief).
+    """
     ny, nx = shape
     total = np.zeros(shape)
     amp, norm = 1.0, 0.0
@@ -58,18 +80,18 @@ def smooth_noise(rng: np.random.Generator, shape: tuple[int, int], scale_cells: 
         ix = np.minimum(xx.astype(int), gx - 2)
         fy = (yy - iy)[:, None]
         fx = (xx - ix)[None, :]
-        # Smoothstep weights hide the grid lines of plain bilinear noise.
-        fy = fy * fy * (3 - 2 * fy)
-        fx = fx * fx * (3 - 2 * fx)
         a = coarse[iy][:, ix]
         b = coarse[iy][:, ix + 1]
         c = coarse[iy + 1][:, ix]
         d = coarse[iy + 1][:, ix + 1]
-        total += amp * (a * (1 - fx) * (1 - fy) + b * fx * (1 - fy) + c * (1 - fx) * fy + d * fx * fy)
+        layer = a * (1 - fx) * (1 - fy) + b * fx * (1 - fy) + c * (1 - fx) * fy + d * fx * fy
+        layer = _blur(layer, 0.5 * scale)
+        sd = float(layer.std())
+        total += amp * (layer / (sd * 1.8) if sd > 0 else layer)    # blurring shrinks the spread: restore it
         norm += amp
         amp *= 0.5
         scale /= 2.0
-    return total / norm
+    return np.clip(total / norm, -1.0, 1.0)
 
 
 @dataclass
@@ -205,13 +227,13 @@ def valley(rng: np.random.Generator, extent: tuple[float, float, float, float], 
     cy = 0.5 * (by0 + by1) + rng.uniform(-0.15, 0.15) * (by1 - by0)
     half = 0.5 * (by1 - by0)
     # Valley axis wanders a little; distance across it in units of the block's half-height.
-    wander = 0.25 * half * smooth_noise(rng, (1, nx), 40.0 / cell_m, octaves=2)[0]
+    wander = 0.25 * half * smooth_noise(rng, (1, nx), 200.0 / cell_m, octaves=2)[0]
     across = (Y - (cy + wander[None, :])) / half
     side = np.where(across > 0, rng.uniform(0.85, 1.15), rng.uniform(0.85, 1.15))
     # Gentle within the block, steep beyond it: a smooth floor plus ridges that rise outside |across| > 1.
     floor = relief_m * 0.35 * np.minimum(across ** 2, 1.44)
     rise = np.clip((np.abs(across) - 0.95) / 1.5, 0.0, 1.0)
-    crest = 1.0 + 0.25 * smooth_noise(rng, (ny, nx), 80.0 / cell_m, octaves=2)
+    crest = 1.0 + 0.25 * smooth_noise(rng, (ny, nx), 160.0 / cell_m, octaves=2)
     ridges = ridge_m * side * crest * rise * rise * (3.0 - 2.0 * rise)
     down_valley = 0.03 * (X - bx0)
     # A knoll somewhere inside the block.

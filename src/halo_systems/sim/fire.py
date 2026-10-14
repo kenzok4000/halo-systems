@@ -7,8 +7,9 @@ USDA Forest Service research paper INT-115) with Albini's (1976) revisions, the
 model inside BEHAVE, FARSITE and FlamMap. Fuels are Anderson's (1982) standard
 fuel models (USDA Forest Service general technical report INT-122). As a check,
 ``anderson_check()`` reproduces Anderson's published rates of spread at 8% dead
-fuel moisture, 100% live fuel moisture and a 5 mi/h midflame wind (the unit test
-holds every model to within 15%).
+fuel moisture, 100% live fuel moisture and a 5 mi/h midflame wind: every model
+within 20% of his table, and the three the wildfire valley burns (1 grass, 6 dormant
+brush, 10 timber litter and understory) within 8%. The unit test holds them to that.
 
 Wind and slope add as vectors (Rothermel's phi_w along the wind, phi_s up the
 slope). The effective wind speed of their sum sets the fire's ellipse, with
