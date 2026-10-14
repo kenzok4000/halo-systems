@@ -1,9 +1,9 @@
-"""Figures for the wildfire valley: one flight's map, and the sweep by swarm size.
+"""Figures for the wildfire valley: one flight's map, the sweep by swarm size, and drones against today's methods.
 
     PYTHONPATH=src python3 tools/wildfire_valley_figures.py --seed 3000 --n 16
 
 Writes results/wildfire_valley/map.png (re-flies one flight; the run is deterministic, so it is the
-sweep's flight) and, when the sweep's summary.json exists, results/wildfire_valley/swarm_size.png.
+sweep's flight) and, when the sweep's rows and summary.json exist, swarm_size.png and detection.png.
 """
 
 from __future__ import annotations
@@ -153,9 +153,66 @@ def swarm_size() -> None:
         ax.set_xlabel("drones")
         if top is not None:
             ax.set_ylim(0, top)
-    fig.suptitle("Wildfire valley, held-out seeds: means with 95% bootstrap intervals", fontsize=11)
+    fig.suptitle("Wildfire valley, held-out seeds: means with 95% bootstrap intervals. Each flight's last forecast is "
+                 "scored; fewer drones finish later, so theirs is made later, with more of the fire mapped", fontsize=10)
     fig.tight_layout()
     fig.savefig(OUT / "swarm_size.png")
+    plt.close(fig)
+
+
+DETECTORS = (("geostationary", "Geostationary satellite", "#3b6fb6", "s"),
+             ("polar", "Polar satellites", "#7a4fb0", "D"),
+             ("public", "Public calls", "#8c8c8c", "v"),
+             ("camera", "AI camera, clear view", "#2f8f5b", "^"))
+
+
+def detection_chart() -> None:
+    """Each fire on the held-out seeds: when it was found (minutes after it started to spread) and how big it was."""
+    path = OUT / "runs.jsonl"
+    if not path.exists():
+        return
+    rows = [json.loads(l) for l in path.read_text().splitlines() if l.strip()]
+    rows = [r for r in rows if "error" not in r and r["alert_rule"] == "forecast" and "today" in r]
+    if not rows:
+        return
+    top = max(r["n"] for r in rows)
+    rows = sorted((r for r in rows if r["n"] == top), key=lambda r: r["seed"])
+    fig, ax = plt.subplots(figsize=(10, 5.2), dpi=130)
+    rng = np.random.default_rng(0)
+    total = sum(len(r["fire_table"]) for r in rows)
+
+    def plot(points, label, colour, marker, z):
+        found = [(dt, a) for dt, a in points if dt is not None]
+        if found:
+            x, y = np.array(found).T
+            ax.scatter(x, y * np.exp(rng.normal(0.0, 0.08, len(y))), s=18, color=colour, marker=marker, alpha=0.45,
+                       zorder=z, linewidths=0)
+            ax.scatter([np.median(x)], [np.median(y)], s=150, color=colour, marker=marker, edgecolors="white",
+                       linewidths=1.5, zorder=z + 5)
+        ax.scatter([], [], s=60, color=colour, marker=marker, label=f"{label}: found {len(found)} of {total}")
+
+    for z, (key, label, colour, marker) in enumerate(DETECTORS):
+        pts = []
+        for r in rows:
+            for f, t in zip(r["fire_table"], r["today"]):
+                v = t[key]
+                pts.append(((v["t"] - f["t_active_s"]) / 60.0, v["area_m2"]) if v["t"] is not None else (None, None))
+        plot(pts, label, colour, marker, 2 + z)
+    pts = [((f["t"] - f["t_active_s"]) / 60.0, f["area_m2"]) if f["located"] else (None, None)
+           for r in rows for f in r["fire_table"]]
+    plot(pts, f"Halo, {top} drones, one flight", "#d9542b", "o", 20)
+    ax.axvline(0.0, color="#444444", lw=1.0, ls="--", zorder=1)
+    ax.text(1.5, 1.6, "fire starts to spread", fontsize=9, color="#444444", va="bottom")
+    ax.set_yscale("log")
+    ax.set_ylim(1.0, 1e6)
+    ax.set_xlabel("minutes after the fire started to spread when it was reported (negative: still smouldering)")
+    ax.set_ylabel("fire size when reported (m², log scale)")
+    ax.set_title(f"Who finds the fire first: {len(rows)} held-out seeds, {total} fires "
+                 "(large marker: median of the fires each method found)", fontsize=11)
+    ax.grid(True, which="major", alpha=0.25)
+    ax.legend(loc="upper left", fontsize=8.5, frameon=False)
+    fig.tight_layout()
+    fig.savefig(OUT / "detection.png")
     plt.close(fig)
 
 
@@ -169,3 +226,4 @@ if __name__ == "__main__":
     if not a.no_map:
         print(json.dumps({k: v for k, v in flight_map(a.seed, a.n).items() if k != "fire_table"}))
     swarm_size()
+    detection_chart()

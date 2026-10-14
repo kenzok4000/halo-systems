@@ -15,6 +15,30 @@ Nothing in this scenario calls a language model, so it costs nothing to run.
 
 ![One flight: the true spread against the forecast, the fires found and the phones alerted](../results/wildfire_valley/map.png)
 
+## Results in brief
+
+Held-out seeds 4000 to 4019 (20 valleys, 100 fires), each flown once with the final code; brackets are 95%
+bootstrap intervals over seeds. Full tables: [REPORT.md](../results/wildfire_valley/REPORT.md).
+
+- **Finding fires before they spread.** Sixteen drones on one flight found 86% of the fires [80, 91], 59%
+  [52, 66] of them while they still smouldered at about 4 m^2, a median 20 minutes before they started to
+  spread (missed fires counted as never found). None of today's methods modelled here finds a fire before it
+  spreads.
+- **Against today's methods, given every benefit of the doubt.** An AI camera with a clear view, or a call
+  from the public, reports a fire about 4 minutes after it starts to spread, at 100 to 200 m^2; a
+  geostationary satellite after 55 minutes, at 1.6 ha; polar satellites after 128 minutes, at 7.3 ha. As
+  deployed in California in 2024, cameras saw 22% of fires. The sixteen drones reported 60 of the 100 fires
+  before the earliest of today's four methods, by a median of 69 minutes.
+- **Forecast.** With sixteen drones, the forecast's median matched the true spread with a Sorensen overlap of
+  0.71 [0.63, 0.78] at 1 hour and 0.83 [0.79, 0.86] at 3 hours. One drone scores 0.77 and 0.89, because it
+  finishes later and forecasts with more of the fire mapped.
+- **Warnings.** 94.7% [93.0, 96.4] of the phones the fire reached were warned before it arrived, a median
+  126 minutes ahead; 32 of the 34 missed were phones without signal. Against alerts by distance alone, the
+  forecast rule told 24 [18, 30] fewer phones per flight to evacuate that the fire did not reach, with the
+  same share warned in time.
+
+![When each fire was reported and how big it was, by the drones and by today's methods](../results/wildfire_valley/detection.png)
+
 ## What is simulated as true
 
 | Part | Model | Where |
@@ -97,10 +121,12 @@ degrees, hour-to-hour errors and a fuel moisture error).
    a channel marked as simulated; a zone polygon under 5,000 ha; 1 to 5,000 recipients; an expiry of 1 to 12
    hours; a Level 4 or 5 that cites the current forecast at its threshold; a level above the zone's current
    one; and no duplicate in the last 10 minutes. A checked alert goes out at once, by cell broadcast to every
-   phone in the zone (simulated phones only), arriving 5 to 30 s later. No language model takes part. An
-   operator can cancel an alert (a false alarm: the zone's phones are told, and the rules hold off that zone
-   for 30 minutes unless it reaches Level 5) or give a zone the all-clear; both messages pass a check too. A
-   manual mode, where each alert waits for a tap, is kept for drills.
+   phone in the zone (simulated phones only), arriving 5 to 30 s later; it replaces the zone's earlier alert.
+   No language model takes part. An operator can cancel the alert in force (a false alarm: the zone's phones
+   are told, and for 30 minutes the rules re-alert that zone only above the level withdrawn, and at Level 5 at
+   least) or give a zone the all-clear (for 30 minutes, only a level above the one it had goes out); both
+   messages pass a check too. A manual mode, where each alert waits for a tap and the zone is raised only once
+   it is sent, is kept for drills.
 
 ## How results are scored
 
@@ -131,8 +157,45 @@ limited to the camera's footprint. The station was changed
 (thermal mapping, sizing from direct measurements first, a three-drone rule for plume sizing, merging of
 duplicate locations, the swarm's own wind estimate in place of the truth before it had one) and the
 found-fire score was corrected to measure from the burning ground rather than the ignition point. Seeds 3000 to
-3019 then became development seeds too. The results in the report are from seeds 4000 to 4019, flown once with
-the final code.
+3019 then became development seeds too. A sweep of an earlier version on seeds 4000 to 4019 was
+stopped part-way when these changes began, and its rows were set aside unread. The results in the report are
+from seeds 4000 to 4019, flown once with the final code; the models of today's detection methods were checked
+only on seeds 3000 to 3003 before that.
+
+## Drones against today's methods
+
+How would these fires be found without the drones? `src/halo_systems/sim/detection.py` applies the methods fire
+services use today to the same true fires, with every number taken from a published source and, where a source
+gives a range, the end that favours today's method: no cloud, a camera with a clear view of the whole valley,
+every satellite detection credited to the right fire (one geostationary pixel is wider than the valley), and the
+fastest published delivery. The flight starts at 08:00 local time; today's methods watch from before then until
+12:00, while the drones fly once, for up to 40 minutes, and anything they miss counts as not found. Nothing was
+tuned: the rules were written from the sources below and checked only on development seeds.
+
+| Method | Rule in the simulator | Published basis |
+|---|---|---|
+| Geostationary satellite | A scan every 5 minutes; detected at the first scan with fire radiative power (FRP) of 34.5 MW or more; delivered 266 s later | GOES ABI scans the US every 5 min ([NOAA](https://www.goes-r.gov/users/abiScanModeInfo.html)). ABI was "hard to detect fires smaller than ~34.5 MW" (Li et al. 2020, Remote Sensing of Environment 237: 111600); the theoretical minimum at nadir in clear sky is about 4,000 m^2 at 800 K, or 93 MW (GOES-R Fire ATBD v2.6). Latency requirement 266 s for the US sector (same ATBD). In the field, fast fires showed 15 to 25 min after ignition and 7 of 26 never did (Govil et al. 2020, Remote Sensing 12: 166) |
+| Polar-orbiting satellites | One daylight pass each for MODIS on Terra (10:30), VIIRS on NOAA-20 and NOAA-21 (12:40) and Suomi NPP (13:30), each within 50 min of that time; detected if FRP reaches 2.3 MW (MODIS) or 0.33 MW (VIIRS); delivered within a minute | Overpass times and pixel sizes: [NASA FIRMS FAQ](https://www.earthdata.nasa.gov/data/tools/firms/faq). MODIS "routinely detects ... fires 1000 m^2 in size" and flaming fires a tenth of that "under very good observing conditions" (same FAQ); 100 m^2 at 800 K is 2.3 MW by the ATBD's own conversion; VIIRS the same area scaled by its pixel area (375 m against 1 km pixels). Ultra-real-time data "within a minute of satellite overpass" in the US and Canada (FIRMS FAQ) |
+| AI camera network | Smoke picked up 4 min after the fire starts to spread | Pano AI: "usually within four to five minutes" (as reported by Rancho Palos Verdes, [GovTech 2022](https://www.govtech.com/products/california-city-moves-to-install-wildfire-detection-cameras)). A research system took a median 13.5 min after smoke appeared (Govil et al. 2020). In 2024 CAL FIRE's cameras saw 1,668 of 7,553 fires in its area and were first for 636 ([FireRescue1, 2025](https://www.firerescue1.com/artificial-intelligence/over-1-000-ai-cameras-help-spot-calif-wildfires-before-the-first-911-call)). The clear-view camera sees every fire; a second rule, "as deployed", sees each fire with a 1,668 in 7,553 (22%) chance |
+| Public calls | First call an exponential time after the fire starts to spread, mean 10 min (78% within 15 min) | "In densely populated California, most fires are reported within 15 min" (Govil et al. 2020). Elsewhere it is slower: in Alberta, public reports came a median 0.75 h after the estimated start (Alberta historical wildfire data 2006 to 2025, our calculation) |
+| Fire radiative power | FRP (MW) = fuel burnt (kg/s) / 0.368, the whole fuel load of the cell's fuel model burnt as the front passes, averaged over 5 min | Wooster et al. (2005), Journal of Geophysical Research 110: D24311, equation 14 |
+
+Cameras and callers start their clock when the fire starts to spread: a spot smouldering under a few square
+metres puts up no smoke that a camera kilometres away or a passer-by picks out. That is the gap the drones fill.
+Lightning fires can smoulder for a long time before anyone reports them: across 42 datasets the median
+"holdover" time ranges from 1.4 to 53.6 hours (Moris et al. 2023, Earth System Science Data 15: 1151), and
+fire services fly patrols after lightning storms to look for them (Government of Alberta). Patrols are not in
+the comparison because no source gives how often or when they fly; an Alberta review puts aerial patrols at
+12% of detections for $9.6 million a year (Spring 2019 Wildfire Review, table 12).
+
+**How the alerts compare with Japan's.** Japan's evacuation information has five levels; since 20 May 2021,
+Level 3 tells older people and others who need time to leave, Level 4 tells everyone to leave, and Level 5
+means it is already too late to leave safely (Cabinet Office and Fire and Disaster Management Agency poster,
+[bousai.go.jp](https://www.bousai.go.jp/oukyu/hinanjouhou/r3_hinanjouhou_guideline/pdf/poster.pdf)). Mayors
+decide Levels 3 to 5. Japan's earthquake early warning, by contrast, is fully automatic: in 2011 it was issued
+8.6 s after the first station detected the quake (JMA), and cell broadcast reaches phones within 4 s of reaching
+the network (ETSI TS 122 268). Halo issues its fire levels the way the earthquake warning is issued, by fixed
+rules with no one in the loop, and keeps a person able to cancel or clear.
 
 ## Assumptions and sources
 
@@ -145,9 +208,10 @@ the final code.
 | Spread over the grid | Minimum travel time | Finney (2002), Canadian Journal of Forest Research 32: 1420-1424 |
 | Particulate dispersion | Gaussian plume, Pasquill-Gifford class D | Briggs' rural dispersion fits (1973) |
 | PM2.5 trigger | 35 ug/m3 | US EPA 24-hour PM2.5 standard |
-| Alert length | 360 characters | FCC Report and Order 16-127 (2016) for Wireless Emergency Alerts; ETSI TS 102 900 for EU-Alert |
+| Alert length | 360 characters | Wireless Emergency Alerts, 47 CFR 10.430 (FCC Report and Order 16-127, in force since May 2019); ETSI TS 102 900 for EU-Alert |
 | Smoke detection range, plume rise and top, bearing and elevation errors, emission rate | As above | Stated assumptions, to be calibrated against real footage and sensor logs |
-| Alert levels | Five levels, 3 to 5 sent to phones | Modelled on Japan's evacuation alert levels (Cabinet Office, revised May 2021); thresholds are stated assumptions |
+| Alert levels | Five levels, 3 to 5 sent to phones | Japan's evacuation alert levels as revised on 20 May 2021 (Cabinet Office and Fire and Disaster Management Agency); the probability and time thresholds are stated assumptions |
+| Today's detection methods | See "Drones against today's methods" | Sources in that section |
 | Weather forecast errors, patchiness of spread, delivery delay, phones without signal | As above | Stated assumptions |
 
 ## What is not modelled

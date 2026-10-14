@@ -6,8 +6,9 @@ import unittest
 import numpy as np
 
 from halo_systems.eval.runner import make_controller, make_supervisor, run_one
-from halo_systems.eval.scenarios import make
+from halo_systems.eval.scenarios import make, wildfire_valley
 from halo_systems.sim.body import DroneBody
+from halo_systems.sim.detection import COMBUSTION_KG_PER_MJ, FirePower, TodayConfig, fuel_load, today_methods
 from halo_systems.sim.engine import Simulation
 from halo_systems.sim.fire import FUEL_MODELS, Moisture, Period, SpreadGrid, anderson_check
 from halo_systems.sim.scenario import Scenario, SensorConfig, Target
@@ -156,6 +157,7 @@ class AlertCheckTest(unittest.TestCase):
             self.assertTrue(any(word in r for r in result.reasons), (word, result.reasons))
         dup = check.check({**self.alert, "t": 300.0}, self.forecast, [{**self.alert, "id": 7}])
         self.assertFalse(dup.ok)
+        self.assertIn("duplicate of alert 8", dup.reasons[0])              # numbered from 1, as the page shows
         # Automatic alerts only raise a zone's level; Level 5 needs even odds within 15 minutes.
         self.assertFalse(check.check(self.alert, self.forecast, [], zone_level=4).ok)
         self.assertTrue(check.check({**self.alert, "level": 5, "max_prob": 0.6}, self.forecast, [], zone_level=4).ok)
@@ -188,6 +190,40 @@ class CoverTest(unittest.TestCase):
         self.assertTrue(math.isnan(found[1.0]))
 
 
+class TodayMethodsTest(unittest.TestCase):
+    def test_fire_power_follows_the_fuel_burnt(self):
+        arrival = np.array([[0.0, 60.0, 120.0], [180.0, np.inf, 240.0]])
+        power = FirePower(arrival, np.full(arrival.shape, 1.5), 100.0, 300.0)
+        # by t = 240 s five cells of 100 m^2 at 1.5 kg/m^2 have burnt, all within the last 300 s
+        self.assertAlmostEqual(float(power.frp_mw(240.0)), 5 * 150.0 / 300.0 / COMBUSTION_KG_PER_MJ)
+        self.assertAlmostEqual(float(power.frp_mw(-1.0)), 0.0)
+        self.assertAlmostEqual(float(power.frp_mw(1000.0)), 0.0)          # nothing burns in the last 5 min
+
+    def test_rules_are_seeded_and_never_see_a_fire_before_it_spreads(self):
+        sc = make("wildfire_valley", 2001, n=1)
+        body = DroneBody()
+        sim = Simulation(sc, make_controller("improved", body, sc.world), make_supervisor("rule"), seed=2001,
+                         body=body, record_hz=0)
+        wf, cfg = sim.wildfire, TodayConfig()
+        a, b = today_methods(wf, 2001), today_methods(wf, 2001)
+        self.assertEqual(a, b)
+        self.assertNotEqual(a, today_methods(wf, 2002))                 # the random parts follow the seed
+        load = fuel_load(wf)
+        for i, (f, row) in enumerate(zip(wf.fires, a)):
+            for m, v in row.items():
+                if v["t"] is None:
+                    continue
+                self.assertGreaterEqual(v["t"], f.t_active_s)
+                self.assertLessEqual(v["t"], wf.cfg.horizon_s)
+                self.assertGreater(v["area_m2"], f.smoulder_area_m2)
+            if f.t_active_s + cfg.camera_delay_s <= wf.cfg.horizon_s:
+                self.assertAlmostEqual(row["camera"]["t"], round(f.t_active_s + cfg.camera_delay_s, 1))
+            if row["geostationary"]["t"] is not None:
+                scan = row["geostationary"]["t"] - cfg.geo_latency_s
+                power = FirePower(wf.fire_arrival[i], load, wf.grid.cell_m ** 2, cfg.frp_window_s)
+                self.assertGreaterEqual(float(power.frp_mw(scan)), cfg.geo_frp_mw)
+
+
 class ValleyFlightTest(unittest.TestCase):
     def test_short_valley_flight_finds_fires_forecasts_and_checks_alerts(self):
         row, res = run_one("wildfire_valley", 2001, "improved+rule", n=16, keep_result=True, duration_s=60.0)
@@ -208,6 +244,8 @@ class ValleyFlightTest(unittest.TestCase):
         self.assertEqual(len(forecast["p50_arrival_s"]), g["nx"] * g["ny"])
         self.assertTrue(forecast["brief"])
         self.assertIn("terrain", res.world)
+        self.assertEqual(len(row["today"]), len(row["fire_table"]))
+        self.assertEqual(set(row["today"][0]), {"geostationary", "polar", "camera", "public", "camera_deployed"})
 
     def test_thermal_map_scoring_and_event_rate(self):
         sc = make("wildfire_valley", 2001, n=16)
@@ -246,28 +284,90 @@ class ValleyFlightTest(unittest.TestCase):
                 self.assertNotIn("about 0 min", e["message"])
                 self.assertNotIn("about -", e["message"])
                 self.assertIn("Simulated", e["message"])
-        # Alerts go out automatically by zone, each one checked, with levels that only rise.
-        sent = [a for a in wf.alerts if a["state"] == "delivered"]
+        # Alerts go out automatically by zone, each one checked, with levels that only rise; a raise replaces the
+        # zone's earlier alert.
+        sent = [a for a in wf.alerts if a["state"] in ("delivered", "superseded")]
         self.assertTrue(sent)
+        codes = [z["code"] for z in wf.zones]
         for a in sent:
             self.assertTrue(a["check"]["ok"])
             self.assertEqual(a["approved_by"], "automatic (fixed rules)")
             self.assertGreater(a["level"], a["raised_from"])
-            k = [z["code"] for z in wf.zones].index(a["zone"])
+            k = codes.index(a["zone"])
             self.assertEqual(set(a["phones"]), set(np.nonzero(wf.zone_of_phone == k)[0].tolist()))
-        # An operator can withdraw an alert and clear a zone; both reach the zone's phones and are checked.
-        a = sent[0]
-        out = wf.cancel(sim, a["id"])
-        self.assertTrue(out["ok"])
-        self.assertEqual(a["state"], "cancelled")
-        k = [z["code"] for z in wf.zones].index(a["zone"])
+            if a["state"] == "superseded":
+                newer = wf.alerts[a["superseded_by"]]
+                self.assertEqual(newer["zone"], a["zone"])
+                self.assertGreater(newer["level"], a["level"])
+        for k, code in enumerate(codes):
+            live = [a["level"] for a in sent if a["zone"] == code and a["state"] == "delivered"]
+            self.assertLessEqual(len(live), 1)
+            self.assertEqual(int(wf.zone_level[k]), live[0] if live else 0)
+        n_alerts = len(wf.alerts)
+        # A replaced alert cannot be cancelled on its own; cancelling the one in force withdraws the zone's alerts,
+        # tells its phones once, and holds the zone at that level (Level 4 at least).
+        old = next((a for a in sent if a["state"] == "superseded"), None)
+        self.assertIsNotNone(old, "seed 2001 raises a zone within 2 minutes")
+        refused = wf.cancel(sim, old["id"])
+        self.assertFalse(refused["ok"])
+        self.assertIn("newer alert", refused["reason"])
+        live = wf.alerts[old["superseded_by"]]
+        k = codes.index(live["zone"])
+        held = max(4, int(wf.zone_level[k]))
+        self.assertTrue(wf.cancel(sim, live["id"])["ok"])
+        self.assertTrue(all(a["state"] == "cancelled" for a in wf.alerts if a["zone"] == live["zone"]))
         self.assertEqual(wf.zone_level[k], 0)
-        self.assertFalse(wf.all_clear(sim, a["zone"])["ok"])                 # nothing left in force there
-        other = next((b for b in sent if b["zone"] != a["zone"]), None)
-        if other is not None:
+        self.assertEqual(sum(1 for n in wf.notices if n["zone"] == live["zone"]), 1)
+        self.assertFalse(wf.all_clear(sim, live["zone"])["ok"])              # nothing left in force there
+        self.assertFalse(wf.cancel(sim, live["id"])["ok"])
+        # All clear closes a zone: its alerts cannot be cancelled afterwards, and the next forecast does not draft
+        # (or reject) a new alert there unless the fire gets worse than the level it had.
+        other = next((a for a in wf.alerts if a["state"] == "delivered"), None)
+        if other is None:
+            before = len(wf.alerts)
+            wf._draft_alerts(sim, wf.forecasts[-1])
+            self.assertFalse(any(a["zone"] == live["zone"] and a["level"] <= held for a in wf.alerts[before:]))
+        else:
+            k2 = codes.index(other["zone"])
+            had = int(wf.zone_level[k2])
             self.assertTrue(wf.all_clear(sim, other["zone"])["ok"])
+            self.assertEqual(other["state"], "cleared")
+            self.assertFalse(wf.cancel(sim, other["id"])["ok"])
+            before = len(wf.alerts)
+            wf._draft_alerts(sim, wf.forecasts[-1])
+            for a in wf.alerts[before:]:
+                if a["zone"] in (other["zone"], live["zone"]):
+                    self.assertGreater(a["level"], had if a["zone"] == other["zone"] else held)
+                    self.assertEqual(a["state"], "delivered")
         self.assertTrue(all(n["check"]["ok"] for n in wf.notices))
+        self.assertGreaterEqual(len(wf.alerts), n_alerts)
+        self.assertEqual(res.metrics["alerts_delivered"], len(sent))       # scored as sent, whatever came after
         self.assertIn("zones", wf.hello())
+
+    def test_manual_alerts_raise_a_zone_only_once_approved(self):
+        sc = wildfire_valley(2001, n=16, approval="manual")
+        sc.duration_s = 60.0
+        body = DroneBody()
+        sim = Simulation(sc, make_controller("improved", body, sc.world), make_supervisor("rule"), seed=2001, body=body,
+                         record_hz=0)
+        sim.run()
+        wf = sim.wildfire
+        codes = [z["code"] for z in wf.zones]
+        waiting = [a for a in wf.alerts if a["state"] == "checked"]
+        self.assertTrue(waiting)
+        self.assertTrue(np.all(wf.zone_level == 0))                         # nothing sent, nothing raised
+        self.assertFalse(any(a["state"] == "rejected" for a in wf.alerts))  # no duplicate drafts while waiting
+        for code in {a["zone"] for a in waiting}:
+            self.assertEqual(sum(1 for a in waiting if a["zone"] == code), 1)
+        a = waiting[0]
+        self.assertFalse(wf.all_clear(sim, a["zone"])["ok"])                # the phones were never alerted
+        self.assertTrue(wf.approve(sim, a["id"])["ok"])
+        self.assertEqual(int(wf.zone_level[codes.index(a["zone"])]), a["level"])
+        if len(waiting) > 1:
+            b = waiting[1]
+            self.assertTrue(wf.cancel(sim, b["id"])["ok"])
+            self.assertEqual(b["state"], "cancelled")
+            self.assertEqual(int(wf.zone_level[codes.index(b["zone"])]), 0)
 
     def test_distance_to_a_plume_line(self):
         from halo_systems.sim.wildfire import _to_segment
