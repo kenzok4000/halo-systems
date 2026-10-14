@@ -80,7 +80,7 @@ The headline formation metric is the *integrity error*. The ideal formation is t
 
 ## Dashboard (`dashboard/`)
 
-A standard-library HTTP server streams frames over server-sent events to a three.js page. With a key, supervisor calls run on a worker thread, so the flight never waits for the API. When replaying recorded calls without a key, they are answered in step with the simulation, exactly as in the benchmark. The page lets the operator start flights, inject gusts, motor failures and radio blackouts, order formations, compile missions and browse the benchmark results.
+A standard-library HTTP server streams frames over server-sent events to a three.js page. With a key, supervisor calls run on a worker thread, so the flight never waits for the API. When replaying recorded calls without a key, they are answered in step with the simulation, exactly as in the benchmark. The page lets the operator start flights with any swarm size, inject gusts, motor failures and radio blackouts, order formations, compile missions and browse the benchmark results. In scouting scenarios it draws the hotspots and lights each one up when a drone's camera has found it.
 
 ## Known simplifications
 

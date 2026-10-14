@@ -62,11 +62,21 @@ something (give length_m if stated).
 down or intimidate people, animals or vehicles, to carry or drop weapons or objects onto people, or to jam \
 or interfere with other aircraft or radios."""
 
-# Whole words anywhere in the text, so some civilian requests match too, for example "shoot aerial
-# video", "traffic jam" and "lightning strike".
-_HARM = re.compile(r"\b(attack|ram|ramming|strike|kill|weapon|bomb|explosive|grenade|shoot|enemy|target(?:ing)? (?:the )?"
-                   r"(?:person|people|vehicle|crowd)|jam(?:ming)?|intimidat\w*|harass\w*)\b|drop .{0,30}\bon (?:the )?"
-                   r"(?:people|crowd|person|protesters?)", re.I)
+# Words that only mean harm when used as verbs against someone or something, so they are matched
+# with their object: "strike the convoy" but not "the lightning strike area", "shoot at them" but not
+# "shoot aerial video", "jam the police radio" but not "the traffic jam". Words with no civil use in
+# a flight request (weapon, bomb, grenade, enemy, intimidate, harass) are matched on their own.
+_OBJECT = r"(?:the |a |an |their |that |those |them |him |her |it |us |our )?"
+_HARM = re.compile(
+    r"\b(?:attack|ram|ramming|kill|weapon\w*|bomb\w*|explosive\w*|grenade\w*|enemy|enemies|intimidat\w*|harass\w*)\b"
+    r"|\b(?<!lightning )(?<!bird )strikes? " + _OBJECT + r"(?:\w+ )?(?:convoy|vehicle|car|truck|person|people|crowd|man|woman|"
+    r"driver|drone|aircraft|helicopter|target|them|him|her|it)\b"
+    r"|\bshoot(?:ing)? (?:down|at|dead)\b|\bshoot(?:ing)? " + _OBJECT + r"(?:\w+ )?(?:person|people|crowd|man|woman|driver|"
+    r"drone|aircraft|helicopter|target|them|him|her|it|dead)\b"
+    r"|\bjam(?:ming)? " + _OBJECT + r"(?:\w+ )?(?:radios?|signals?|gps|gnss|comms|communications?|frequenc\w+|"
+    r"transmissions?|links?|telemetry)\b|\b(?:radio|signal|gps|gnss) jam(?:ming|mer)?\b"
+    r"|\btarget(?:ing)? (?:the )?(?:person|people|vehicle|crowd)\b"
+    r"|\bdrop .{0,30}\bon (?:the )?(?:people|crowd|person|protesters?)", re.I)
 
 
 def harmful(text: str) -> bool:

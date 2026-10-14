@@ -199,7 +199,8 @@ class LiveRun:
             "flying": int(sim.active_mask().sum()),
             "lost": int(sum(1 for st in sim.status if STATUS_NAMES[int(st)] in ("crashed", "down"))),
             "retired": int(sum(1 for st in sim.status if STATUS_NAMES[int(st)] == "retired")),
-            "collisions": int(sim.collisions + sim.obstacle_crashes + sim.ground_crashes),
+            # Drones destroyed, as the report counts crashes: two per collision, one per obstacle or ground strike.
+            "collisions": int(2 * sim.collisions + sim.obstacle_crashes + sim.ground_crashes),
             "progress_m": round(float(sim.ctrl.plan.s), 1),
             "path_m": round(float(sim.path.length), 1),
             "leader_speed": round(float(sim.ctrl.plan.speed_now), 2),
@@ -219,6 +220,25 @@ class LiveRun:
         with self.lock:
             res = self.sim.result()
         return {"config": self.config, "seed": self.seed, **res.to_dict(include_frames=False, include_series=True)}
+
+
+DEFAULT_REPLAY_MODEL = "nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B"   # the model of the committed held-out cache
+
+
+def replay_defaults(results_dir, model: str | None, cache: str | None) -> tuple[str | None, str | None]:
+    """With no flags and no key, ``halo serve`` replays the committed Nemotron 3 Nano flights.
+
+    The cache defaults to ``results/nemotron_cache.jsonl`` when that file exists, and the model to the
+    one that cache was recorded with when no key and no SWARMLAB_SUPERVISOR_MODEL are set. With a key,
+    the model stays whatever the flags or the environment say, so a live session never silently
+    picks a model.
+    """
+    default_cache = Path(results_dir) / "nemotron_cache.jsonl"
+    if cache is None and default_cache.exists():
+        cache = str(default_cache)
+    if model is None and cache and not os.environ.get("NEBIUS_API_KEY") and not os.environ.get("SWARMLAB_SUPERVISOR_MODEL"):
+        model = DEFAULT_REPLAY_MODEL
+    return model, cache
 
 
 class State:
@@ -481,7 +501,8 @@ def _compile(state: State, text: str) -> dict:
     if not text.strip():
         raise ValueError("type a mission first")
     status = state.ai_status()
-    if status["ai_available"]:
+    # Replay mode (a cache, no key) can re-fly recorded flights, but a mission is a new request: it needs a key.
+    if status["ai_available"] and status["mode"] == "live":
         from ..ai.client import NebiusClient, NebiusError
         client = NebiusClient(timeout_s=60.0, max_retries=2, log_path=state.evidence_dir / "dashboard_calls.jsonl")
         try:
@@ -493,7 +514,11 @@ def _compile(state: State, text: str) -> dict:
             spec = regex_baseline(text)
             return {"source": "regex-baseline", "spec": spec, "problems": [f"Nemotron call failed ({exc.reason}); used the regex baseline"]}
     spec = regex_baseline(text)
-    note = "Nemotron is not configured here (no key or model), so the regex baseline parsed this."
+    if status["mode"] == "replay":
+        note = ("Without a key the dashboard can only replay recorded Nemotron flights; a new mission is a new call, "
+                "so the regex baseline parsed this. Set NEBIUS_API_KEY to compile with Nemotron.")
+    else:
+        note = "Nemotron is not configured here (no key or model), so the regex baseline parsed this."
     return {"source": "regex-baseline", "spec": spec, "problems": [note] if not harmful(text) else []}
 
 
@@ -529,6 +554,7 @@ def _evidence(evidence_dir: Path) -> dict:
 
 def serve(host: str = "127.0.0.1", port: int = 8765, results_dir: str = "results", evidence_dir: str = "evidence",
           model: str | None = None, cache: str | None = None, open_browser: bool = False) -> None:
+    model, cache = replay_defaults(results_dir, model, cache)
     state = State(Path(results_dir), Path(evidence_dir), model, Path(cache) if cache else None)
     Path(evidence_dir).mkdir(parents=True, exist_ok=True)
     httpd = ThreadingHTTPServer((host, port), make_handler(state, host))

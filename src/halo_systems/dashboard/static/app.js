@@ -80,10 +80,15 @@ function buildWorld(hello) {
   // Targets to find (hotspots): dull discs that light up when a drone's camera has seen them.
   targetMeshes = [];
   for (const t of hello.targets || []) {
-    const m = new THREE.Mesh(new THREE.CircleGeometry(Math.max(t.radius_m, 1.5), 20),
+    // Drawn at least 3 m across so a 2 m hotspot is visible from the top view; found ones grow and get a ring.
+    const m = new THREE.Mesh(new THREE.CircleGeometry(Math.max(t.radius_m, 3.0), 24),
       new THREE.MeshBasicMaterial({ color: TARGET_HIDDEN.clone(), transparent: true, opacity: 0.9 }));
     m.position.set(t.x, 0.12, -t.y); m.rotation.x = -Math.PI / 2;
-    world.add(m); targetMeshes.push(m);
+    const ring = new THREE.Mesh(new THREE.RingGeometry(Math.max(t.radius_m, 3.0) * 1.6, Math.max(t.radius_m, 3.0) * 2.0, 32),
+      new THREE.MeshBasicMaterial({ color: TARGET_FOUND, transparent: true, opacity: 0.0, side: THREE.DoubleSide }));
+    ring.position.set(t.x, 0.11, -t.y); ring.rotation.x = -Math.PI / 2;
+    m.userData.ring = ring;
+    world.add(m); world.add(ring); targetMeshes.push(m);
   }
   surveyBox = null;
   if (hello.sensor && hello.sensor.area) {
@@ -141,7 +146,13 @@ function drawFrame(f) {
   }
   for (const m of [droneMesh, slotMesh, shadowMesh]) m.instanceMatrix.needsUpdate = true;
   droneMesh.instanceColor.needsUpdate = true;
-  if (f.found) f.found.forEach((hit, i) => { const m = targetMeshes[i]; if (m) m.material.color.copy(hit ? TARGET_FOUND : TARGET_HIDDEN); });
+  if (f.found) f.found.forEach((hit, i) => {
+    const m = targetMeshes[i];
+    if (!m) return;
+    m.material.color.copy(hit ? TARGET_FOUND : TARGET_HIDDEN);
+    m.scale.setScalar(hit ? 1.4 : 1.0);
+    m.userData.ring.material.opacity = hit ? 0.7 : 0.0;
+  });
   if (k) {
     c.multiplyScalar(1 / k);
     const w = new THREE.Vector3(f.wind[0], 0, -f.wind[1]);
@@ -261,7 +272,8 @@ async function start(extra = {}) {
   spark = [];
   const speed = Number($("#speed .active").dataset.speed);
   try {
-    run = await api("/api/runs", { scenario: $("#scenario").value, config: $("#config").value, seed: Number($("#seed").value), speed, ...extra });
+    const drones = Number($("#drones").value) || undefined;   // blank = the scenario's own swarm size
+    run = await api("/api/runs", { scenario: $("#scenario").value, config: $("#config").value, seed: Number($("#seed").value), speed, n: drones, ...extra });
   } catch (err) { alert(err.message); return; }
   buildWorld(run);
   setHud(run.scenario.title, run.directive);
@@ -273,9 +285,9 @@ async function start(extra = {}) {
   source.addEventListener("event", (e) => onEvent(JSON.parse(e.data)));
   source.addEventListener("end", (e) => {
     const m = JSON.parse(e.data).metrics || {};
-    // The crash count here is the benchmark "crashes" metric (value() in eval/stats.py): a drone-to-drone
-    // collision counts 2. The live Crashes counter (metrics.collisions in each frame) counts it once.
-    logItem("event", `<b>Flight ended.</b> In formation ${fmt(m.time_formed_pct, 0)}% of the time, ${(m.collisions || 0) * 2 + (m.obstacle_crashes || 0) + (m.ground_crashes || 0)} crashes, completed: ${m.completed ? "yes" : "no"}`);
+    const crashes = (m.collisions || 0) * 2 + (m.obstacle_crashes || 0) + (m.ground_crashes || 0);   // drones destroyed, as in the Crashes tile
+    const done = m.completed == null ? "not applicable (looped route)" : m.completed ? "yes" : "no";
+    logItem("event", `<b>Flight ended.</b> In formation ${fmt(m.time_formed_pct, 0)}% of the time, ${crashes} ${crashes === 1 ? "drone" : "drones"} lost in crashes, completed: ${done}`);
     source.close(); source = null;
   });
 }
