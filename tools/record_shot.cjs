@@ -7,7 +7,8 @@
 //
 // Options: --n (drones, blank = the scenario's own), --url (default http://127.0.0.1:8765, where halo serve listens), --tab fly|mission|results|about,
 // --inject gust@6,motor_failure@12 (kinds gust, motor_failure or blackout; seconds after the start),
-// --mission "text" (Mission tab: compile, then fly it; --no-fly stops after compiling),
+// --mission "text" (Mission tab: compile, then fly it; --no-fly stops after compiling; --type [ms] types the
+// request key by key, 45 ms apart unless given, when screen-recording),
 // --speed 1|2|5 (the page's speed buttons; any other value has no button, so the click times out),
 // --view follow|chase|orbit|ride|top (the page's view buttons; --ride-drone N rides with drone N, not the one
 // nearest the swarm's centre), --seconds (default 15), --out (default video/shot.webm),
@@ -60,7 +61,10 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
   }
   if (args.mission) {
     await page.click('nav.tabs button[data-tab="mission"]');
-    await page.fill("#mission-text", args.mission);
+    if (args.type) {   // type the request key by key, as a person would, instead of pasting it
+      await page.fill("#mission-text", "");
+      await page.type("#mission-text", args.mission, { delay: Number(args.type) > 1 ? Number(args.type) : 45 });
+    } else await page.fill("#mission-text", args.mission);
     await sleep(1500);
     await page.click("#compile");
     await page.waitForFunction(() => document.querySelector("#compile-out").textContent.trim().length > 0, null, { timeout: 120000 });
