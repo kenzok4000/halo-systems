@@ -212,6 +212,7 @@ function drawValley() {
   const items = [...valley.alerts.values()].reverse().slice(0, 6).map((a) => {
     const state = a.state === "delivered" ? (a.delivered != null ? `delivered to ${a.delivered} of ${a.of} phones` : "delivered")
       : a.state === "rejected" ? "rejected by the alert check" : a.state === "cancelled" ? "cancelled"
+      : a.state === "superseded" ? "replaced by a newer alert" : a.state === "cleared" ? "ended by the all-clear"
       : valley.ended ? "not approved before the flight ended" : valley.approval === "auto" ? "checked; sending" : "checked; waiting for the incident commander";
     const btn = valley.ended ? "" : a.state === "checked" && valley.approval !== "auto" ? `<button data-approve="${a.id}">Approve and send</button>`
       : cancellable(a) ? `<button data-cancel="${a.id}">Cancel alert</button>` : "";
