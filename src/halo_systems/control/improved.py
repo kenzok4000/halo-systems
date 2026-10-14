@@ -163,7 +163,8 @@ class ImprovedController(Controller):
         g, b, m = build_constraints(
             p, v, obs.nbr_pos, obs.nbr_vel, obs.nbr_age, act,
             d_safe=2 * self.body.radius_m + margin + np.sqrt(2.0) * nav, a_brake=self.a_brake, gamma=self.gamma,
-            world=self.world, obstacle_clearance=self.body.radius_m + margin + nav, floor_z=self.floor_z)
+            world=self.world, obstacle_clearance=self.body.radius_m + margin + nav, floor_z=self.floor_z,
+            terrain=getattr(self.world, "terrain", None))
         # Break symmetric deadlocks in front of obstacles: slide toward the slot's side.
         if self.world.obstacle_count:
             k_nbr = min(MAX_NEIGHBOURS, max(len(p) - 1, 0))

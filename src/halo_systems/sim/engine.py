@@ -51,6 +51,7 @@ FAILURE_DETECTION_S = 1.0
 LOOKAHEAD_M = 100.0          # how far ahead of the formation centre the supervisor summary looks
 INTEGRITY_EVERY = 5          # steps between formation-integrity evaluations (10 Hz)
 SENSE_EVERY = 5              # steps between ground-sensor updates (10 Hz, a thermal camera's frame rate)
+MIN_VISIBLE = 0.15           # a hotspot with less of it visible from above than this is never confirmed by the camera
 
 
 @dataclass
@@ -170,6 +171,9 @@ class Simulation:
         self.target_seen_s = np.zeros(len(self.targets))
         self.target_found_t = np.full(len(self.targets), np.nan)
         self.target_found_by = np.full(len(self.targets), -1)
+        # Share of each target a camera looking down can see; only the wildfire valley hides any.
+        cover = np.array([t.cover for t in scenario.targets], dtype=float)
+        self.target_visible = (1.0 - cover) if cover.any() else None
         self.coverage: np.ndarray | None = None
         if sensor.enabled and sensor.area:
             x0, y0, x1, y1 = sensor.area
@@ -194,6 +198,11 @@ class Simulation:
         self.wall_start = time.perf_counter()
         self._script = sorted(scenario.script, key=lambda s: s.t)
         self._failures = sorted(scenario.failures, key=lambda f: f.t)
+        # Fires, smoke, forecasts and alerts (the wildfire valley only).
+        self.wildfire = None
+        if scenario.wildfire is not None:
+            from .wildfire import Wildfire
+            self.wildfire = Wildfire(self)
 
     # ------------------------------------------------------------------------
     def event(self, kind: str, drone: int | None = None, **detail) -> None:
@@ -282,6 +291,8 @@ class Simulation:
 
         self._collisions(p0, airborne)
         self._energy(thrust, powered, np.linalg.norm(self.v - wind, axis=1))
+        if self.wildfire is not None and self.k % SENSE_EVERY == 0:
+            self.wildfire.tick(self, SENSE_EVERY * dt)
         if self.sc.sensor.enabled and self.k % SENSE_EVERY == 0:
             self._sense_ground(SENSE_EVERY * dt)
         self._record(obs)
@@ -293,13 +304,20 @@ class Simulation:
         if not act.any():
             return
         p = self.p[act]
-        foot = self.sc.sensor.footprint_radius(p[:, 2])
+        terrain = self.sc.world.terrain
+        foot = self.sc.sensor.footprint_radius(p[:, 2] if terrain is None else p[:, 2] - terrain.height(p[:, 0], p[:, 1]))
         if len(self.targets):
             d = np.hypot(p[:, None, 0] - self.targets[None, :, 0], p[:, None, 1] - self.targets[None, :, 1])
             in_view = d - self.targets[None, :, 2] <= foot[:, None]
             seen = in_view.any(axis=0)
             pending = np.isnan(self.target_found_t)
-            self.target_seen_s[seen & pending] += elapsed
+            if self.target_visible is None:
+                self.target_seen_s[seen & pending] += elapsed
+            else:
+                # A partly hidden hotspot takes longer to confirm; one mostly hidden is never seen from above.
+                vis = self.target_visible
+                gain = seen & pending & (vis >= MIN_VISIBLE)
+                self.target_seen_s[gain] += elapsed * vis[gain]
             found = pending & (self.target_seen_s >= self.sc.sensor.dwell_s - 1e-9)
             drones = np.nonzero(act)[0]
             for j in np.nonzero(found)[0]:
@@ -418,11 +436,13 @@ class Simulation:
                 if not was_failed:
                     self.obstacle_crashes += 1
                     self.event("obstacle_crash", int(d))
-        low = (self.p[:, 2] < r) & self.airborne_mask()
+        terrain = self.sc.world.terrain
+        ground = 0.0 if terrain is None else terrain.height(self.p[:, 0], self.p[:, 1])
+        low = (self.p[:, 2] < ground + r) & self.airborne_mask()
         for d in np.nonzero(low)[0]:
             was_failed = self.status[d] == FAILED
             self.status[d] = DOWN if was_failed else CRASHED
-            self.p[d, 2] = r
+            self.p[d, 2] = r + (0.0 if terrain is None else float(ground[d]))
             self.v[d] = 0.0
             if not was_failed:
                 self.ground_crashes += 1
@@ -508,6 +528,9 @@ class Simulation:
         if k == 0:
             return float("nan")
         pa = self.p[act]
+        if self.ctrl.plan.surface is not None:
+            pa = pa.copy()
+            pa[:, 2] -= self.ctrl.plan.surface.follow(pa[:, 0], pa[:, 1])[0]
         ideal = rotate(formation_offsets(self.directive.formation, k, self.directive.spacing_m), self.ctrl.plan.heading)
         rel = pa - pa.mean(axis=0)
         cost = np.sum((rel[:, None, :] - ideal[None, :, :]) ** 2, axis=2)
@@ -536,6 +559,7 @@ class Simulation:
             "battery": np.round(100 * self.battery_wh / self.capacity_wh, 1).tolist(),
             **({"found": (~np.isnan(self.target_found_t)).tolist(), "coverage_pct": self.coverage_pct}
                if self.sc.sensor.enabled else {}),
+            **(self.wildfire.frame(self) if self.wildfire is not None else {}),
         }
 
     def _check_end(self) -> None:
@@ -616,7 +640,8 @@ class Simulation:
         lookahead = LOOKAHEAD_M
         # The corridor check covers the whole formation: from its tail to the lookahead point.
         tail = float(max(0.0, -np.min(plan.target[plan.members, 0]))) if len(plan.members) else 0.0
-        width_free = world.free_width_ahead(centre, heading, lookahead, self.directive.altitude_m, behind=tail) if world.obstacle_count else None
+        flight_z = self.directive.altitude_m + (0.0 if world.terrain is None else float(world.terrain.follow(centre[0], centre[1])[0]))
+        width_free = world.free_width_ahead(centre, heading, lookahead, flight_z, behind=tail) if world.obstacle_count else None
         density = world.density_ahead(centre, heading, lookahead, 40.0) if world.obstacle_count else 0.0
         seps = [s for _, s in self._sep_window if math.isfinite(s)]
         winds = np.array([w for _, w in self._wind_window]) if self._wind_window else np.zeros((1, 3))
@@ -739,6 +764,8 @@ class Simulation:
 
     def result(self) -> RunResult:
         from ..eval.metrics import compute_metrics
+        if self.wildfire is not None:
+            self.wildfire.finish(self)
         metrics = compute_metrics(self)
         return RunResult(
             scenario=self.sc.summary(),

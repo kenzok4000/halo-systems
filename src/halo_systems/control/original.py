@@ -63,8 +63,9 @@ class OriginalController(Controller):
             rep = rep + np.sum(away * w[..., None], axis=1)
         target = ref_v + clip_rows(1.4 * (ref_p - p) + 2.7 * rep, FORMATION_SPEED)
         target = clip_rows(target, self.body.max_speed_mps)
-        guarded = floor_guard(target, p, v, self.accel_limit, self.floor_z)
-        near_floor = (guarded[:, 2] != target[:, 2]) | (p[:, 2] < self.floor_z + 1 + np.maximum(0.0, -v[:, 2]) ** 2 / 14)
+        floor = self.floor_under(p)
+        guarded = floor_guard(target, p, v, self.accel_limit, floor)
+        near_floor = (guarded[:, 2] != target[:, 2]) | (p[:, 2] < floor + 1 + np.maximum(0.0, -v[:, 2]) ** 2 / 14)
         demand = 2.5 * (guarded - v)
         a = prioritized_clip(demand, self.accel_limit, np.array([0.0, 0.0, 1.0]), near_floor & act)
         a[~act] = 0.0

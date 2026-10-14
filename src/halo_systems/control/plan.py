@@ -74,6 +74,9 @@ class FormationPlan:
         self.offset_rate = np.zeros((n, 3))
         self.speed_now = directive.speed_mps
         self.speed_cap = math.inf               # set by the controller (sensing-limited speed near obstacles)
+        # Terrain following: an object with follow(x, y) -> (height, dh/dx, dh/dy), or None for flat
+        # ground. The directive's altitude is then height above that surface.
+        self.surface = None
         self.changes = 0
         self._rebuild(np.arange(n), None, t=0.0, initial=True)
 
@@ -218,6 +221,10 @@ class FormationPlan:
         omega = self.heading_rate
         rot_v = np.stack([-omega * world_off[:, 1], omega * world_off[:, 0], np.zeros(self.n)], axis=1)
         vel = vel_c[None, :] + rot_v + rotate(self.offset_rate, self.heading)
+        if self.surface is not None:
+            h, hx, hy = self.surface.follow(pos[:, 0], pos[:, 1])
+            pos[:, 2] += h
+            vel[:, 2] += hx * vel[:, 0] + hy * vel[:, 1]
         return pos, vel
 
     def width(self) -> float:

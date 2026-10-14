@@ -33,6 +33,9 @@ Definitions (also in docs/BENCHMARKS.md), with the result keys they fill:
 * scouting (scenarios with a ground sensor): targets found, time to the
   first and the last find, share of the survey area whose cells have been
   inside a camera footprint, and the time to cover 90% of it.
+* wildfire (the wildfire valley): fires located and how, smoke location
+  error, the last forecast against the true spread, and warning lead times
+  and false alarms at the phones; ``Wildfire.evaluate`` and docs/WILDFIRE.md.
 """
 
 from __future__ import annotations
@@ -166,6 +169,8 @@ def compute_metrics(sim) -> dict:
     }
     if sim.sc.sensor.enabled:
         metrics.update(scouting_metrics(sim, t, duration))
+    if getattr(sim, "wildfire", None) is not None:
+        metrics.update(sim.wildfire.evaluate(sim))
     return metrics
 
 

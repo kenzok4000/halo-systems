@@ -34,7 +34,7 @@ def _rows_dot(a, b):
 
 def build_constraints(p, v, nbr_pos, nbr_vel, nbr_age, active, *, d_safe, a_brake, gamma, max_neighbours=MAX_NEIGHBOURS,
                       stale_growth=0.5, max_age=3.0, world=None, obstacle_clearance=1.0, floor_z=1.0,
-                      obstacle_range=OBSTACLE_RANGE_M):
+                      obstacle_range=OBSTACLE_RANGE_M, terrain=None):
     """Linear constraints G a <= b on every drone's acceleration.
 
     Returns ``(G, b, mask)`` with shapes (n, K, 3), (n, K) and (n, K). ``mask``
@@ -45,11 +45,11 @@ def build_constraints(p, v, nbr_pos, nbr_vel, nbr_age, active, *, d_safe, a_brak
       k = min(max_neighbours, n - 1);
     * ``[k, k + OBSTACLE_ROWS)``: the nearest obstacle surfaces within
       ``obstacle_range``, present only when ``world`` has obstacles;
-    * the last column: the ground.
+    * the last column: the ground (the terrain surface below each drone when ``terrain`` is given).
 
     ``ImprovedController.command`` picks out the obstacle rows by this layout.
     Units: ``d_safe``, ``obstacle_clearance``, ``floor_z`` and ``obstacle_range``
-    in m; ``a_brake``, the braking deceleration the barriers assume, in m/s^2;
+    in m (``floor_z`` above the terrain when there is one); ``a_brake``, the braking deceleration the barriers assume, in m/s^2;
     ``gamma``, the barrier decay rate, in 1/s; ``stale_growth`` in m per second
     of message age; ``max_age`` in s.
     """
@@ -96,10 +96,18 @@ def build_constraints(p, v, nbr_pos, nbr_vel, nbr_age, active, *, d_safe, a_brak
         rows_m.append(mask & active[:, None])
 
     # -- ground -------------------------------------------------------------------
-    up = np.tile(np.array([0.0, 0.0, 1.0]), (n, 1, 1))
-    gap = p[:, 2:3] - floor_z
+    if terrain is None:
+        up = np.tile(np.array([0.0, 0.0, 1.0]), (n, 1, 1))
+        gap = p[:, 2:3] - floor_z
+        closing = v[:, 2:3]
+    else:
+        # Height above sloping ground: gap = z - h(x, y) - floor, whose rate is n . v with
+        # n = (-dh/dx, -dh/dy, 1), so the braking row acts along that n.
+        gx, gy = terrain.gradient(p[:, 0], p[:, 1])
+        up = np.stack([-gx, -gy, np.ones(n)], axis=1)[:, None, :]
+        gap = p[:, 2:3] - terrain.height(p[:, 0], p[:, 1])[:, None] - floor_z
+        closing = _rows_dot(up, v[:, None, :])
     root = np.sqrt(2.0 * a_brake * np.maximum(gap, 1e-6))
-    closing = v[:, 2:3]
     h = root + closing
     rhs = gamma * h + a_brake * closing / root
     rows_g.append(-up)
