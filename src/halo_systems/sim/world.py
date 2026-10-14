@@ -8,8 +8,12 @@ away from it, which the collision-avoidance filter and the metrics use.
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from typing import TYPE_CHECKING
 
 import numpy as np
+
+if TYPE_CHECKING:  # imported for the type only, to keep world.py free of the terrain module at run time
+    from .terrain import Terrain
 
 
 @dataclass
@@ -38,6 +42,7 @@ class World:
     boxes: list[Box] = field(default_factory=list)
     geofence_lo: tuple[float, float, float] = (-500.0, -500.0, 0.0)
     geofence_hi: tuple[float, float, float] = (500.0, 500.0, 120.0)
+    terrain: "Terrain | None" = None   # None: flat ground at z = 0, as in every scenario before the wildfire valley
 
     def __post_init__(self) -> None:
         self._pack()
@@ -62,11 +67,21 @@ class World:
     def obstacle_count(self) -> int:
         return len(self.cylinders) + len(self.boxes)
 
+    def ground(self, x, y):
+        """Ground height under (x, y): 0 on flat ground, else the terrain's."""
+        if self.terrain is None:
+            return np.zeros(np.shape(x))
+        return self.terrain.height(x, y)
+
     def to_dict(self) -> dict:
-        return {
+        out = {
             "obstacles": [c.to_dict() for c in self.cylinders] + [b.to_dict() for b in self.boxes],
             "geofence": {"lo": list(self.geofence_lo), "hi": list(self.geofence_hi)},
         }
+        if self.terrain is not None:
+            out["terrain"] = self.terrain.to_dict()
+            out["landcover"] = self.terrain.landcover_dict()
+        return out
 
     def clearance(self, points: np.ndarray, max_objects: int = 0):
         """Distance from each point to the nearest obstacle surface.

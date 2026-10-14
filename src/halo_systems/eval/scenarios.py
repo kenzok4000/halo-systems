@@ -264,9 +264,176 @@ def wildfire_scout(seed: int = 0, n: int = 16, block_m: tuple = (300.0, 200.0), 
     )
 
 
+VALLEY_EXTENT = (-400.0, -350.0, 900.0, 650.0)     # the whole valley, ridges included (multiples of 10 m)
+VALLEY_BLOCK = (0.0, 0.0, 500.0, 300.0)           # the survey block on the valley floor
+
+
+def _valley_axis(terrain, block):
+    """y of the valley floor (lowest ground across the block's band) at every x node of the terrain."""
+    bx0, by0, bx1, by1 = block
+    ys = terrain.y0 + np.arange(terrain.heights.shape[0]) * terrain.cell_m
+    band = (ys >= by0 - 50.0) & (ys <= by1 + 50.0)
+    h = np.where(band[:, None], terrain.heights, np.inf)
+    return ys[np.argmin(h, axis=0)]
+
+
+def _pick(rng, terrain, box, want, tries=400):
+    """A random point in ``box`` (x0, y0, x1, y1) where ``want(x, y)`` holds; the last try if none does."""
+    x0, y0, x1, y1 = box
+    for _ in range(tries):
+        x, y = float(rng.uniform(x0, x1)), float(rng.uniform(y0, y1))
+        if want(x, y):
+            break
+    return x, y
+
+
+def wildfire_valley(seed: int = 0, n: int = 16, alert_rule: str = "forecast", approval: str = "modelled") -> Scenario:
+    """Scout a mountain valley for lightning fires, forecast their spread and warn the phones in their way.
+
+    The morning after dry lightning, five fires smoulder in a valley between two ridges: one already
+    spreading in open scrub, one under tree crowns, one under a rock overhang where no camera looking down
+    can see it, one smouldering in the open, and one across the valley outside the survey block. The swarm
+    sweeps the block with thermal cameras looking down (as ``wildfire_scout``) while its forward cameras
+    watch for smoke; the ground station locates fires from both, forecasts their spread with an ensemble of
+    Rothermel runs under the forecast weather, briefs the fire crews, and drafts evacuation alerts for the
+    phones in their path, which are checked and approved before they go out (simulated phones only).
+    Everything that is true here (spread, smoke, weather) is hidden from the station except through the
+    drones' sensors and a weather forecast with errors; ``docs/WILDFIRE.md`` lists every assumption.
+    """
+    from ..sim.fire import Moisture, Period
+    from ..sim.terrain import FOREST, GRASS, SCRUB, valley
+    from ..sim.wildfire import AlertPolicy, FireSpec, Phone, WildfireConfig
+    rng = _rng(seed, 21)
+    terrain = valley(rng, VALLEY_EXTENT, cell_m=5.0, block=VALLEY_BLOCK)
+    bx0, by0, bx1, by1 = VALLEY_BLOCK
+    axis = _valley_axis(terrain, VALLEY_BLOCK)
+    xs = terrain.x0 + np.arange(terrain.heights.shape[1]) * terrain.cell_m
+
+    def floor_y(x):
+        return float(np.interp(x, xs, axis))
+
+    def ground(x, y):
+        return float(terrain.height(x, y))
+
+    def slope(x, y):
+        gx, gy = terrain.gradient(x, y)
+        return float(np.hypot(gx, gy))
+
+    cover = lambda x, y: int(terrain.cover_at(x, y))        # noqa: E731
+    # -- weather: light morning wind turning up-valley and freshening, fuels drying through the day --------
+    heading = math.radians(rng.uniform(-70.0, 70.0))        # where the wind blows to; 0 = up the valley (+x)
+    calm = float(rng.uniform(1.5, 3.0))
+    freshen = float(rng.uniform(0.4, 0.9))                  # m/s per hour after the flight starts
+    veer = math.radians(rng.uniform(-8.0, 8.0))             # per hour
+    weather = []
+    for h in range(-6, 5):
+        speed = calm if h <= 0 else min(calm + freshen * h, 9.0)
+        ang = heading + veer * h
+        d1 = float(np.clip(0.10 - 0.006 * (h + 6), 0.05, 0.12))
+        weather.append(Period(h * 3600.0, (speed * math.cos(ang), speed * math.sin(ang)),
+                              Moisture(d1, d1 + 0.01, d1 + 0.02, 1.0)))
+    # The forecast the station is given: right in shape, wrong in detail.
+    bias_speed = float(np.exp(rng.normal(0.0, 0.2)))
+    bias_dir = math.radians(rng.normal(0.0, 12.0))
+    told = []
+    for p in weather:
+        wx, wy = p.wind_mps
+        k = bias_speed * float(np.exp(rng.normal(0.0, 0.1)))
+        a = bias_dir + math.radians(rng.normal(0.0, 5.0))
+        dm = float(rng.normal(0.0, 0.008))
+        m = p.moisture
+        told.append(Period(p.start_s, ((wx * math.cos(a) - wy * math.sin(a)) * k, (wx * math.sin(a) + wy * math.cos(a)) * k),
+                           Moisture(max(0.03, m.d1 + dm), max(0.03, m.d10 + dm), max(0.03, m.d100 + dm), m.live)))
+    # -- fires ----------------------------------------------------------------------------------------------
+    inner = (bx0 + 20.0, by0 + 20.0, bx1 - 20.0, by1 - 20.0)
+    fires, boxes, overhangs = [], [], []
+    x, y = _pick(rng, terrain, inner, lambda x, y: cover(x, y) in (SCRUB, GRASS))
+    fires.append(FireSpec(x, y, float(rng.uniform(-35.0, -10.0)) * 60.0, smoulder_area_m2=4.0, shelter="open"))
+    x, y = _pick(rng, terrain, inner, lambda x, y: cover(x, y) == FOREST)
+    canopy = float(terrain.canopy_at(x, y))
+    fires.append(FireSpec(x, y, float(rng.uniform(20.0, 150.0)) * 60.0, smoulder_area_m2=3.0, shelter="canopy",
+                          cover=float(rng.uniform(0.6, 0.8)), occluder_m=0.6 * canopy))
+    x, y = _pick(rng, terrain, inner, lambda x, y: slope(x, y) > 0.2 and cover(x, y) != FOREST)
+    g = ground(x, y)
+    shelf = (round(x - 7.0, 1), round(y - 5.0, 1), round(g + 2.5, 1)), (round(x + 7.0, 1), round(y + 5.0, 1), round(g + 4.5, 1))
+    boxes.append(Box(*shelf))
+    overhangs.append({"x": round(x, 1), "y": round(y, 1), "lo": list(shelf[0]), "hi": list(shelf[1])})
+    fires.append(FireSpec(x, y, float(rng.uniform(10.0, 90.0)) * 60.0, smoulder_area_m2=4.0, shelter="overhang",
+                          cover=1.0, occluder_m=4.5))
+    x, y = _pick(rng, terrain, inner, lambda x, y: cover(x, y) in (SCRUB, GRASS))
+    fires.append(FireSpec(x, y, float(rng.uniform(30.0, 240.0)) * 60.0, smoulder_area_m2=4.0, shelter="open"))
+    side = 1.0 if rng.random() < 0.5 else -1.0
+    far_y = (by1 + 60.0, by1 + 200.0) if side > 0 else (by0 - 200.0, by0 - 60.0)
+    x, y = _pick(rng, terrain, (bx0 + 50.0, far_y[0], bx1 - 50.0, far_y[1]), lambda x, y: cover(x, y) in (SCRUB, GRASS, FOREST))
+    fires.append(FireSpec(x, y, float(rng.uniform(-20.0, 30.0)) * 60.0, smoulder_area_m2=6.0, shelter="open"))
+    # -- obstacles: a radio mast on the knoll and dead snags standing above the crowns ---------------------------
+    cyls = []
+    hx, hy = max(((ground(x, y), (x, y)) for x, y in zip(rng.uniform(bx0 + 60, bx1 - 60, 200), rng.uniform(by0 + 40, by1 - 40, 200))))[1]
+    cyls.append(Cylinder(float(hx), float(hy), 1.5, ground(hx, hy) + 45.0))
+    for _ in range(3):
+        sx, sy = _pick(rng, terrain, inner, lambda x, y: cover(x, y) == FOREST)
+        cyls.append(Cylinder(sx, sy, 0.6, ground(sx, sy) + float(terrain.canopy_at(sx, sy)) + float(rng.uniform(18.0, 26.0))))
+    # -- people: homes down the valley, a campground up it, hikers, drivers and a ranch ----------------------------
+    phones, places = [], []
+
+    def add(group, pts):
+        for px, py in pts:
+            phones.append(Phone(len(phones), float(px), float(py), group))
+
+    hx0 = bx1 + float(rng.uniform(140.0, 280.0))
+    homes = [(hx0 + r * math.cos(a), floor_y(hx0) + 0.7 * r * math.sin(a))
+             for r, a in zip(rng.uniform(0, 90, 26), rng.uniform(0, 2 * math.pi, 26))]
+    add("home", homes)
+    places.append({"name": "Cedar Flat homes", "x": round(hx0, 1), "y": round(floor_y(hx0), 1), "kind": "homes"})
+    cx0 = bx0 - float(rng.uniform(120.0, 260.0))
+    camp = [(cx0 + r * math.cos(a), floor_y(cx0) + r * math.sin(a))
+            for r, a in zip(rng.uniform(0, 45, 14), rng.uniform(0, 2 * math.pi, 14))]
+    add("campground", camp)
+    places.append({"name": "Pine Hollow campground", "x": round(cx0, 1), "y": round(floor_y(cx0), 1), "kind": "campground"})
+    tside = -side
+    t_y0 = (by1 + 40.0) if tside > 0 else (by0 - 40.0)
+    trail = [(float(tx), t_y0 + tside * float(rng.uniform(0.0, 80.0))) for tx in rng.uniform(bx0 - 50, bx1 + 50, 8)]
+    add("trail", trail)
+    places.append({"name": "Ridge trail", "x": round(0.5 * (bx0 + bx1), 1), "y": round(t_y0 + tside * 40.0, 1), "kind": "trail"})
+    road = [(float(rx), floor_y(rx) + float(rng.normal(0.0, 4.0))) for rx in rng.uniform(-350.0, 850.0, 10)]
+    add("road", road)
+    places.append({"name": "Valley road bridge", "x": 250.0, "y": round(floor_y(250.0), 1), "kind": "road"})
+    rx0 = float(rng.uniform(bx0 + 50, bx1 - 50))
+    ry0 = (by0 - float(rng.uniform(90.0, 160.0))) if side > 0 else (by1 + float(rng.uniform(90.0, 160.0)))
+    add("ranch", [(rx0 + float(rng.normal(0, 15)), ry0 + float(rng.normal(0, 15))) for _ in range(5)])
+    places.append({"name": "Dry Creek ranch", "x": round(rx0, 1), "y": round(ry0, 1), "kind": "ranch"})
+    # -- the flight -----------------------------------------------------------------------------------------------------
+    sensor = SensorConfig(fov_deg=SCOUT_FOV_DEG, dwell_s=0.5, cell_m=5.0, area=VALLEY_BLOCK)
+    swath = 2.0 * float(sensor.footprint_radius(SCOUT_ALTITUDE_M))
+    lane = (max(n, 1) - 1) * SCOUT_SPACING_M + swath
+    path = lawnmower(bx0, by0, bx1 - bx0, by1 - by0, lane)
+    length = sum(math.dist(a, b) for a, b in zip(path, path[1:]))
+    targets = [Target(f.x, f.y, math.sqrt(f.smoulder_area_m2 / math.pi), "fire", cover=f.cover) for f in fires]
+    x0, y0, x1, y1 = VALLEY_EXTENT
+    world = World(cylinders=cyls, boxes=boxes, geofence_lo=(x0, y0, 0.0),
+                  geofence_hi=(x1, y1, float(terrain.heights.max()) + 150.0), terrain=terrain)
+    w0 = weather[6].wind_mps
+    wildfire = WildfireConfig(fires=fires, weather=weather, weather_forecast=told, phones=phones, places=places,
+                              overhangs=overhangs, alerts=AlertPolicy(rule=alert_rule, approval=approval))
+    return Scenario(
+        name="wildfire_valley",
+        title="Wildfire valley",
+        description=f"Lightning fires in a mountain valley: a {bx1 - bx0:.0f} x {by1 - by0:.0f} m thermal sweep line "
+                    f"abreast at {SCOUT_ALTITUDE_M:.0f} m above the trees, smoke watch on the forward cameras, a spread "
+                    f"forecast for the fire crews and checked evacuation alerts for {len(phones)} simulated phones.",
+        n=n, duration_s=float(min(2400.0, 90.0 + 1.6 * length / SCOUT_SPEED_MPS)), waypoints=path,
+        directive=Directive("line", SCOUT_SPACING_M, SCOUT_SPEED_MPS, SCOUT_ALTITUDE_M, 1.0, source="mission"),
+        world=world,
+        wind=_wind_from(rng, math.hypot(*w0), sigma=1.0, local=0.4, direction_deg=math.degrees(math.atan2(w0[1], w0[0]))),
+        targets=targets, sensor=sensor, wildfire=wildfire,
+        use_case="wildfire scouting: finding fires, forecasting their spread and warning people in their way",
+        tags=("survey", "scouting", "wildfire", "terrain"),
+    )
+
+
 SCENARIOS = {
     f.__name__: f for f in (open_transit, formation_changes, forest_trail, gusty_day, comms_degraded,
-                            motor_failures, low_battery, field_survey, urban_canyon, wildfire_scout)
+                            motor_failures, low_battery, field_survey, urban_canyon, wildfire_scout, wildfire_valley)
 }
 
 # Scenarios where the swarm has to change its plan to do well (supervisor benchmark).

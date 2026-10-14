@@ -1,0 +1,85 @@
+{
+  "units": {
+    "length": "m",
+    "mass": "kg",
+    "inertia": "kg m^2"
+  },
+  "mass_kg": 0.9582,
+  "mass_breakdown_g": {
+    "parts_with_solids": 910.1,
+    "point_masses": 48.1
+  },
+  "printed_mass_g": {
+    "PETG": 51.7,
+    "TPU": 20.7
+  },
+  "centre_of_mass_cad_m": [
+    -0.0048,
+    0.0002,
+    0.0295
+  ],
+  "centre_of_mass_note": "CAD frame: x forward, y left, z up; origin at the centre of the arms' underside",
+  "inertia_about_com_cad_axes": [
+    [
+      0.004242,
+      -9e-06,
+      0.000101
+    ],
+    [
+      -9e-06,
+      0.005018,
+      -3e-06
+    ],
+    [
+      0.000101,
+      -3e-06,
+      0.007522
+    ]
+  ],
+  "inertia_about_com_gltf_axes": [
+    [
+      0.005018,
+      -3e-06,
+      -9e-06
+    ],
+    [
+      -3e-06,
+      0.007522,
+      0.000101
+    ],
+    [
+      -9e-06,
+      0.000101,
+      0.004242
+    ]
+  ],
+  "principal_moments_kg_m2": [
+    0.004239,
+    0.005018,
+    0.007525
+  ],
+  "motor_axis_radius_m": 0.1475,
+  "prop_tip_radius_m": 0.2364,
+  "rotor_disk_area_m2": 0.0993,
+  "frontal_area_m2_without_props": 0.0108,
+  "frontal_area_m2_with_props": 0.0126,
+  "top_area_m2_without_props": 0.0188,
+  "bounding_box_m": {
+    "x": 0.345,
+    "y": 0.364,
+    "z": 0.172
+  },
+  "glb_triangles": 5418,
+  "thermal_camera": {
+    "native_hfov_deg": 57.0,
+    "used_hfov_deg": 45.0,
+    "swath_at_20m_native_m": 21.72,
+    "swath_at_20m_used_m": 16.57,
+    "columns_kept_of_160": 122,
+    "ground_sample_m_at_20m": 0.136
+  },
+  "rgb_camera": {
+    "hfov_deg": 66.0,
+    "tilt_down_deg": 20.0
+  }
+}

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import math
 from dataclasses import dataclass, field
+from typing import TYPE_CHECKING
 
 import numpy as np
 
@@ -11,6 +12,9 @@ from ..control.directive import Directive
 from .sensing import SensingConfig
 from .wind import WindConfig
 from .world import World
+
+if TYPE_CHECKING:  # the wildfire module is only needed by scenarios that have fires
+    from .wildfire import WildfireConfig
 
 
 @dataclass
@@ -35,9 +39,13 @@ class Target:
     y: float
     radius_m: float = 2.0
     kind: str = "hotspot"
+    cover: float = 0.0          # share hidden from a camera looking down (tree crowns, a rock shelf); 1 = never seen
 
     def to_dict(self) -> dict:
-        return {"x": self.x, "y": self.y, "radius_m": self.radius_m, "kind": self.kind}
+        out = {"x": self.x, "y": self.y, "radius_m": self.radius_m, "kind": self.kind}
+        if self.cover:
+            out["cover"] = self.cover
+        return out
 
 
 @dataclass
@@ -90,6 +98,7 @@ class Scenario:
     sensor: SensorConfig = field(default_factory=SensorConfig)
     use_case: str = "research"
     tags: tuple = ()
+    wildfire: "WildfireConfig | None" = None   # fires, weather, phones and alert policy (the wildfire valley)
 
     def summary(self) -> dict:
         return {
@@ -104,4 +113,5 @@ class Scenario:
             "targets": [t.to_dict() for t in self.targets],
             "sensor": {"fov_deg": self.sensor.fov_deg, "dwell_s": self.sensor.dwell_s, "cell_m": self.sensor.cell_m,
                        "area": list(self.sensor.area) if self.sensor.area else None} if self.sensor.enabled else None,
+            **({"wildfire": self.wildfire.summary(self.world.terrain)} if self.wildfire is not None else {}),
         }

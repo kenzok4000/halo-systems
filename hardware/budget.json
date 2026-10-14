@@ -1,0 +1,242 @@
+{
+  "totals": {
+    "checked": "2026-10-14",
+    "drone_usd": 1095.33,
+    "drone_usd_estimated_part": 12.0,
+    "ground_usd": 932.3,
+    "spares_usd": 1823.36,
+    "swarm_drones_usd": 17525.27,
+    "swarm_total_usd": 20280.93,
+    "mass_g_bom": 958.1,
+    "mass_g_cad": 958.2,
+    "mass_g_with_margin": 1006.0,
+    "rails_w": {
+      "fc5v": [
+        1.8,
+        2.9
+      ],
+      "bec5v": [
+        4.165,
+        9.29
+      ]
+    },
+    "avionics_w_typical": 6.64,
+    "avionics_w_peak": 13.97,
+    "battery_wh_nominal": 48.84,
+    "battery_wh_usable": 41.51,
+    "endurance": [
+      {
+        "case": "Simulator defaults (body.py)",
+        "mass_kg": 1.2,
+        "avionics_w": 8.0,
+        "battery_wh": 41.0,
+        "figure_of_merit": 0.6,
+        "rotor_w": 136.5,
+        "hover_w": 144.5,
+        "hover_min": 17.0,
+        "cruise_6mps_w": 126.8,
+        "cruise_6mps_min": 19.4
+      },
+      {
+        "case": "Build as modelled in CAD",
+        "mass_kg": 0.9581,
+        "avionics_w": 6.64,
+        "battery_wh": 41.51,
+        "figure_of_merit": 0.6,
+        "rotor_w": 97.4,
+        "hover_w": 104.0,
+        "hover_min": 23.9,
+        "cruise_6mps_w": 89.5,
+        "cruise_6mps_min": 27.8
+      },
+      {
+        "case": "Build plus 5% integration margin",
+        "mass_kg": 1.006,
+        "avionics_w": 6.64,
+        "battery_wh": 41.51,
+        "figure_of_merit": 0.6,
+        "rotor_w": 104.8,
+        "hover_w": 111.4,
+        "hover_min": 22.4,
+        "cruise_6mps_w": 96.2,
+        "cruise_6mps_min": 25.9
+      },
+      {
+        "case": "Build plus margin, avionics at peak",
+        "mass_kg": 1.006,
+        "avionics_w": 13.97,
+        "battery_wh": 41.51,
+        "figure_of_merit": 0.6,
+        "rotor_w": 104.8,
+        "hover_w": 118.7,
+        "hover_min": 21.0,
+        "cruise_6mps_w": 103.5,
+        "cruise_6mps_min": 24.1
+      },
+      {
+        "case": "Build plus margin, FoM 0.48 (motor and ESC losses)",
+        "mass_kg": 1.006,
+        "avionics_w": 6.64,
+        "battery_wh": 41.51,
+        "figure_of_merit": 0.48,
+        "rotor_w": 130.9,
+        "hover_w": 137.6,
+        "hover_min": 18.1,
+        "cruise_6mps_w": 117.4,
+        "cruise_6mps_min": 21.2
+      }
+    ],
+    "thrust_to_weight": 10.5,
+    "motor_thrust_g": 2640
+  },
+  "costs": {
+    "flight_min_per_cycle": 22.4,
+    "capital_per_drone_usd": 1038.35,
+    "ground_per_swarm_hour": 3.11,
+    "crew_per_hour": 57.0,
+    "base": {
+      "lines": {
+        "Drone hardware, amortised": 3.461,
+        "Battery wear": 0.928,
+        "Propellers": 0.499,
+        "Motor replacement": 0.64,
+        "Charging electricity": 0.044
+      },
+      "drone_hour_hw": 5.57,
+      "swarm_hour_hw": 92.26,
+      "swarm_hour_with_crew": 149.26,
+      "single_hour_hw": 5.77,
+      "single_hour_with_crew": 62.77
+    },
+    "sensitivity": [
+      {
+        "life_h": 100,
+        "cycles": 150,
+        "drone_hour_hw": 12.69,
+        "swarm_hour_hw": 203.02,
+        "swarm_hour_with_crew": 260.02
+      },
+      {
+        "life_h": 100,
+        "cycles": 300,
+        "drone_hour_hw": 12.22,
+        "swarm_hour_hw": 195.59,
+        "swarm_hour_with_crew": 252.59
+      },
+      {
+        "life_h": 300,
+        "cycles": 150,
+        "drone_hour_hw": 5.77,
+        "swarm_hour_hw": 92.26,
+        "swarm_hour_with_crew": 149.26
+      },
+      {
+        "life_h": 300,
+        "cycles": 300,
+        "drone_hour_hw": 5.3,
+        "swarm_hour_hw": 84.83,
+        "swarm_hour_with_crew": 141.83
+      },
+      {
+        "life_h": 1000,
+        "cycles": 150,
+        "drone_hour_hw": 3.34,
+        "swarm_hour_hw": 53.49,
+        "swarm_hour_with_crew": 110.49
+      },
+      {
+        "life_h": 1000,
+        "cycles": 300,
+        "drone_hour_hw": 2.88,
+        "swarm_hour_hw": 46.07,
+        "swarm_hour_with_crew": 103.07
+      }
+    ],
+    "per_hectare": [
+      {
+        "drones": 1,
+        "ha_min_scan": 0.5,
+        "scan_fraction": 1.0,
+        "ha_per_hour": 30.0,
+        "usd_ha_hw": 0.192,
+        "usd_ha_with_crew": 2.092
+      },
+      {
+        "drones": 1,
+        "ha_min_scan": 0.5,
+        "scan_fraction": 0.5,
+        "ha_per_hour": 15.0,
+        "usd_ha_hw": 0.385,
+        "usd_ha_with_crew": 4.185
+      },
+      {
+        "drones": 16,
+        "ha_min_scan": 6.2,
+        "scan_fraction": 1.0,
+        "ha_per_hour": 372.0,
+        "usd_ha_hw": 0.248,
+        "usd_ha_with_crew": 0.401
+      },
+      {
+        "drones": 16,
+        "ha_min_scan": 6.2,
+        "scan_fraction": 0.5,
+        "ha_per_hour": 186.0,
+        "usd_ha_hw": 0.496,
+        "usd_ha_with_crew": 0.802
+      }
+    ],
+    "crewed": [
+      {
+        "name": "USFS contract Type 3 (light) helicopters, CY2017",
+        "role": "light helicopters on fire and resource missions",
+        "usd_h": 3376,
+        "usd_h_flight_only": 1523,
+        "basis": "Table 18: availability plus flight, all contracts",
+        "source": "https://www.fs.usda.gov/sites/default/files/2019-07/cy2017_usfs_aviation_report_final_20190702.pdf",
+        "hours": 14572,
+        "total_usd": 49200000.0
+      },
+      {
+        "name": "USFS contract fixed-wing aircraft, FY2017",
+        "role": "air attack 52% of hours, lead plane 13%, detection 8%, smokejumpers 5% (Table 9)",
+        "usd_h": 2500,
+        "usd_h_flight_only": 1710,
+        "basis": "Table 10: availability plus flight, all contracts",
+        "source": "https://www.fs.usda.gov/sites/default/files/2019-07/cy2017_usfs_aviation_report_final_20190702.pdf",
+        "hours": 27078,
+        "total_usd": 67700000.0
+      },
+      {
+        "name": "Montana DNRC Cessna 182/185, 2021-22",
+        "role": "fire patrol and detection, transport",
+        "usd_h": 175,
+        "usd_h_flight_only": null,
+        "basis": "agency operating cost per hour",
+        "source": "https://archive.legmt.gov/content/Publications/fiscal/2023-Interim/IBC-C/Aviation.pdf",
+        "hours": null,
+        "total_usd": null
+      },
+      {
+        "name": "Montana DNRC Bell 206A, 2021-22",
+        "role": "light helicopter",
+        "usd_h": 515,
+        "usd_h_flight_only": null,
+        "basis": "agency operating cost per hour",
+        "source": "https://archive.legmt.gov/content/Publications/fiscal/2023-Interim/IBC-C/Aviation.pdf",
+        "hours": null,
+        "total_usd": null
+      },
+      {
+        "name": "Montana DNRC Bell UH-1H, 2021-22",
+        "role": "initial attack helicopter",
+        "usd_h": 1650,
+        "usd_h_flight_only": null,
+        "basis": "agency operating cost per hour",
+        "source": "https://archive.legmt.gov/content/Publications/fiscal/2023-Interim/IBC-C/Aviation.pdf",
+        "hours": null,
+        "total_usd": null
+      }
+    ]
+  }
+}

@@ -135,7 +135,9 @@ class LiveRun:
                 "altitude_max_m": sc.altitude_max_m,
                 "targets": [t.to_dict() for t in sc.targets],
                 "sensor": {"fov_deg": sc.sensor.fov_deg, "area": list(sc.sensor.area) if sc.sensor.area else None}
-                if sc.sensor.enabled else None}
+                if sc.sensor.enabled else None,
+                # The wildfire valley: the true arrival-time grid (the page draws the fire growing from it).
+                **({"wildfire": self.sim.wildfire.hello()} if self.sim.wildfire is not None else {})}
 
     # -- the loop -----------------------------------------------------------------
     def _loop(self) -> None:
@@ -277,6 +279,9 @@ class State:
                 raise ValueError(f"unknown scenario {name!r}")
             n = body.get("n")
             scenario = make(name, seed, n=int(n)) if n else make(name, seed)
+            if scenario.wildfire is not None and body.get("approval") in ("manual", "modelled"):
+                # "manual": evacuation alerts wait for the incident commander's tap on the page.
+                scenario.wildfire.alerts.approval = body["approval"]
         kw = {}
         if "nemotron" in config:
             log = self.evidence_dir / "dashboard_calls.jsonl"
@@ -311,9 +316,11 @@ def make_handler(state: State, host: str = "127.0.0.1"):
     GET  /api/evidence                 the last ``halo doctor`` check
     GET  /api/runs/<id>/stream         Server-Sent Events: hello, frame, event, directive, ai, end
     GET  /api/runs/<id>/export         the run's result with its time series
-    POST /api/runs                     {scenario, n} or {mission, mission_text}, with config, seed, speed
+    POST /api/runs                     {scenario, n} or {mission, mission_text}, with config, seed, speed;
+                                       the wildfire valley also takes approval: "manual" or "modelled"
     POST /api/runs/<id>/inject         {kind, ...}: motor_failure, gust, blackout or directive
     POST /api/runs/<id>/control        {speed, paused, stop}
+    POST /api/runs/<id>/approve        {alert}: approve a checked evacuation alert (simulated phones only)
     POST /api/compile                  {text}: the mission compiler
 
     Every POST must be JSON from the dashboard's own page (see ``_not_from_this_page``).
@@ -432,6 +439,14 @@ def make_handler(state: State, host: str = "127.0.0.1"):
                         with run.lock:
                             info = run.sim.inject(kind, **body)
                         return self._json(info)
+                    if parts[3] == "approve":
+                        # The incident commander approves a checked alert; it then goes to the simulated phones.
+                        if run.sim.wildfire is None:
+                            return self._error("this run has no alerts")
+                        with run.lock:
+                            out = run.sim.wildfire.approve(run.sim, int(body.get("alert", -1)),
+                                                           by="incident commander (dashboard)")
+                        return self._json(out)
                     if parts[3] == "control":
                         if "speed" in body:
                             run.speed = float(min(20.0, max(0.1, body["speed"])))

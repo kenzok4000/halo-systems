@@ -60,6 +60,15 @@ class Controller:
 
     def reset(self, path: Path, directive: Directive, n: int) -> None:
         self.plan = FormationPlan(path, directive, n, reassign=self.reassign, blend=self.blend, pace=self.pace)
+        if getattr(self.world, "terrain", None) is not None:
+            self.plan.surface = self.world.terrain
+
+    def floor_under(self, p: np.ndarray):
+        """Lowest safe height under each drone: ``floor_z`` above the ground (a scalar on flat ground)."""
+        terrain = getattr(self.world, "terrain", None)
+        if terrain is None:
+            return self.floor_z
+        return self.floor_z + terrain.height(p[:, 0], p[:, 1])
 
     def set_directive(self, directive: Directive, obs: Observation) -> None:
         self.plan.set_directive(directive, obs.p_est, obs.t)

@@ -1,0 +1,315 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Halo scout renders</title>
+<link rel="icon" href="data:,">
+<style>
+  html, body { margin: 0; background: #eceef0; }
+  #wrap { position: relative; width: 1600px; height: 1000px; }
+  canvas { position: absolute; left: 0; top: 0; }
+</style>
+</head>
+<body>
+<div id="wrap"><canvas id="gl" width="1600" height="1000"></canvas><canvas id="ov" width="1600" height="1000"></canvas></div>
+<script type="importmap">{"imports": {"three": "/src/halo_systems/dashboard/static/vendor/three.module.min.js"}}</script>
+<script type="module">
+// Renders ../exports/halo_scout.glb with the dashboard's vendored three.js (r169).
+// The GLB comes from our own writer, so a small reader is enough: positions,
+// normals, indices, node translations and PBR base colours (no textures).
+import * as THREE from "three";
+
+const W = 1600, H = 1000;
+const renderer = new THREE.WebGLRenderer({ canvas: document.getElementById("gl"), antialias: true, preserveDrawingBuffer: true });
+renderer.setPixelRatio(1);
+renderer.setSize(W, H, false);
+renderer.outputColorSpace = THREE.SRGBColorSpace;
+renderer.shadowMap.enabled = true;
+renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+const ov = document.getElementById("ov").getContext("2d");
+
+const scene = new THREE.Scene();
+scene.background = new THREE.Color(0xeceef0);
+scene.add(new THREE.HemisphereLight(0xffffff, 0x8a8f96, 1.6));
+const key = new THREE.DirectionalLight(0xffffff, 2.2);
+key.position.set(0.6, 1.4, 0.9);
+key.castShadow = true;
+key.shadow.mapSize.set(2048, 2048);
+Object.assign(key.shadow.camera, { left: -0.4, right: 0.4, top: 0.4, bottom: -0.4, near: 0.1, far: 4 });
+key.shadow.radius = 6;
+scene.add(key);
+const fill = new THREE.DirectionalLight(0xffffff, 0.8);
+fill.position.set(-1, 0.5, -0.6);
+scene.add(fill);
+const floor = new THREE.Mesh(new THREE.PlaneGeometry(4, 4), new THREE.ShadowMaterial({ opacity: 0.16 }));
+floor.rotation.x = -Math.PI / 2;
+floor.receiveShadow = true;
+scene.add(floor);
+
+async function loadGlb(url) {
+  const buf = await (await fetch(url)).arrayBuffer();
+  const dv = new DataView(buf);
+  const jsonLen = dv.getUint32(12, true);
+  const doc = JSON.parse(new TextDecoder().decode(new Uint8Array(buf, 20, jsonLen)));
+  const binOff = 20 + jsonLen + 8;
+  const arr = (ai) => {
+    const a = doc.accessors[ai], v = doc.bufferViews[a.bufferView];
+    const n = { SCALAR: 1, VEC3: 3 }[a.type] * a.count;
+    const T = { 5126: Float32Array, 5123: Uint16Array, 5125: Uint32Array }[a.componentType];
+    return new T(buf.slice(binOff + v.byteOffset, binOff + v.byteOffset + n * T.BYTES_PER_ELEMENT));
+  };
+  const mats = doc.materials.map((m) => {
+    const p = m.pbrMetallicRoughness, c = p.baseColorFactor;
+    return new THREE.MeshStandardMaterial({ color: new THREE.Color().setRGB(c[0], c[1], c[2], THREE.SRGBColorSpace),
+      metalness: 0.35 * p.metallicFactor, roughness: Math.max(0.35, p.roughnessFactor) });
+  });
+  const root = new THREE.Group();
+  root.name = doc.nodes[0].name;
+  root.userData = doc.nodes[0].extras;
+  for (const ci of doc.nodes[0].children) {
+    const nd = doc.nodes[ci], prim = doc.meshes[nd.mesh].primitives[0];
+    const g = new THREE.BufferGeometry();
+    g.setAttribute("position", new THREE.BufferAttribute(arr(prim.attributes.POSITION), 3));
+    g.setAttribute("normal", new THREE.BufferAttribute(arr(prim.attributes.NORMAL), 3));
+    g.setIndex(new THREE.BufferAttribute(arr(prim.indices), 1));
+    const mesh = new THREE.Mesh(g, mats[prim.material]);
+    mesh.castShadow = true;
+    mesh.receiveShadow = true;
+    const node = new THREE.Group();
+    node.name = nd.name;
+    node.userData = nd.extras;
+    node.position.fromArray(nd.translation || [0, 0, 0]);
+    node.userData.home = node.position.clone();
+    node.add(mesh);
+    root.add(node);
+  }
+  return root;
+}
+
+const drone = await loadGlb("../exports/halo_scout.glb");
+scene.add(drone);
+const box = new THREE.Box3().setFromObject(drone);
+floor.position.y = box.min.y - 0.0005;
+const node = (n) => drone.getObjectByName(n);
+const nodeCentre = (n) => new THREE.Box3().setFromObject(node(n)).getCenter(new THREE.Vector3());
+
+function setExplode(f) {
+  for (const n of drone.children) {
+    const e = n.userData.explode_m || [0, 0, 0];
+    n.position.copy(n.userData.home).add(new THREE.Vector3(e[0], e[1], e[2]).multiplyScalar(f));
+  }
+}
+
+function spinProps(deg) {
+  for (const n of drone.children) {
+    if (!n.name.startsWith("prop_")) continue;
+    n.rotation.y = THREE.MathUtils.degToRad(n.userData.spin === "ccw" ? deg : -deg);
+  }
+}
+
+function persp(pos, target, fov = 30) {
+  const c = new THREE.PerspectiveCamera(fov, W / H, 0.01, 10);
+  c.position.fromArray(pos);
+  c.lookAt(new THREE.Vector3().fromArray(target));
+  return c;
+}
+
+function ortho(halfW, pos, up, target = [0, 0, 0]) {
+  const halfH = halfW * H / W;
+  const c = new THREE.OrthographicCamera(-halfW, halfW, halfH, -halfH, 0.01, 10);
+  c.position.fromArray(pos);
+  c.up.fromArray(up);
+  c.lookAt(new THREE.Vector3().fromArray(target));
+  return c;
+}
+
+const project = (v, cam) => {
+  const p = v.clone().project(cam);
+  return [(p.x + 1) / 2 * W, (1 - p.y) / 2 * H];
+};
+
+function text(s, x, y, { size = 17, weight = 500, color = "#1d232a", align = "left" } = {}) {
+  ov.font = `${weight} ${size}px "DejaVu Sans", "Helvetica Neue", Arial, sans-serif`;
+  ov.fillStyle = color;
+  ov.textAlign = align;
+  ov.textBaseline = "middle";
+  ov.fillText(s, x, y);
+}
+
+function caption(title, sub) {
+  text(title, 48, H - 70, { size: 24, weight: 700 });
+  text(sub, 48, H - 38, { size: 17, color: "#4a525b" });
+}
+
+// Labels in two columns with leader lines to each part's centre. Anchors are
+// split at their median x so each column takes the parts on its own side.
+function labels(items, cam, { top = 70, bottom = H - 130, colL = 330, colR = W - 330, size = 16 } = {}) {
+  const pts = items.map(([n, t, side]) => ({ t, side, p: project(nodeCentre(n), cam) }));
+  const xs = pts.map((q) => q.p[0]).sort((a, b) => a - b);
+  const mid = xs[Math.floor(xs.length / 2)];
+  const cols = { L: [], R: [] };
+  pts.forEach((q) => cols[q.side || (q.p[0] < mid ? "L" : "R")].push(q));
+  for (const side of ["L", "R"]) {
+    const col = cols[side].sort((a, b) => a.p[1] - b.p[1]);
+    const gap = Math.min(64, Math.max(30, (bottom - top) / Math.max(1, col.length)));
+    const ys = [];
+    col.forEach((q, i) => ys.push(Math.max(i ? ys[i - 1] + gap : top, Math.min(q.p[1], bottom))));
+    for (let i = ys.length - 1; i >= 0; i--) ys[i] = Math.min(ys[i], i === ys.length - 1 ? bottom : ys[i + 1] - gap);
+    col.forEach((q, i) => {
+      const y = ys[i], x = side === "L" ? colL : colR;
+      ov.strokeStyle = "#5b6470";
+      ov.lineWidth = 1.2;
+      ov.beginPath();
+      ov.moveTo(q.p[0], q.p[1]);
+      ov.lineTo(x + (side === "L" ? 14 : -14), y);
+      ov.lineTo(x, y);
+      ov.stroke();
+      ov.fillStyle = "#1d232a";
+      ov.beginPath();
+      ov.arc(q.p[0], q.p[1], 3.2, 0, 2 * Math.PI);
+      ov.fill();
+      text(q.t, x + (side === "L" ? -8 : 8), y, { size, align: side === "L" ? "right" : "left" });
+    });
+  }
+}
+
+function tag(s, x, y, opts = {}) {
+  const size = opts.size || 16;
+  ov.font = `${opts.weight || 600} ${size}px "DejaVu Sans", "Helvetica Neue", Arial, sans-serif`;
+  const w = ov.measureText(s).width, align = opts.align || "center";
+  const x0 = align === "center" ? x - w / 2 : align === "right" ? x - w : x;
+  ov.fillStyle = "rgba(236,238,240,0.92)";
+  ov.fillRect(x0 - 6, y - size * 0.75, w + 12, size * 1.5);
+  text(s, x, y, opts);
+}
+
+function dimLine(a, b, label, cam, off = [0, 0]) {
+  const p = project(a, cam), q = project(b, cam);
+  ov.strokeStyle = "#1d232a";
+  ov.lineWidth = 1.4;
+  ov.setLineDash([]);
+  ov.beginPath();
+  ov.moveTo(p[0], p[1]);
+  ov.lineTo(q[0], q[1]);
+  ov.stroke();
+  for (const [s, e] of [[p, q], [q, p]]) {
+    const ang = Math.atan2(e[1] - s[1], e[0] - s[0]);
+    ov.beginPath();
+    ov.moveTo(s[0], s[1]);
+    ov.lineTo(s[0] + 12 * Math.cos(ang + 0.3), s[1] + 12 * Math.sin(ang + 0.3));
+    ov.lineTo(s[0] + 12 * Math.cos(ang - 0.3), s[1] + 12 * Math.sin(ang - 0.3));
+    ov.closePath();
+    ov.fillStyle = "#1d232a";
+    ov.fill();
+  }
+  tag(label, (p[0] + q[0]) / 2 + off[0], (p[1] + q[1]) / 2 + off[1], { size: 16, weight: 600 });
+}
+
+const meta = drone.userData;
+const VIEWS = {
+  three_quarter() {
+    setExplode(0); spinProps(12); floor.visible = true;
+    const cam = persp([0.62, 0.34, 0.72], [0, -0.012, 0.012], 21);
+    renderer.render(scene, cam);
+    caption("Halo Systems scout quadcopter",
+      `${(meta.mass_kg * 1000).toFixed(0)} g as built, 295 mm motor to motor, 7-inch props, downward thermal camera, oblique RGB camera, PM2.5 smoke sensor`);
+  },
+  top() {
+    setExplode(0); spinProps(0); floor.visible = false;
+    const cam = ortho(0.44, [0, 1.5, 0], [0, 0, 1], [0, 0, -0.01]);
+    renderer.render(scene, cam);
+    for (const n of ["prop_FR", "prop_FL", "prop_RL", "prop_RR"]) {
+      const c = project(node(n).position, cam), r = project(node(n).position.clone().add(new THREE.Vector3(0.0889, 0, 0)), cam);
+      ov.strokeStyle = "rgba(29,35,42,0.5)"; ov.setLineDash([6, 6]); ov.lineWidth = 1.3;
+      ov.beginPath(); ov.arc(c[0], c[1], Math.abs(r[0] - c[0]), 0, 2 * Math.PI); ov.stroke();
+    }
+    const o = project(new THREE.Vector3(0, 0, 0), cam), rr = project(new THREE.Vector3(0.15, 0, 0), cam);
+    const R = Math.abs(rr[0] - o[0]);
+    ov.strokeStyle = "rgba(200,80,20,0.95)"; ov.setLineDash([3, 5]); ov.lineWidth = 1.6;
+    ov.beginPath(); ov.arc(o[0], o[1], R, 0, 2 * Math.PI); ov.stroke(); ov.setLineDash([]);
+    const fl = node("prop_FL").position, rr2 = node("prop_RR").position;
+    dimLine(new THREE.Vector3(fl.x, 0.1, fl.z), new THREE.Vector3(rr2.x, 0.1, rr2.z), "", cam);
+    const pFL = project(fl, cam);
+    ov.strokeStyle = "#5b6470"; ov.lineWidth = 1.2;
+    ov.beginPath(); ov.moveTo(pFL[0] - 6, pFL[1] - 6); ov.lineTo(pFL[0] - 120, pFL[1] - 150); ov.stroke();
+    tag("295 mm motor to motor (diagonal)", pFL[0] - 126, pFL[1] - 150, { align: "right", weight: 600 });
+    // Prop disk callout from the edge of the front-right disk.
+    const pFR = project(node("prop_FR").position, cam);
+    const rpx = Math.abs(project(node("prop_FR").position.clone().add(new THREE.Vector3(0.0889, 0, 0)), cam)[0] - pFR[0]);
+    const e = [pFR[0] + rpx * Math.cos(-Math.PI / 4), pFR[1] + rpx * Math.sin(-Math.PI / 4)];
+    ov.beginPath(); ov.moveTo(e[0], e[1]); ov.lineTo(e[0] + 70, e[1] - 60); ov.stroke();
+    tag("7-inch prop disk, 178 mm", e[0] + 76, e[1] - 60, { align: "left", weight: 500 });
+    const a45 = Math.PI * 0.80;
+    const pr = [o[0] + R * Math.cos(a45), o[1] + R * Math.sin(a45)];
+    ov.beginPath(); ov.moveTo(pr[0], pr[1]); ov.lineTo(pr[0] - 150, pr[1] + 60); ov.stroke();
+    tag("Simulator body radius, 0.15 m", pr[0] - 156, pr[1] + 60, { align: "right", weight: 500, color: "#b8501a" });
+    tag("FRONT", o[0], 30, { size: 16, weight: 700, color: "#4a525b" });
+    const a = project(new THREE.Vector3(-0.30, 0, -0.30), cam), b = project(new THREE.Vector3(-0.40, 0, -0.30), cam);
+    ov.strokeStyle = "#1d232a"; ov.lineWidth = 4; ov.beginPath(); ov.moveTo(a[0], a[1]); ov.lineTo(b[0], b[1]); ov.stroke();
+    text("100 mm", (a[0] + b[0]) / 2, a[1] - 18, { size: 15, align: "center" });
+    caption("Top view", "Motor axes 0.1475 m from the centre; four 7-inch disks give 0.0993 m², the simulator's rotor disk area");
+  },
+  exploded() {
+    setExplode(1.0); spinProps(12); floor.visible = false;
+    const cam = persp([0.95, 0.30, 1.12], [0, 0.04, 0.0], 29);
+    renderer.render(scene, cam);
+    labels([
+      ["strobe", "Anti-collision strobe"], ["battery", "LiPo 6S 2200 mAh, 48.8 Wh"],
+      ["smoke_sensor", "PM2.5 smoke sensor (SPS30)"], ["gnss", "GNSS M10 + compass on mast"],
+      ["top_plate", "Carbon top plate"], ["flight_controller", "Flight controller H743, ArduPilot"],
+      ["esc_4in1", "4-in-1 ESC 50 A, AM32"], ["telemetry_radio", "900 MHz multipoint radio"],
+      ["rgb_camera", "RGB camera 66°, 20° down"], ["motor_FL", "Motor 2807 1300 KV"],
+      ["prop_FL", "Prop 7x4x3"], ["companion_computer", "Pi Zero 2 W companion"],
+      ["sensor_pod", "Printed sensor pod (PETG)"], ["thermal_camera", "Radiometric thermal camera, down"],
+      ["landing_leg_RL", "TPU landing leg"], ["antenna_900_R", "900 MHz antenna"], ["arm_FR", "Carbon arm"],
+    ], cam, { top: 70, bottom: H - 150, colL: 370, colR: W - 370 });
+    caption("Exploded view", "Purchased parts in grey, black and colour; printed parts in orange (PETG) and dark grey (TPU)");
+  },
+  side() {
+    setExplode(0); spinProps(0); floor.visible = false;
+    const cam = ortho(0.40, [1.5, -0.105, 0.0], [0, 1, 0], [0, -0.105, 0.0]);
+    renderer.render(scene, cam);
+    const th = nodeCentre("thermal_camera"); th.y -= 0.004;
+    const L = 0.215, p0 = project(th, cam);
+    for (const [deg, col, dash] of [[57, "rgba(90,98,108,0.85)", [7, 6]], [45, "rgba(200,80,20,0.95)", []]]) {
+      const h = THREE.MathUtils.degToRad(deg / 2);
+      ov.strokeStyle = col; ov.lineWidth = 2; ov.setLineDash(dash);
+      for (const s of [-1, 1]) {
+        const p1 = project(th.clone().add(new THREE.Vector3(0, -L, s * L * Math.tan(h))), cam);
+        ov.beginPath(); ov.moveTo(p0[0], p0[1]); ov.lineTo(p1[0], p1[1]); ov.stroke();
+      }
+      ov.setLineDash([]);
+    }
+    const e57 = project(th.clone().add(new THREE.Vector3(0, -L, -L * Math.tan(THREE.MathUtils.degToRad(28.5)))), cam);
+    const e45 = project(th.clone().add(new THREE.Vector3(0, -L, -L * Math.tan(THREE.MathUtils.degToRad(22.5)))), cam);
+    tag("Lepton 3.5 native, 57°", e57[0] + 14, e57[1] - 12, { align: "left", weight: 500, color: "#4a525b" });
+    tag("Cropped to 45°, as simulated", e45[0] - 14, e45[1] - 40, { align: "right", weight: 600, color: "#b8501a" });
+    const rc = nodeCentre("rgb_camera"), t = THREE.MathUtils.degToRad(20), r0 = project(rc, cam);
+    ov.strokeStyle = "rgba(30,110,60,0.9)"; ov.lineWidth = 2; ov.setLineDash([2, 5]);
+    const ends = [];
+    for (const a of [t - THREE.MathUtils.degToRad(20.5), t + THREE.MathUtils.degToRad(20.5)]) {
+      const r1 = project(rc.clone().add(new THREE.Vector3(0, -0.2 * Math.sin(a), 0.2 * Math.cos(a))), cam);
+      ends.push(r1);
+      ov.beginPath(); ov.moveTo(r0[0], r0[1]); ov.lineTo(r1[0], r1[1]); ov.stroke();
+    }
+    ov.setLineDash([]);
+    tag("RGB camera: 41° vertical view, 20° down", ends[0][0] - 10, ends[0][1] - 24, { align: "left", weight: 500, color: "#1e6e3c" });
+    labels([["gnss", "GNSS on a mast, clear of power wiring", "R"], ["smoke_sensor", "Smoke sensor, inlet above the props", "L"],
+            ["battery", "Battery on top", "R"], ["sensor_pod", "Sensor pod", "R"], ["landing_leg_RL", "Legs clear the camera", "R"],
+            ["antenna_900_L", "Radio antennas below the arms", "R"]], cam, { top: 90, bottom: 520, colL: 430, colR: W - 400 });
+    text("At 20 m a 45° view covers a 16.6 m strip; the 57° lens covers 21.7 m and is cropped to the middle 122 of 160 columns.",
+      W / 2, H - 112, { size: 16, align: "center", color: "#4a525b" });
+    caption("Side view, from the left", "Downward thermal view as the simulator models it (SCOUT_FOV_DEG = 45, SCOUT_ALTITUDE_M = 20)");
+  },
+};
+
+window.renderView = (name) => {
+  ov.clearRect(0, 0, W, H);
+  VIEWS[name]();
+  return true;
+};
+window.views = Object.keys(VIEWS);
+window.ready = true;
+</script>
+</body>
+</html>
