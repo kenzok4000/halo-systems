@@ -4,11 +4,11 @@ Text for the Devpost form, one section per field. The numbers come from the repo
 
 ## Project name
 
-Halo Systems: drone swarms that find wildfire ignitions before they grow
+Halo Systems: drone swarms that find wildfire hotspots fast
 
 ## Tagline
 
-Sixteen drones sweep a block of scrub for smouldering hotspots 13 times faster than one. An NVIDIA Nemotron supervisor sets their plan every 5 s and never touches the motors.
+Sixteen drones sweep a block of scrub for smouldering hotspots 13 times faster than one. On the swarm's other missions, an NVIDIA Nemotron supervisor sets the plan every 5 s and never touches the motors.
 
 ## Track
 
@@ -28,7 +28,7 @@ A single drone with a thermal camera can scout a block of scrub; it takes it mos
 
 ## What it does
 
-* Simulates a swarm of 6 to 64 quadcopters with forward-flight power, wind and gust fronts, noisy GPS, lossy and delayed radio, motor failures, batteries, trees and buildings.
+* Simulates a swarm of 1 to 64 quadcopters with forward-flight power, wind and gust fronts, noisy GPS, lossy and delayed radio, motor failures, batteries, trees and buildings.
 * Flies every drone with a 50 Hz controller that has slot assignment, synchronised transitions, consensus and a control-barrier-function safety filter. No language model is in this loop.
 * Every 5 s of simulated time, a supervisor reads a status report and sets the formation, spacing, speed, altitude and safety margin. The supervisor is either tuned rules or Nemotron, and its answer passes a safety validator first.
 * Turns plain-language mission requests into checked mission plans, and refuses non-civilian requests.
@@ -45,7 +45,7 @@ A single drone with a thermal camera can scout a block of scrub; it takes it mos
 
 ## Results
 
-All from simulated flights on held-out seeds 1000-1019, each flown once, 20 flights per scenario and configuration. The Nemotron setup was chosen on tuning seeds and committed before any Nemotron flight on these seeds.
+All from simulated flights on held-out seeds 1000-1019, each flown once, 20 flights per scenario and configuration, apart from the stress search, which flies its own search seeds, and the mission compiler, scored on a held-out set of 20 requests. The Nemotron setup was chosen on tuning seeds and committed before any Nemotron flight on these seeds.
 
 * **Wildfire scouting, swarm size.** On 20 held-out blocks of 300 × 200 m with six smouldering hotspots each, one drone found the last hotspot after 536 s on average, four drones after 180 s and sixteen after 41 s. Seed by seed, sixteen drones were 13.3 times faster than one [95% interval 12.0 to 14.5], 8.3 minutes sooner on a sweep that takes one drone 11.6 minutes, for 30% more battery energy in total. Every flight found every hotspot with no crashes.
 * **Safety.** Over nine scenarios, the original formation controller lost 300 drones in crashes in 180 flights. The improved controller, supervised by the rules or by Nemotron, had no crashes and no near misses in 180 flights each. (Drones that drop out with a scripted motor failure are not counted as crashes.)

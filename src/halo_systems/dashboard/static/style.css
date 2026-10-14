@@ -28,6 +28,11 @@ main { display: flex; height: calc(100% - 49px); }
 #viewbtns button { font-size: 12px; padding: 4px 9px; background: color-mix(in srgb, var(--panel) 85%, transparent); }
 .dot { display: inline-block; width: 9px; height: 9px; border-radius: 50%; margin-right: 5px; vertical-align: -1px; }
 .dot.ok { background: var(--accent); } .dot.fail { background: var(--bad); } .dot.ret { background: var(--ret); }
+.dot.fire { background: #ff6a1f; box-shadow: 0 0 6px #ff6a1f; } .dot.cam { background: #9ff3ff; opacity: .7; }
+#viewbtns button.active { border-color: var(--accent); }
+#wind { position: absolute; right: 12px; top: 48px; display: flex; align-items: center; gap: 6px; font-size: 12px;
+  background: color-mix(in srgb, var(--panel) 85%, transparent); border: 1px solid var(--line); border-radius: 6px; padding: 3px 9px 3px 5px; }
+#wind svg { width: 18px; height: 18px; fill: #2f7fe0; }
 .ring { display: inline-block; width: 9px; height: 9px; border-radius: 50%; border: 1.5px solid var(--accent-2); margin-right: 5px; vertical-align: -1px; }
 aside { width: 400px; max-width: 45vw; border-left: 1px solid var(--line); background: var(--panel); overflow-y: auto; }
 .tabs { display: flex; position: sticky; top: 0; background: var(--panel); border-bottom: 1px solid var(--line); z-index: 2; }

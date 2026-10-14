@@ -1,6 +1,5 @@
-// Halo Systems dashboard: 3D view, live controls and logs. Talks to the local Python server.
-import * as THREE from "three";
-import { OrbitControls } from "/static/vendor/OrbitControls.js";
+// Halo Systems dashboard: live controls and logs. Talks to the local Python server; the 3D view is scene3d.js.
+import { SwarmView, DRONE_SCALE } from "/static/scene3d.js";
 
 const $ = (s) => document.querySelector(s);
 const $$ = (s) => [...document.querySelectorAll(s)];
@@ -11,167 +10,30 @@ const api = async (path, body) => {
   if (!res.ok) throw new Error(data.error || res.statusText);
   return data;
 };
-// Simulation frame is x east, y north, z up; three.js is y up.
-const toV = (p) => new THREE.Vector3(p[0], p[2], -p[1]);
-
 // ---------------------------------------------------------------- scene
-const canvas = $("#scene");
-const renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
-renderer.setPixelRatio(Math.min(2, window.devicePixelRatio));
-const scene = new THREE.Scene();
-const dark = matchMedia("(prefers-color-scheme: dark)").matches;
-scene.background = new THREE.Color(dark ? 0x0f1216 : 0xeef2f5);
-scene.fog = new THREE.Fog(scene.background, 250, 900);
-const camera = new THREE.PerspectiveCamera(50, 1, 0.5, 3000);
-camera.position.set(-60, 55, 70);
-const controls = new OrbitControls(camera, canvas);
-controls.enableDamping = true;
-scene.add(new THREE.HemisphereLight(0xffffff, 0x445566, 1.1));
-const sun = new THREE.DirectionalLight(0xffffff, 1.2);
-sun.position.set(100, 200, 50);
-scene.add(sun);
-const ground = new THREE.Mesh(new THREE.PlaneGeometry(4000, 4000),
-  new THREE.MeshLambertMaterial({ color: dark ? 0x1a2128 : 0xdfe6dc }));
-ground.rotation.x = -Math.PI / 2;
-scene.add(ground);
-const grid = new THREE.GridHelper(4000, 200, dark ? 0x2a323c : 0xc5cdc3, dark ? 0x20272f : 0xd2d9cf);
-grid.position.y = 0.02;
-scene.add(grid);
+const view = new SwarmView($("#scene"));
+window.haloView = view;   // for the recorder and for poking at the scene from the browser console
 
-let world = new THREE.Group(); scene.add(world);
-let droneMesh = null, slotMesh = null, shadowMesh = null, pathLine = null, windArrow = null;
-let targetMeshes = [], surveyBox = null;
-const TARGET_HIDDEN = new THREE.Color(0x5a4a3a), TARGET_FOUND = new THREE.Color(0xff5a1f);
-// Keyed by drone status (sim/engine.py): 0 active, 1 failed (motor out, falling), 2 crashed,
-// 3 retired (left on low battery), 4 down (a failed drone that hit the ground or an obstacle).
-const COLORS = { 0: new THREE.Color(0x4fb3a9), 1: new THREE.Color(0xe5625c), 2: new THREE.Color(0xe5625c),
-  3: new THREE.Color(0x9aa3ad), 4: new THREE.Color(0xe5625c) };
-const dummy = new THREE.Object3D();
-let follow = new THREE.Vector3();
-let userMoved = false;
-controls.addEventListener("start", () => { userMoved = true; });
-
-function resize() {
-  const r = canvas.getBoundingClientRect();
-  renderer.setSize(r.width, r.height, false);
-  camera.aspect = r.width / Math.max(1, r.height);
-  camera.updateProjectionMatrix();
-}
-window.addEventListener("resize", resize);
-
-function buildWorld(hello) {
-  scene.remove(world);
-  world = new THREE.Group();
-  scene.add(world);
-  const trunk = new THREE.MeshLambertMaterial({ color: 0x6b8f4e, transparent: true, opacity: 0.35, depthWrite: false });
-  const bld = new THREE.MeshLambertMaterial({ color: dark ? 0x56606b : 0xa9b2bb, transparent: true, opacity: 0.9 });
-  for (const o of hello.world.obstacles) {
-    if (o.kind === "cylinder") {
-      const m = new THREE.Mesh(new THREE.CylinderGeometry(o.radius, o.radius * 1.1, o.height, 8), trunk);
-      m.position.set(o.x, o.height / 2, -o.y);
-      world.add(m);
-    } else {
-      const [lx, ly, lz] = o.lo, [hx, hy, hz] = o.hi;
-      const m = new THREE.Mesh(new THREE.BoxGeometry(hx - lx, hz - lz, hy - ly), bld);
-      m.position.set((lx + hx) / 2, (lz + hz) / 2, -(ly + hy) / 2);
-      world.add(m);
+// Film mode (?film=1), for the demo video: the run plays as usual, but what it streams is buffered
+// with its simulated time and played back by the recorder one video frame at a time
+// (window.haloFilm.step), so the video is smooth however slowly this machine renders.
+const FILM = new URLSearchParams(location.search).has("film");
+let film = null;
+view.film = FILM;
+window.haloFilm = {
+  status: () => film && { first_s: film.firstT, buffered_s: film.bufT, played_s: film.playT, ended: film.ended, queued: film.queue.length - film.next },
+  step(dtVideo, dtSim) {
+    if (!film) return null;
+    film.playT += dtSim;
+    while (film.next < film.queue.length && film.queue[film.next].T <= film.playT + 0.1) {
+      const m = film.queue[film.next++];
+      m.handler(m.data);
     }
-  }
-  // Targets to find (hotspots): dull discs that light up when a drone's camera has seen them.
-  targetMeshes = [];
-  for (const t of hello.targets || []) {
-    // Drawn at least 3 m across so a 2 m hotspot is visible from the top view; found ones grow and get a ring.
-    const m = new THREE.Mesh(new THREE.CircleGeometry(Math.max(t.radius_m, 3.0), 24),
-      new THREE.MeshBasicMaterial({ color: TARGET_HIDDEN.clone(), transparent: true, opacity: 0.9 }));
-    m.position.set(t.x, 0.12, -t.y); m.rotation.x = -Math.PI / 2;
-    const ring = new THREE.Mesh(new THREE.RingGeometry(Math.max(t.radius_m, 3.0) * 1.6, Math.max(t.radius_m, 3.0) * 2.0, 32),
-      new THREE.MeshBasicMaterial({ color: TARGET_FOUND, transparent: true, opacity: 0.0, side: THREE.DoubleSide }));
-    ring.position.set(t.x, 0.11, -t.y); ring.rotation.x = -Math.PI / 2;
-    m.userData.ring = ring;
-    world.add(m); world.add(ring); targetMeshes.push(m);
-  }
-  surveyBox = null;
-  if (hello.sensor && hello.sensor.area) {
-    const [x0, y0, x1, y1] = hello.sensor.area;
-    const corners = [[x0, y0], [x1, y0], [x1, y1], [x0, y1], [x0, y0]].map((p) => new THREE.Vector3(p[0], 0.1, -p[1]));
-    surveyBox = new THREE.Line(new THREE.BufferGeometry().setFromPoints(corners), new THREE.LineBasicMaterial({ color: 0xe09a3a }));
-    world.add(surveyBox);
-  }
-  const pts = hello.path.map((p) => new THREE.Vector3(p[0], 0.15, -p[1]));
-  pathLine = new THREE.Line(new THREE.BufferGeometry().setFromPoints(pts),
-    new THREE.LineDashedMaterial({ color: 0xf2a541, dashSize: 3, gapSize: 2 }));
-  pathLine.computeLineDistances();
-  world.add(pathLine);
-  const n = hello.n;
-  const r = hello.body_radius_m * 6;
-  droneMesh = new THREE.InstancedMesh(new THREE.SphereGeometry(r, 16, 12),
-    new THREE.MeshStandardMaterial({ roughness: 0.35, emissive: 0x0d3b36, emissiveIntensity: 0.6 }), n);
-  slotMesh = new THREE.InstancedMesh(new THREE.TorusGeometry(1.0, 0.1, 6, 24), new THREE.MeshBasicMaterial({ color: 0xf2a541 }), n);
-  shadowMesh = new THREE.InstancedMesh(new THREE.CircleGeometry(r, 12), new THREE.MeshBasicMaterial({ color: 0x000000, transparent: true, opacity: 0.18 }), n);
-  for (const m of [droneMesh, slotMesh, shadowMesh]) { m.instanceMatrix.setUsage(THREE.DynamicDrawUsage); m.frustumCulled = false; world.add(m); }
-  for (let i = 0; i < n; i++) droneMesh.setColorAt(i, COLORS[0]);
-  windArrow = new THREE.ArrowHelper(new THREE.Vector3(1, 0, 0), new THREE.Vector3(), 10, 0x7fb6ff, 3, 2);
-  world.add(windArrow);
-  userMoved = false;
-  const p0 = hello.path[0];
-  follow.set(p0[0], hello.directive.altitude_m, -p0[1]);
-  camera.position.set(p0[0] - 35, hello.directive.altitude_m + 50, -p0[1] + 45);
-  controls.target.copy(follow);
-}
-
-function drawFrame(f) {
-  if (!droneMesh) return;
-  const n = f.p.length;
-  const c = new THREE.Vector3();
-  let k = 0;
-  for (let i = 0; i < n; i++) {
-    const v = toV(f.p[i]);
-    dummy.position.copy(v); dummy.rotation.set(0, 0, 0); dummy.scale.setScalar(1); dummy.updateMatrix();
-    droneMesh.setMatrixAt(i, dummy.matrix);
-    droneMesh.setColorAt(i, COLORS[f.s[i]] || COLORS[0]);
-    dummy.position.set(v.x, 0.05, v.z); dummy.rotation.set(-Math.PI / 2, 0, 0); dummy.updateMatrix();
-    shadowMesh.setMatrixAt(i, dummy.matrix);
-    // slot is null for drones no longer flying, so their ring is parked out of view. The camera
-    // follows the centroid of the flying drones' actual positions, not of their slots.
-    const slot = f.slots[i];
-    if (slot) {
-      const sv = toV(slot);
-      dummy.position.copy(sv); dummy.rotation.set(Math.PI / 2, 0, 0); dummy.scale.setScalar(1);
-      c.add(v); k++;
-    } else {
-      dummy.position.set(0, -1000, 0); dummy.scale.setScalar(0.0001);
-    }
-    dummy.updateMatrix();
-    slotMesh.setMatrixAt(i, dummy.matrix);
-  }
-  for (const m of [droneMesh, slotMesh, shadowMesh]) m.instanceMatrix.needsUpdate = true;
-  droneMesh.instanceColor.needsUpdate = true;
-  if (f.found) f.found.forEach((hit, i) => {
-    const m = targetMeshes[i];
-    if (!m) return;
-    m.material.color.copy(hit ? TARGET_FOUND : TARGET_HIDDEN);
-    m.scale.setScalar(hit ? 1.4 : 1.0);
-    m.userData.ring.material.opacity = hit ? 0.7 : 0.0;
-  });
-  if (k) {
-    c.multiplyScalar(1 / k);
-    const w = new THREE.Vector3(f.wind[0], 0, -f.wind[1]);
-    const len = w.length();
-    windArrow.position.set(c.x - 25, c.y + 12, c.z);
-    if (len > 0.1) windArrow.setDirection(w.clone().normalize());
-    windArrow.setLength(Math.max(2, len * 2.5), 3, 2);
-    const delta = c.clone().sub(follow);
-    follow.copy(c);
-    if (!userMoved) { camera.position.add(delta); }
-    controls.target.copy(c);
-  }
-}
-
-function loop() {
-  controls.update();
-  renderer.render(scene, camera);
-  requestAnimationFrame(loop);
-}
+    view.renderFilm(dtVideo, film.playT);
+    return film.playT;
+  },
+};
+$("#scale-note").textContent = `Drones drawn ${DRONE_SCALE}x actual size`;
 
 // ---------------------------------------------------------------- live run
 let run = null, source = null, spark = [], scenarios = [], status = null, compiled = null;
@@ -184,6 +46,10 @@ function setHud(title, d) {
 }
 
 function logItem(cls, html) {
+  if (film && !film.delivering && cls === "operator") {   // an operator's click shows up at its simulated time
+    film.queue.push({ T: film.bufT, handler: () => { film.delivering = true; logItem(cls, html); film.delivering = false; }, data: null });
+    return;
+  }
   const li = document.createElement("li");
   li.className = cls;
   li.innerHTML = html;
@@ -215,6 +81,7 @@ function onAi(a) {
 }
 
 function onEvent(e) {
+  view.event(e);
   // Directive changes are logged from the "directive" stream, which has the reason and any validator
   // violations. Injections are logged by the button handlers ("you injected ...").
   const skip = { directive: 1, injected: 1 };
@@ -248,7 +115,7 @@ function drawSpark() {
 }
 
 function onFrame(f) {
-  drawFrame(f);
+  view.frame(f);
   const m = f.metrics;
   $("#m-err").textContent = fmt(m.formation_error_m, 2, " m");
   $("#m-sep").textContent = fmt(m.min_sep_m, 2, " m");
@@ -275,21 +142,36 @@ async function start(extra = {}) {
     const drones = Number($("#drones").value) || undefined;   // blank = the scenario's own swarm size
     run = await api("/api/runs", { scenario: $("#scenario").value, config: $("#config").value, seed: Number($("#seed").value), speed, n: drones, ...extra });
   } catch (err) { alert(err.message); return; }
-  buildWorld(run);
+  view.build(run);
+  $$(".scout-only").forEach((el) => { el.style.display = run.sensor ? "" : "none"; });
+  view.setSpeed(speed); view.setPaused(false);
   setHud(run.scenario.title, run.directive);
   $("#pause").textContent = "Pause";
   source = new EventSource(`/api/runs/${run.id}/stream`);
-  source.addEventListener("frame", (e) => onFrame(JSON.parse(e.data)));
-  source.addEventListener("directive", (e) => onDirective(JSON.parse(e.data)));
-  source.addEventListener("ai", (e) => onAi(JSON.parse(e.data)));
-  source.addEventListener("event", (e) => onEvent(JSON.parse(e.data)));
-  source.addEventListener("end", (e) => {
-    const m = JSON.parse(e.data).metrics || {};
+  film = FILM ? { queue: [], next: 0, firstT: null, bufT: 0, playT: 0, ended: false, delivering: false } : null;
+  const on = (kind, handler) => source.addEventListener(kind, (e) => {
+    const data = JSON.parse(e.data);
+    if (!film) return handler(data);
+    if (kind === "frame") {
+      // Frames sent before the page subscribed never arrive, so playback starts at the first one that did.
+      if (film.firstT === null) { film.firstT = data.t; film.playT = Math.max(film.playT, data.t - 0.1); }
+      film.bufT = data.t;
+    }
+    if (kind === "end") film.ended = true;
+    film.queue.push({ T: kind === "end" ? film.bufT + 0.05 : film.bufT, handler, data });
+  });
+  on("frame", onFrame);
+  on("directive", onDirective);
+  on("ai", onAi);
+  on("event", onEvent);
+  on("end", (data) => {
+    const m = data.metrics || {};
     const crashes = (m.collisions || 0) * 2 + (m.obstacle_crashes || 0) + (m.ground_crashes || 0);   // drones destroyed, as in the Crashes tile
     const done = m.completed == null ? "not applicable (looped route)" : m.completed ? "yes" : "no";
     logItem("event", `<b>Flight ended.</b> In formation ${fmt(m.time_formed_pct, 0)}% of the time, ${crashes} ${crashes === 1 ? "drone" : "drones"} lost in crashes, completed: ${done}`);
-    source.close(); source = null;
+    if (source) { source.close(); source = null; }
   });
+  if (film) source.addEventListener("end", () => { source.close(); source = null; });
 }
 
 // ---------------------------------------------------------------- UI wiring
@@ -297,27 +179,27 @@ $$(".tabs button").forEach((b) => b.addEventListener("click", () => {
   $$(".tabs button").forEach((x) => x.classList.toggle("active", x === b));
   $$(".tab").forEach((t) => t.classList.toggle("active", t.id === `tab-${b.dataset.tab}`));
   document.body.classList.toggle("wide", b.dataset.tab === "results");
-  resize();
+  view.resize();
   if (b.dataset.tab === "results") loadResults();
   if (b.dataset.tab === "about") loadEvidence();
 }));
 $("#start").addEventListener("click", () => start());
-$("#view-reset").addEventListener("click", () => {
-  userMoved = false;
-  camera.position.set(follow.x - 35, follow.y + 50, follow.z + 45);
-});
-$("#view-top").addEventListener("click", () => {
-  userMoved = false;
-  camera.position.set(follow.x, follow.y + 160, follow.z + 1);
-});
+for (const [id, mode] of [["view-reset", "follow"], ["view-top", "top"], ["view-orbit", "orbit"], ["view-chase", "chase"]]) {
+  $(`#${id}`).addEventListener("click", () => {
+    view.setMode(mode);
+    $$("#viewbtns button").forEach((b) => b.classList.toggle("active", b.id === id));
+  });
+}
 $$("#speed button").forEach((b) => b.addEventListener("click", () => {
   $$("#speed button").forEach((x) => x.classList.toggle("active", x === b));
+  view.setSpeed(Number(b.dataset.speed));
   if (run) api(`/api/runs/${run.id}/control`, { speed: Number(b.dataset.speed) }).catch(() => {});
 }));
 $("#pause").addEventListener("click", async () => {
   if (!run) return;
   const paused = $("#pause").textContent === "Pause";
   await api(`/api/runs/${run.id}/control`, { paused });
+  view.setPaused(paused);
   $("#pause").textContent = paused ? "Resume" : "Pause";
 });
 $$("[data-inject]").forEach((b) => b.addEventListener("click", async () => {
@@ -413,8 +295,6 @@ async function loadEvidence() {
 }
 
 async function init() {
-  resize();
-  loop();
   scenarios = await api("/api/scenarios");
   $("#scenario").innerHTML = scenarios.map((s) => `<option value="${s.name}">${esc(s.title)}</option>`).join("");
   $("#scenario").value = "forest_trail";

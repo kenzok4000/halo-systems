@@ -1,10 +1,10 @@
 # Halo Systems
 
-**Autonomous drone swarms that find wildfires early and keep flying safely while the fire changes the weather.**
+**Autonomous drone swarms that find wildfires early and keep flying safely through gusts, radio loss and motor failures.**
 
 [![Licence: Apache-2.0](https://img.shields.io/badge/licence-Apache--2.0-blue)](LICENSE)
 
-A language model never flies the drones. They fly themselves at 50 Hz behind a safety filter. NVIDIA Nemotron, served by Nebius Token Factory, supervises them every 5 seconds, turns an operator's plain-language request into a mission plan, and works as a test engineer that hunts for the conditions that make the swarm fail. Every decision it makes passes a safety check, and every result below is measured against conventional baselines on seeds held out from tuning.
+A language model never flies the drones. They fly themselves at 50 Hz behind a safety filter. NVIDIA Nemotron, served by Nebius Token Factory, supervises them every 5 seconds, turns an operator's plain-language request into a mission plan, and works as a test engineer that hunts for the conditions that make the swarm fail. Every decision it makes passes a safety check, and every flight result below is measured against conventional baselines on seeds held out from tuning.
 
 ![Sixteen drones sweep a block of dry scrub line abreast and light up six smouldering hotspots as their cameras pass over them; the live dashboard, wildfire scout scenario, seed 1000](docs/wildfire.gif)
 
@@ -29,7 +29,7 @@ One drone with a thermal camera sweeps one strip of ground; sixteen flying line 
 
 ## Results at a glance
 
-Every number comes from held-out seeds 1000-1019, each flown once after tuning on seeds 0-9 was finished, and can be regenerated from the rows committed in [results/](results/README.md). The full tables, intervals and figures are in [docs/RESULTS.md](docs/RESULTS.md).
+Every flight result comes from held-out seeds 1000-1019, each flown once after tuning on seeds 0-9 was finished; the stress search flies its own search seeds, and the mission compiler is scored on a held-out set of 20 requests. All of it can be regenerated from the rows committed in [results/](results/README.md). The full tables, intervals and figures are in [docs/RESULTS.md](docs/RESULTS.md).
 
 | Question | Answer | Evidence |
 |---|---|---|
@@ -72,13 +72,13 @@ halo run forest_trail --config improved+nemotron:nvidia/NVIDIA-Nemotron-3-Nano-3
 # the same as that flight's row in results/runs.jsonl (18 calls, no fallbacks)
 ```
 
-To run Nemotron live, put your Nebius Token Factory key in the environment (never in a file you commit). With `NEBIUS_API_KEY` set, `halo serve` calls the model instead of replaying:
+To run Nemotron live, put your Nebius Token Factory key in the environment (never in a file you commit). With `NEBIUS_API_KEY` set, `halo serve` calls the model live for each new request, and new calls are added to the cache file (`results/nemotron_cache.jsonl` unless `--cache` names another). Recorded flights replay exactly only without a key (`env -u NEBIUS_API_KEY halo serve`), with the scenario's own swarm size and seeds 1000-1019.
 
 ```bash
 export NEBIUS_API_KEY=...                                         # from tokenfactory.nebius.com
 halo doctor --flight                                              # end-to-end check; writes evidence/latest/
 export HALO_SUPERVISOR_MODEL=nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B
-halo serve --open                                                 # Nemotron now supervises live and compiles missions
+halo serve --open --cache live_cache.jsonl                        # Nemotron supervises live and compiles missions
 ```
 
 A spend guard refuses any call that could take the estimated total past `HALO_BUDGET_USD` (18 by default).
@@ -120,9 +120,9 @@ Three loops run at three speeds, and the language model sits only in the two slo
 
 | Role | Model | Reasoning | Temperature | Token limit | Deadline | Measured on held-out data |
 |---|---|---|---|---|---|---|
-| Supervisor, every 5 s | Nemotron 3 Nano, `nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B` | Off | 0.2 | 1,200 | 15 s per call, 8 s per attempt | 3,400 calls, 0 fallbacks, 1.17 s mean, 1.43 s 95th percentile |
-| Supervisor, declared comparison | Nemotron 3 Super, `nvidia/nemotron-3-super-120b-a12b` | Off | 0.2 | 1,200 | 15 s per call, 8 s per attempt | 3,474 calls, 0 fallbacks, 1.37 s mean, 1.64 s 95th percentile |
-| Mission compiler | Nano (off and on) and Super | Off; on for one Nano run | 0 | 1,500; 6,000 with reasoning | 60 s per attempt | 18, 20 and 20 of 20 requests fully right; median 5.0 s, 11.8 s and 1.3 s |
+| Supervisor, every 5 s | Nemotron 3 Nano, `nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B` | Off | 0.2 | 1,200 | 15 s per call, 8 s per attempt | 3,400 calls, 0 fallbacks, 1.17 s mean, 1.43 s 95th percentile (mean over flights) |
+| Supervisor, declared comparison | Nemotron 3 Super, `nvidia/nemotron-3-super-120b-a12b` | Off | 0.2 | 1,200 | 15 s per call, 8 s per attempt | 3,474 calls, 0 fallbacks, 1.37 s mean, 1.64 s 95th percentile (mean over flights) |
+| Mission compiler | Nano (off and on) and Super | Off; on for one Nano run | 0 | 1,500; 6,000 with reasoning | 60 s per attempt | 18, 20 and 20 of 20 requests fully right; median 5.0 s, 11.7 s and 1.3 s |
 | Test engineer | Nano | Off; on for one run | 0.7 | 2,500; 8,000 with reasoning | 180 s per attempt | 39 and 15 distinct failing conditions in 200 flights each |
 
 * **Structured output** uses JSON mode (`response_format: {"type": "json_object"}`), with a fallback for a model that does not support it. It is not schema-constrained decoding, so every reply is parsed defensively and checked field by field before the safety validator sees it. The prompts are in [ai/prompts.py](src/halo_systems/ai/prompts.py) (supervisor), [ai/mission.py](src/halo_systems/ai/mission.py) (mission compiler) and [ai/tester.py](src/halo_systems/ai/tester.py) (test engineer).
@@ -172,14 +172,14 @@ In five of the nine supervision scenarios no supervisor made a difference above 
 
 ```bash
 halo bench --scenarios open_transit,formation_changes,forest_trail,urban_canyon,gusty_day,comms_degraded,motor_failures,low_battery,field_survey \
-  --configs original+fixed,improved+fixed,improved+rule --seeds heldout --out results/runs.jsonl
-halo report results/runs.jsonl --out results
-halo bench --scenarios wildfire_scout --configs improved+rule --seeds heldout --n 1,4,16 --out results/wildfire/runs.jsonl
-halo report results/wildfire/runs.jsonl --out results/wildfire
-halo mission-eval --sets heldout --out mission_eval_baseline.json   # regex baseline, no key; add --model <id> for Nemotron
+  --configs original+fixed,improved+fixed,improved+rule --seeds heldout --out check/runs.jsonl
+halo report check/runs.jsonl --out check
+halo bench --scenarios wildfire_scout --configs improved+rule --seeds heldout --n 1,4,16 --out check/wildfire/runs.jsonl
+halo report check/wildfire/runs.jsonl --out check/wildfire
+halo mission-eval --sets heldout --out check/mission_eval_baseline.json   # regex baseline, no key; add --model <id> for Nemotron
 ```
 
-Seeds 0-9 were used for tuning; every headline number uses held-out seeds 1000-1019. The supervision benchmark's simulator, controllers and rules were frozen before any held-out flight, and the Nemotron setup was chosen on tuning seeds and committed before any Nemotron flight on these seeds ([docs/BENCHMARKS.md](docs/BENCHMARKS.md)). The wildfire scout was added afterwards and flown once on the same seed numbers; the change that added the camera leaves every earlier row unchanged. The Nemotron supervisor flights replay exactly from `results/nemotron_cache.jsonl`; the mission-compiler and stress-search calls are kept in call logs instead. [docs/REPRODUCE.md](docs/REPRODUCE.md) lists every command behind `results/`.
+The committed rows already hold every flight, so these commands write to a new `check/` folder; its rows match the ones in `results/` apart from compute-time fields. Seeds 0-9 were used for tuning; every headline flight result uses held-out seeds 1000-1019. The supervision benchmark's simulator, controllers and rules were frozen before any held-out flight, and the Nemotron setup was chosen on tuning seeds and committed before any Nemotron flight on these seeds ([docs/BENCHMARKS.md](docs/BENCHMARKS.md)). The wildfire scout was added afterwards and flown once on the same seed numbers; the change that added the camera leaves every earlier row unchanged. The Nemotron supervisor flights replay exactly from `results/nemotron_cache.jsonl`; the mission-compiler and stress-search calls are kept in call logs instead. [docs/REPRODUCE.md](docs/REPRODUCE.md) lists every command behind `results/`.
 
 ## Where things are
 

@@ -23,3 +23,6 @@ evidence/dashboard_calls.jsonl
 video/
 node_modules/
 package-lock.json
+# a judge's own re-run (README) and live Nemotron cache
+check/
+live_cache.jsonl

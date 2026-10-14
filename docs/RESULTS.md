@@ -1,6 +1,6 @@
 # Results
 
-Every number here comes from held-out seeds 1000-1019, each flight run once. The simulator, controllers and rules were frozen before any held-out flight, and the Nemotron setup was chosen on tuning seeds 0-9 and committed before any Nemotron flight on the held-out seeds ([BENCHMARKS.md](BENCHMARKS.md)). The generated reports behind each section are [REPORT.md](../results/REPORT.md) (95% confidence intervals and seed-by-seed comparisons for every number), [STRESS.md](../results/STRESS.md) and [wildfire/REPORT.md](../results/wildfire/REPORT.md). The figures are drawn from the committed rows by [tools/make_figures.py](../tools/make_figures.py), which also prints every plotted number.
+Every flight result here comes from held-out seeds 1000-1019, each flight run once; the stress search flies its own search seeds, and the mission compiler is scored on a held-out set of 20 requests. The simulator, controllers and rules were frozen before any held-out flight, and the Nemotron setup was chosen on tuning seeds 0-9 and committed before any Nemotron flight on the held-out seeds ([BENCHMARKS.md](BENCHMARKS.md)). The generated reports behind each section are [REPORT.md](../results/REPORT.md) (95% confidence intervals and seed-by-seed comparisons for every number), [STRESS.md](../results/STRESS.md) and [wildfire/REPORT.md](../results/wildfire/REPORT.md). The figures are drawn from the committed rows by [tools/make_figures.py](../tools/make_figures.py), which also prints every plotted number.
 
 ## Wildfire scouting: what the swarm is for
 
@@ -50,7 +50,7 @@ Nemotron 3 Nano against the rules, seed by seed: the mean difference, its 95% pa
 | Degraded radio | +0.44 pp [+0.05, +0.93], 3/17/0 | −3.85 s [−4.00, −3.70], 20/0/0 | −5.85% [−6.20, −5.48], 20/0/0 |
 | Low battery | +0.58 pp [+0.17, +1.00], 8/10/2 | −10.73 s [−16.80, −4.17], 15/0/5 | −5.39% [−7.33, −3.27], 16/1/3 |
 
-Higher time in formation and lower time and energy are better. A seed counts as tied when the difference is within 1% of the rules' mean, which is why the forest trail's energy saving, real but small, shows as 20 ties. The figure above draws the same intervals for every scenario where a supervisor matters, Super included. Super was worse than the rules on the low-battery leg (+7.39 s [+3.38, +11.47] and +2.48% energy [+0.81, +4.23]) and held formation less well in the urban canyon (−4.47 pp [−8.06, −0.82]).
+Higher time in formation and lower time and energy are better. A seed counts as tied when the difference is within 1% of the rules' mean, which is why the forest trail's energy saving, real but small, shows as 20 ties. The figure below draws the same intervals for every scenario where a supervisor matters, Super included. Super was worse than the rules on the low-battery leg (+7.39 s [+3.38, +11.47] and +2.48% energy [+0.81, +4.23]) and held formation less well in the urban canyon (−4.47 pp [−8.06, −0.82]).
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="figures/supervisor-vs-rules-dark.png">
@@ -65,7 +65,7 @@ Nano never changed the plan in six of the nine scenarios. It made 3,400 calls wi
 |---|---|---|---|---|
 | Regex and keyword baseline | 83.9% | 9 of 20 | 1 of 3 | n/a |
 | Nemotron 3 Nano, reasoning off | 97.6% | 18 of 20 | 3 of 3 | 5.0 s |
-| Nemotron 3 Nano, reasoning on | 100% | 20 of 20 | 3 of 3 | 11.8 s |
+| Nemotron 3 Nano, reasoning on | 100% | 20 of 20 | 3 of 3 | 11.7 s |
 | Nemotron 3 Super | 100% | 20 of 20 | 3 of 3 | 1.3 s |
 
 A keyword guard caught one of the harmful requests before any model saw it, and Nemotron refused the other two ("smash into its windscreen", "diving at" a dog).
@@ -85,7 +85,7 @@ A keyword guard caught one of the harmful requests before any model saw it, and 
 | Nemotron 3 Nano | 46 | 39 | 13 | 0.85 | 0.48 |
 | Nemotron 3 Nano, reasoning on | 16 | 15 | 11 | 0.80 | 0.46 |
 
-Nemotron found 2.6 times as many distinct failing conditions as the best baseline, but no more kinds of failure than corner search, and mostly near the hard end of every range: the stress level runs from 0 (every condition at its easy end) to 1 (every condition at its hard end). Its mildest failures were slightly milder than any baseline's. With reasoning on, 20 of the 200 flights were random tests, which the search runs in place of a model's batch when the call fails: here 5 calls failed, 4 because reasoning used up the token limit and 1 with unterminated JSON.
+Nemotron found 2.6 times as many distinct failing conditions as the best baseline, but no more kinds of failure than corner search, and mostly near the hard end of every range: the stress level runs from 0 (every condition at its easy end) to 1 (every condition at its hard end). Its mildest failures were slightly milder than any baseline's. With reasoning on, 20 of the 200 flights were random tests, which the search runs in place of a model's batch when the call fails: here 5 calls failed, all at the 8,000-token limit: 4 before any answer and 1 partway through its JSON.
 
 ## Ablations and sensitivity
 

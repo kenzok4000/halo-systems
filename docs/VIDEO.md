@@ -1,6 +1,6 @@
 # Demo video plan
 
-Target length: 2 min 45 s, under the 3-minute limit. Every shot is a screen recording of the real dashboard or of real files in the repository. Nothing is mocked or staged. The recorded takes, with the commit, scenario, seed and speed of each, are listed in the footage folder's README. Shots 1, 2 (the one-drone take), 3 and 8 are still to be recorded, and every dashboard take must be re-recorded once the Halo Systems name is in the dashboard header. Every number in the voiceover comes from the reports in `results/`, and every flight in the video is a simulation.
+Target length: 2 min 45 s, under the 3-minute limit. Every shot is filmed from the real dashboard (screen-recorded, or rendered frame by frame from a live run) or shows real files in the repository. Nothing is mocked or staged. The recorded takes, with the commit, scenario, seed and speed of each, are listed in the footage folder's README. Shots 1, 2 (the one-drone take), 3 and 8 are still to be recorded, and every dashboard take must be re-recorded once the Halo Systems name is in the dashboard header. Every number in the voiceover comes from the reports in `results/`, and every flight in the video is a simulation.
 
 There is no music, or royalty-free music only. No third-party logos appear apart from the NVIDIA and Nebius names, which are used to describe the technology. Shot 8 shows the README rendered locally, not a website.
 
@@ -33,6 +33,7 @@ There is no music, or royalty-free music only. No third-party logos appear apart
 ## Recording
 
 * Dashboard shots are filmed by `tools/record_shot.cjs`, which drives the running dashboard in headless Chromium through Playwright and screen-records the page (for example `node tools/record_shot.cjs --scenario forest_trail --config original+fixed --seed 1000 --speed 2 --seconds 20 --out video/shot2.webm`). It only clicks the same controls a person would, so every frame is the real dashboard flying a real simulation.
+* The 3D shots use the recorder's `--film` mode, because a headless browser without a GPU draws the 3D view too slowly to screen-record smoothly. The page buffers the live run as it streams, and the recorder steps through it one video frame at a time and screenshots each frame (`--fps 25`, then ffmpeg makes the .mp4). The run is the same live run of the real simulator; for rule-supervised and replayed flights only the filming changes. The scenery (hills, mountains, forests, shrubs, and the tree crowns above the simulated trunks) and each found hotspot's glow, embers and smoke are drawn for looks, as the comment at the top of `scene3d.js` says; drone positions and status, hotspot positions and when they are found, trunk and building obstacles, camera coverage and everything in the panels come from the run.
 * The recorder films at 1920×1080 and 25 fps.
 * Record each shot separately and cut in an editor. Speed changes are labelled on screen (for example "2x").
 * Shot 4 is a replay of a recorded Nemotron run, labelled "replay of a recorded Nemotron run" on screen. Shot 5 is labelled "rule supervisor". Shot 6 is a live call.
