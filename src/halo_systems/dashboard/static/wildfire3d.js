@@ -8,7 +8,7 @@ import { hash } from "/static/util3d.js";
 
 const FLAME_S = 300;   // a cell is drawn flaming for this long after the fire reaches it, then charred
 // Forecast bands: the station's median arrival time within 30, 60, 120 and 180 minutes, soonest reddest.
-export const BANDS = [[30, [214, 40, 32, 0.34]], [60, [240, 96, 32, 0.26]], [120, [250, 150, 40, 0.2]], [180, [252, 204, 80, 0.15]]];
+export const BANDS = [[30, [214, 40, 32, 0.25]], [60, [240, 96, 32, 0.19]], [120, [250, 150, 40, 0.15]], [180, [252, 204, 80, 0.11]]];
 // Evacuation zones in Japan's alert colours: Level 3 red, Level 4 purple, Level 5 black.
 export const ZONE_RGB = { 3: "214,40,40", 4: "142,52,178", 5: "22,22,28" };
 const LEVEL_RGB = { evacuate: "220,40,60", warning: "245,140,30", ...ZONE_RGB };
@@ -158,12 +158,7 @@ export class WildfireLayer {
   frame(f) {
     this.t = f.t;
     if (f.fires_state) f.fires_state.forEach((s) => { this.state[s.id] = s; });
-    if (!this.warmed) {
-      // A fire that was already burning when the run began already has its plume: grow it before the first frame.
-      this.warmed = true;
-      const rise = this.smokeModel.rise_mps, top = Math.max(0, ...this.state.map((s) => s.smoke_top_m || 0));
-      for (let s = 0; s < (1.3 * top) / rise; s += 0.5) { this._smoke(0.5); this.view.smoke.update(0.5, this.view.wind); }
-    }
+    if (!this.warmed) { this.warmed = true; this.warm(); }
     if (f.phones_alerted) this._colourPhones(f.phones_alerted);
     if (f.zones_level && f.zones_level.some((l, i) => l !== this.zoneLevel[i])) { this.zoneLevel = f.zones_level.slice(); this.view.overlayDirty = true; }
     if (f.alerts) for (const a of f.alerts) {
@@ -174,6 +169,14 @@ export class WildfireLayer {
     if (f.sightings) this._drawSightings(f);
     // Redraw the burn scar when a cell starts or stops flaming (checked once a simulated second).
     if (f.t - this.burnDrawnAt >= 1) this._drawBurn(f.t);
+  }
+
+  warm() {
+    // A fire that was already burning when the run began (or when the recorder jumps ahead) already has its
+    // plume: grow the plumes to their present height at once, instead of rising from the ground on camera.
+    this.view.smoke.clear();
+    const rise = this.smokeModel.rise_mps, top = Math.max(0, ...this.state.map((s) => s.smoke_top_m || 0));
+    for (let s = 0; s < (1.3 * top) / rise; s += 0.5) { this._smoke(0.5); this.view.smoke.update(0.5, this.view.wind); }
   }
 
   event(e) {
@@ -239,6 +242,7 @@ export class WildfireLayer {
     }
     geo.setDrawRange(0, k);
     pos.needsUpdate = col.needsUpdate = true;
+    this.sights.visible = this.view.mode !== "ride";   // riding among the drones, their bearing lines cross the whole picture
   }
 
   _drawBurn(t) {
@@ -349,12 +353,16 @@ export class WildfireLayer {
       poly.forEach((p, k) => { const [u, w] = v._toPx(p[0], p[1]); k ? g.lineTo(u, w) : g.moveTo(u, w); });
       g.closePath();
     };
-    // The evacuation zones: a faint outline and code each, filled in their alert level's colour once raised.
+    // The evacuation zones: a faint outline and code each. A raised zone takes its alert level's colour as
+    // a light wash with a deeper band inside its edge, so the ground under it still looks like ground.
     this.zones.forEach((z, i) => {
       const lvl = this.zoneLevel[i], rgb = ZONE_RGB[lvl];
       path(z.polygon);
       if (rgb) {
-        g.fillStyle = `rgba(${rgb},${lvl === 5 ? 0.3 : 0.2})`; g.fill();
+        g.fillStyle = `rgba(${rgb},${lvl === 5 ? 0.12 : 0.07})`; g.fill();
+        g.save(); g.clip();
+        g.lineWidth = 14 * px; g.strokeStyle = `rgba(${rgb},${lvl === 5 ? 0.32 : 0.24})`; g.stroke();
+        g.restore();
         g.lineWidth = Math.max(2.5, 1.1 * px); g.strokeStyle = `rgba(${rgb},.95)`; g.stroke();
       } else {
         g.lineWidth = Math.max(1, 0.4 * px); g.strokeStyle = "rgba(255,255,255,.45)";

@@ -9,7 +9,8 @@
 // --inject gust@6,motor_failure@12 (kinds gust, motor_failure or blackout; seconds after the start),
 // --mission "text" (Mission tab: compile, then fly it; --no-fly stops after compiling),
 // --speed 1|2|5 (the page's speed buttons; any other value has no button, so the click times out),
-// --view follow|chase|orbit|ride|top (the page's view buttons), --seconds (default 15), --out (default video/shot.webm),
+// --view follow|chase|orbit|ride|top (the page's view buttons; --ride-drone N rides with drone N, not the one
+// nearest the swarm's centre), --seconds (default 15), --out (default video/shot.webm),
 // --scroll (scroll the side panel while recording).
 // The video starts when the page opens, so it also holds the page load and set-up before the shot.
 //
@@ -17,9 +18,14 @@
 // machine without a GPU: the page (opened with ?film=1) buffers the run as it streams, then steps through it
 // one video frame at a time, and each frame is a screenshot of the whole page. --speed is then the playback
 // speed (simulated seconds per video second, any value), --inject times are simulated seconds, and --out is
-// an .mp4 made with ffmpeg. The run itself is the same live run of the real simulator. In the wildfire
-// valley, --approve 0@40,1@44 approves those evacuation alerts at those simulated seconds, through the same
-// action as the page's Approve button (alert 0 is the first one drafted).
+// an .mp4 made with ffmpeg. The run itself is the same live run of the real simulator. --from S starts the
+// shot S simulated seconds into the flight (the page plays up to there first, unrecorded).
+// In the wildfire valley the station sends each checked evacuation alert at once by its fixed rules;
+// --cancel 3@60 cancels alert 3 (alert 0 is the first one drafted) and --allclear F4@120 gives zone F4 the
+// all-clear at those simulated seconds, through the same actions as the page's buttons (simulated phones
+// only). Pick times inside the flight (a valley flight lasts a few hundred simulated seconds); an action
+// after the flight has ended is skipped. --approval manual makes each alert wait for a tap instead, and
+// --approve 0@40,1@44 then approves them (with --film; without it, approve on the page yourself).
 // Needs Playwright (`npm install playwright && npx playwright install chromium`, or a global install
 // with NODE_PATH set).
 const { chromium } = require("playwright");
@@ -39,13 +45,13 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 (async () => {
   mkdirSync(dirname(out), { recursive: true });
   if (args.film) return film();
-  if (args.approve) console.warn("--approve needs --film; ignored");
+  for (const k of ["approve", "cancel", "allclear", "from", "ride-drone"]) if (args[k]) console.warn(`--${k} needs --film; ignored`);
   const browser = await chromium.launch({ args: ["--use-angle=swiftshader", "--enable-unsafe-swiftshader", "--ignore-gpu-blocklist"] });
   const context = await browser.newContext({ viewport: { width: 1920, height: 1080 },
     recordVideo: { dir: dirname(out), size: { width: 1920, height: 1080 } } });
   const page = await context.newPage();
   page.on("pageerror", (e) => console.error("page error:", e.message));
-  await page.goto(url);
+  await page.goto(args.approval ? `${url}/?approval=${encodeURIComponent(args.approval)}` : url);
   await page.waitForFunction(() => document.querySelectorAll("#scenario option").length > 0);
   await page.waitForFunction(() => !/checking/.test(document.querySelector("#ai-pill").textContent));
 
@@ -103,7 +109,7 @@ async function film() {
   const browser = await chromium.launch({ args: ["--use-angle=swiftshader", "--enable-unsafe-swiftshader", "--ignore-gpu-blocklist"] });
   const page = await browser.newPage({ viewport: { width: 1920, height: 1080 } });
   page.on("pageerror", (e) => console.error("page error:", e.message));
-  await page.goto(`${url}/?film=1`);
+  await page.goto(`${url}/?film=1${args.approval ? `&approval=${encodeURIComponent(args.approval)}` : ""}`);
   await page.waitForFunction(() => document.querySelectorAll("#scenario option").length > 0);
   await page.waitForFunction(() => !/checking/.test(document.querySelector("#ai-pill").textContent));
   if (args.mission) {
@@ -124,33 +130,50 @@ async function film() {
   await page.waitForFunction(() => { const s = window.haloFilm.status(); return s !== null && s.model !== "loading"; }, null, { timeout: 120000 });
   await page.click('#speed button[data-speed="5"]');   // buffer as fast as the server's pacing allows
   if (args.view) await page.click(`#view-${args.view === "follow" ? "reset" : args.view}`);
+  if (args["ride-drone"]) await page.evaluate((i) => { window.haloView.rideDrone = i; window.haloView.ride = null; }, Number(args["ride-drone"]));
   // The page buffers at 5x, but the video plays at --speed: show that speed on the buttons (display only).
   await page.evaluate((sp) => document.querySelectorAll("#speed button").forEach((b) => b.classList.toggle("active", Number(b.dataset.speed) === sp)), playback);
-  const need = seconds * playback;
+  const from = Number(args.from || 0);
+  const need = from + seconds * playback;
+  const actions = (kind, num) => (args[kind] || "").split(",").filter(Boolean).map((s) => s.split("@"))
+    .map(([id, at]) => ({ kind, id: num ? Number(id) : id, at: Number(at || 0) }));
   const injects = [
     ...(args.inject || "").split(",").filter(Boolean).map((s) => s.split("@")).map(([kind, at]) => ({ kind, at: Number(at || 0) })),
-    ...(args.approve || "").split(",").filter(Boolean).map((s) => s.split("@")).map(([id, at]) => ({ kind: "approve", id: Number(id), at: Number(at || 0) })),
+    ...actions("approve", true), ...actions("cancel", true), ...actions("allclear", false),
   ].sort((a, b) => a.at - b.at);
-  const bad = injects.find((i) => i.kind === "approve" && !Number.isInteger(i.id));
-  if (bad) throw new Error(`--approve takes alert numbers, as in 0@40,1@44`);
+  const bad = injects.find((i) => (i.kind === "approve" || i.kind === "cancel") && !Number.isInteger(i.id));
+  if (bad) throw new Error(`--${bad.kind} takes alert numbers, as in 0@40,1@44`);
+  const commander = { approve: "haloApprove", cancel: "haloCancel", allclear: "haloAllClear" };
   const buffered = () => page.evaluate(() => window.haloFilm.status());
   for (const inj of injects) {
     await page.waitForFunction((t) => { const s = window.haloFilm.status(); return s.ended || s.buffered_s >= t; }, inj.at, { polling: 50, timeout: 0 });
     if ((await buffered()).ended) { console.warn(`run ended before ${inj.kind}@${inj.at}; skipped`); break; }
-    if (inj.kind === "approve") {
-      const r = await page.evaluate((id) => window.haloApprove(id), inj.id);
-      if (!r || !r.ok) console.warn(`approving alert ${inj.id} at ${inj.at} s failed: ${r && r.reason}`);
+    if (commander[inj.kind]) {
+      const r = await page.evaluate(([fn, id]) => window[fn](id), [commander[inj.kind], inj.id]);
+      if (!r || !r.ok) console.warn(`${inj.kind} ${inj.id} at ${inj.at} s failed: ${r && r.reason}`);
     } else await page.click(`button[data-inject="${inj.kind}"]`);
   }
-  // Playback starts at the first frame the page received, so the shot is `seconds` long from there.
-  await page.waitForFunction((t) => { const s = window.haloFilm.status(); return s.ended || (s.first_s !== null && s.buffered_s >= s.first_s + t + 0.5); }, need, { polling: 500, timeout: 0 });
-  console.log("buffered", JSON.stringify(await buffered()));
+  // Playback starts at the first frame the page received (or at --from), so the shot is `seconds` long from there.
+  await page.waitForFunction(([t, abs]) => { const s = window.haloFilm.status(); return s.ended || (s.first_s !== null && s.buffered_s >= (abs ? 0 : s.first_s) + t + 0.5); },
+    [need, from > 0], { polling: 500, timeout: 0 });
+  const st = await buffered();
+  console.log("buffered", JSON.stringify(st));
+  if (from > 0 && st.ended && st.buffered_s < from) throw new Error(`the flight ended at ${st.buffered_s.toFixed(1)} s, before --from ${from}`);
   const dir = `${out}.frames`;
   rmSync(dir, { recursive: true, force: true });
   mkdirSync(dir, { recursive: true });
   const frames = Math.round(seconds * fps);
+  if (from > 0) {
+    // Jump to just before --from (simulated seconds into the flight, like --inject), growing the smoke
+    // plumes to their height there, then play the last 1.5 video seconds unrecorded so the camera and
+    // flames are settled when the shot starts; frame 0 then lands on --from.
+    const pre = Math.round(1.5 * fps), end = from - playback / fps;
+    const preSim = Math.max(0, Math.min(end - st.played_s, 1.5 * playback));
+    await page.evaluate((ds) => window.haloFilm.seek(ds), Math.max(0, end - preSim - st.played_s));
+    for (let k = 0; k < pre; k++) await page.evaluate(([dv, ds]) => window.haloFilm.step(dv, ds), [1 / fps, preSim / pre]);
+  }
   for (let k = 0; k < frames; k++) {
-    await page.evaluate(([dv, ds]) => window.haloFilm.step(dv, ds), [1 / fps, k ? playback / fps : 0]);
+    await page.evaluate(([dv, ds]) => window.haloFilm.step(dv, ds), [1 / fps, k || from > 0 ? playback / fps : 0]);
     // The first frame also compiles every shader, which takes a while without a GPU.
     await page.screenshot({ path: join(dir, `f${String(k).padStart(5, "0")}.jpg`), type: "jpeg", quality: 94, timeout: 300000 });
     if (k % fps === 0) process.stdout.write(`\r${k}/${frames} frames`);

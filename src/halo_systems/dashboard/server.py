@@ -99,6 +99,7 @@ class LiveRun:
         self.speed = 1.0
         self.paused = False
         self.lock = threading.Lock()
+        self.log_lock = threading.Lock()   # a new subscriber gets each log entry once: in its backlog or its queue
         self.subscribers: list[queue.Queue] = []
         self.sent_events = 0
         # directives[0] is the starting directive; the page has it from hello(), so streaming starts at 1.
@@ -109,12 +110,17 @@ class LiveRun:
         self.started = time.time()
 
     # -- streaming ------------------------------------------------------------
-    def subscribe(self) -> queue.Queue:
+    def subscribe(self) -> tuple[queue.Queue, list]:
+        """A queue for what comes next, and the backlog of log entries already published (for a late subscriber)."""
         q: queue.Queue = queue.Queue(maxsize=200)
-        with self.lock:
+        with self.lock, self.log_lock:
             self.subscribers.append(q)
             q.put(("hello", self.hello()))
-        return q
+            sim = self.sim
+            backlog = ([("event", e) for e in sim.events[:self.sent_events]]
+                       + [("directive", d) for d in sim.directives[1:self.sent_directives]]
+                       + [("ai", a) for a in sim.ai_calls[:self.sent_ai]])
+        return q, backlog
 
     def unsubscribe(self, q) -> None:
         with self.lock:
@@ -182,6 +188,10 @@ class LiveRun:
         self.publish("end", {"metrics": sim.result().metrics if sim.series["t"] else {}})
 
     def _flush_logs(self) -> None:
+        with self.log_lock:
+            self._flush_logs_locked()
+
+    def _flush_logs_locked(self) -> None:
         sim = self.sim
         while self.sent_events < len(sim.events):
             self.publish("event", sim.events[self.sent_events])
@@ -326,7 +336,7 @@ def make_handler(state: State, host: str = "127.0.0.1"):
     POST /api/runs/<id>/control        {speed, paused, stop}
     POST /api/runs/<id>/approve        {alert}: approve a checked evacuation alert (simulated phones only)
     POST /api/runs/<id>/cancel         {alert}: cancel a sent evacuation alert (simulated phones only)
-    POST /api/runs/<id>/allclear       {zone}: give an evacuation zone the all-clear (simulated phones only)
+    POST /api/runs/<id>/allclear       {zone}: give a zone (its code, or index) the all-clear (simulated phones only)
     POST /api/compile                  {text}: the mission compiler
 
     Every POST must be JSON from the dashboard's own page (see ``_not_from_this_page``).
@@ -468,7 +478,10 @@ def make_handler(state: State, host: str = "127.0.0.1"):
                         with run.lock:
                             if run.sim.ended or run.stop:
                                 return self._json({"ok": False, "reason": "the flight has ended"})
-                            act = run.sim.wildfire.cancel if parts[3] == "cancel" else run.sim.wildfire.all_clear
+                            wf = run.sim.wildfire
+                            if key == "zone" and isinstance(what, int):     # a zone's index stands for its code
+                                what = wf.zones[what]["code"] if 0 <= what < len(wf.zones) else ""
+                            act = wf.cancel if parts[3] == "cancel" else wf.all_clear
                             out = act(run.sim, what, by="incident commander (dashboard)")
                         return self._json(out)
                     if parts[3] == "control":
@@ -493,16 +506,12 @@ def make_handler(state: State, host: str = "127.0.0.1"):
             self.send_header("Cache-Control", "no-store")
             self.send_header("Connection", "keep-alive")
             self.end_headers()
-            q = run.subscribe()
+            q, backlog = run.subscribe()
             try:
-                # Replay what already happened so a late subscriber has the full log.
-                for e in list(run.sim.events):
-                    self._send("event", e)
-                # Skips directives[0], the starting directive (see LiveRun.sent_directives).
-                for d in list(run.sim.directives[1:]):
-                    self._send("directive", d)
-                for a in list(run.sim.ai_calls):
-                    self._send("ai", a)
+                # Replay what already happened so a late subscriber has the full log; anything published
+                # after it subscribed comes through its queue, so nothing arrives twice.
+                for kind, data in backlog:
+                    self._send(kind, data)
                 while True:
                     try:
                         kind, data = q.get(timeout=15)

@@ -1233,9 +1233,10 @@ export class SwarmView {
     if (!f || !at || !at.length || !this.swarmCentre) return false;
     let r = this.ride;
     if (!r || f.s[r.i] !== 0) {
+      // The drone nearest the swarm's centre, unless one was chosen (rideDrone, set by the recorder).
       let best = -1, bd = Infinity;
       at.forEach((p, i) => {
-        const d = Math.hypot(p[0] - this.swarmCentre.x, p[2] - this.swarmCentre.z);
+        const d = i === this.rideDrone ? -1 : Math.hypot(p[0] - this.swarmCentre.x, p[2] - this.swarmCentre.z);
         if (f.s[i] === 0 && d < bd) { bd = d; best = i; }
       });
       if (best < 0) return false;

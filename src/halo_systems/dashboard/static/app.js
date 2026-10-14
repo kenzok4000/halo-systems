@@ -33,16 +33,23 @@ window.haloFilm = {
     view.renderFilm(dtVideo, film.playT);
     return film.playT;
   },
+  // Jump ahead without filming (the recorder's --from): play the messages up to there, then grow the smoke
+  // plumes to their present height, as at the start of a run.
+  seek(dtSim) {
+    const t = this.step(0, dtSim);
+    if (view.wildfire) view.wildfire.warm();
+    return t;
+  },
 };
 $("#scale-note").textContent = `Drones drawn ${DRONE_SCALE}x actual size`;
 
 // ---------------------------------------------------------------- live run
 let run = null, source = null, spark = [], scenarios = [], status = null, compiled = null;
 let valley = null;   // the wildfire valley's station state for the panel: located fires, alerts, smoke reports
-// How the wildfire valley's evacuation alerts go out: "manual", each waits for the incident commander's tap
-// here; "auto", the station's fixed rules send each checked alert at once (the commander can still cancel it
-// or give a zone the all-clear). ?approval=auto or ?approval=manual in the address picks one.
-const APPROVAL = new URLSearchParams(location.search).get("approval") === "auto" ? "auto" : "manual";
+// How the wildfire valley's evacuation alerts go out: "auto" (the default), the station's fixed rules send each
+// checked alert at once, as Japan's warnings do, and the incident commander can cancel it or give a zone the
+// all-clear; "manual", each waits for the commander's tap here (for drills). ?approval=manual picks that.
+const APPROVAL = new URLSearchParams(location.search).get("approval") === "manual" ? "manual" : "auto";
 
 function fmt(x, d = 1, unit = "") { return x === null || x === undefined ? "–" : `${Number(x).toFixed(d)}${unit}`; }
 
@@ -159,7 +166,7 @@ function onValleyEvent(e) {
     case "alert_cancelled": case "all_clear": {
       const a = e.alert != null ? valley.alerts.get(e.alert) : null;
       if (a) a.state = "cancelled";
-      const what = e.kind === "all_clear" ? `all-clear for${zoneText(e.zone)}` : `alert ${e.alert + 1}${zoneText(e.zone)} cancelled`;
+      const what = e.kind === "all_clear" ? `all-clear${zoneText(e.zone)}` : `alert ${e.alert + 1}${zoneText(e.zone)} cancelled`;
       logItem("station", `<span class="chip station">station</span> ${t} ${what} by ${esc(e.by || "the station")}; ${e.phones ?? 0} simulated phones told` +
         `${e.message ? `<div class="why">${esc(e.message)}</div>` : ""}`);
       drawValley();
@@ -174,7 +181,7 @@ function onValleyEvent(e) {
 function levelName(l) {
   if (typeof l !== "number") return l === "evacuate" ? "Evacuate" : "Warning";
   const lv = valley.levels && valley.levels[String(l)];
-  return `Level ${l}${lv && lv.tag ? ` (${esc(lv.tag)})` : ""}`;
+  return `Level ${l}${lv && lv.head ? ` (${esc(lv.head)})` : ""}`;
 }
 function zoneText(code) {
   if (typeof code !== "string") return "";
@@ -197,13 +204,17 @@ function drawValley() {
       : '<li class="muted">No zone raised yet.</li>';
   }
   if (zones !== valley.zonesHtml) { $("#zones").innerHTML = valley.zonesHtml = zones; }
-  // The latest alerts, newest first.
+  // The latest alerts, newest first. Only a zone's newest alert still in force can be cancelled: an older
+  // one has been replaced by it, and a zone given the all-clear has none in force.
+  const newest = new Map(), level = new Map(valley.zones.map((z, i) => [z.code, valley.zonesLevel[i] || 0]));
+  for (const a of valley.alerts.values()) if (a.zone && ["checked", "approved", "delivered"].includes(a.state)) newest.set(a.zone, Math.max(newest.get(a.zone) ?? -1, a.id));
+  const cancellable = (a) => a.state === "delivered" && a.zone && newest.get(a.zone) === a.id && level.get(a.zone) > 0;
   const items = [...valley.alerts.values()].reverse().slice(0, 6).map((a) => {
     const state = a.state === "delivered" ? (a.delivered != null ? `delivered to ${a.delivered} of ${a.of} phones` : "delivered")
       : a.state === "rejected" ? "rejected by the alert check" : a.state === "cancelled" ? "cancelled"
       : valley.ended ? "not approved before the flight ended" : valley.approval === "auto" ? "checked; sending" : "checked; waiting for the incident commander";
     const btn = valley.ended ? "" : a.state === "checked" && valley.approval !== "auto" ? `<button data-approve="${a.id}">Approve and send</button>`
-      : a.state === "delivered" && a.zone ? `<button data-cancel="${a.id}">Cancel alert</button>` : "";
+      : cancellable(a) ? `<button data-cancel="${a.id}">Cancel alert</button>` : "";
     const lvl = typeof a.level === "number" ? `<span class="lvl l${a.level}">${levelName(a.level)}</span>` : `<b>${levelName(a.level)}</b>`;
     return `<li class="alert ${esc(String(a.level))} ${esc(a.state)}">${lvl}${a.zone ? ` · ${esc(a.zone)}` : ""} · ${a.phones} phones · ${state}` +
       `<div class="why">${esc(a.message)}</div>${btn}</li>`;

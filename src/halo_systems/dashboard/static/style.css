@@ -92,7 +92,10 @@ pre { white-space: pre-wrap; font-size: 12px; background: var(--panel-2); paddin
 .band.b30 { background: rgba(214,40,32,.75); } .band.b60 { background: rgba(240,96,32,.65); }
 .band.b120 { background: rgba(250,150,40,.6); } .band.b180 { background: rgba(252,204,80,.6); margin-right: 5px; }
 .dot.phone { background: #eef2f5; box-shadow: 0 0 0 1.5px #1c2a33; }
-.zone { display: inline-block; width: 12px; height: 9px; border: 1.5px dashed rgb(220,40,60); margin-right: 5px; vertical-align: -1px; }
+.zone { display: inline-block; width: 12px; height: 9px; border: 1.5px solid; margin-right: 3px; vertical-align: -1px; }
+.zone.l3 { border-color: rgb(214,40,40); background: rgba(214,40,40,.25); }
+.zone.l4 { border-color: rgb(142,52,178); background: rgba(142,52,178,.25); }
+.zone.l5 { border-color: rgb(22,22,28); background: rgba(22,22,28,.4); margin-right: 5px; }
 .mapped { display: inline-block; width: 12px; height: 9px; margin-right: 5px; vertical-align: -1px;
   background: repeating-linear-gradient(-45deg, #3a2a20 0 2px, #f0faff 2px 3.5px); }
 .chip.station { background: #ffb44a; color: #2a1600; }
