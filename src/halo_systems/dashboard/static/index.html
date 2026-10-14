@@ -23,7 +23,9 @@
     <div id="legend">
       <span><i class="dot ok"></i>flying</span><span><i class="dot fail"></i>failed / crashed</span>
       <span><i class="dot ret"></i>left (battery)</span><span><i class="ring"></i>slot</span>
-      <span class="scout-only"><i class="dot fire"></i>hotspot</span><span class="scout-only"><i class="dot cam"></i>camera footprint</span>
+      <span class="hotspot-only"><i class="dot fire"></i>hotspot</span><span class="scout-only"><i class="dot cam"></i>camera footprint</span>
+      <span class="valley-only" hidden><i class="band b30"></i><i class="band b60"></i><i class="band b120"></i><i class="band b180"></i>forecast: fire within 30, 60, 120, 180 min</span>
+      <span class="valley-only" hidden><i class="dot phone"></i>phone (simulated)</span><span class="valley-only" hidden><i class="zone"></i>alert zone</span>
       <span class="muted" id="scale-note"></span>
     </div>
     <div id="wind" title="Simulated wind; the arrow shows where it blows, as seen from the camera"><svg viewBox="-12 -12 24 24" aria-hidden="true"><path d="M0 -10 L6 4 L0 1 L-6 4 Z"/></svg><span>Wind</span></div>
@@ -84,7 +86,15 @@
       <canvas id="spark" height="70"></canvas>
       <p class="muted small">Formation error: distance from the ideal shape, in metres (formed below 1 m).</p>
 
-      <h3>Supervisor decisions <span id="ai-wait" class="muted small"></span></h3>
+      <div class="valley-only" hidden>
+        <h3>Fire crew brief <span class="muted small" id="fc-when"></span></h3>
+        <p class="muted small" id="valley-stats"></p>
+        <ul id="brief" class="brief"></ul>
+        <h3>Evacuation alerts <span class="muted small">simulated phones only</span></h3>
+        <ul id="alerts" class="alerts"></ul>
+      </div>
+
+      <h3>Decisions and events <span id="ai-wait" class="muted small"></span></h3>
       <ol id="log"></ol>
       <button id="export">Download this run (JSON)</button>
     </div>
@@ -110,6 +120,7 @@
       <p>Each drone runs a 50 Hz controller: it tracks its slot in the formation, and a safety filter (control barrier functions) keeps it clear of other drones, obstacles and the ground. No language model is in this loop.</p>
       <p>Every 5 seconds a supervisor reads a short status report and may change the formation, spacing, speed, altitude or safety margin. The supervisor is either hand-written rules or NVIDIA Nemotron on Nebius Token Factory. Every directive passes a safety validator first. If Nemotron fails or replies badly, the rules take over for that step.</p>
       <p>The simulation includes wind and gust fronts, noisy GPS, lossy and delayed radio, motor failures, batteries and obstacles. It is a simulation, not flight hardware.</p>
+      <p>In the wildfire valley the terrain, forest, fire spread (Rothermel's model on the land cover, slope and wind), smoke plume heights, the drones' smoke sightings, the ground station's fire locations, forecasts and alerts, and the phones they go to are all simulated; the alerts reach simulated phones only, and each waits for a person to approve it. Elsewhere the scenery, flames and smoke are drawn for looks: the simulator models those hotspots as fixed points.</p>
       <h3>Nebius evidence</h3>
       <div id="evidence" class="muted">Loading…</div>
     </div>

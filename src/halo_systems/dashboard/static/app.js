@@ -21,7 +21,8 @@ const FILM = new URLSearchParams(location.search).has("film");
 let film = null;
 view.film = FILM;
 window.haloFilm = {
-  status: () => film && { first_s: film.firstT, buffered_s: film.bufT, played_s: film.playT, ended: film.ended, queued: film.queue.length - film.next },
+  status: () => film && { first_s: film.firstT, buffered_s: film.bufT, played_s: film.playT, ended: film.ended,
+    queued: film.queue.length - film.next, model: view.modelState },
   step(dtVideo, dtSim) {
     if (!film) return null;
     film.playT += dtSim;
@@ -37,6 +38,7 @@ $("#scale-note").textContent = `Drones drawn ${DRONE_SCALE}x actual size`;
 
 // ---------------------------------------------------------------- live run
 let run = null, source = null, spark = [], scenarios = [], status = null, compiled = null;
+let valley = null;   // the wildfire valley's station state for the panel: located fires, alerts, smoke reports
 
 function fmt(x, d = 1, unit = "") { return x === null || x === undefined ? "–" : `${Number(x).toFixed(d)}${unit}`; }
 
@@ -86,6 +88,7 @@ function onEvent(e) {
   // violations. Injections are logged by the button handlers ("you injected ...").
   const skip = { directive: 1, injected: 1 };
   if (skip[e.kind]) return;
+  if (valley && onValleyEvent(e)) return;
   // One function per kind: only the matching one runs, since each reads fields only its kind has.
   const text = { motor_failure: () => `motor failure on drone ${e.drone}`,
     gust_front: () => `gust front ${fmt(Math.hypot(...(e.velocity_mps || [0, 0]).slice(0, 2)))} m/s`,
@@ -98,6 +101,85 @@ function onEvent(e) {
   const what = text ? text() : e.kind;
   logItem("event", `t=${fmt(e.t)} s ${esc(what)}`);
 }
+
+// The wildfire valley: the ground station's finds, forecasts and alerts, in the log and the Fire station panel.
+// Returns true when the event is handled here.
+function onValleyEvent(e) {
+  const t = `t=${fmt(e.t)} s`;
+  switch (e.kind) {
+    case "smoke_sighted": case "smoke_contact":
+      valley.smoke++;   // hundreds per flight: counted in the panel, drawn as bearing lines, not logged one by one
+      return true;
+    case "target_found":   // the same find is logged as fire_located (thermal)
+      return true;
+    case "fire_located": {
+      const how = e.by === "thermal" ? `confirmed by a thermal camera, ±${fmt(e.err_m, 0)} m` : `located from smoke bearings, ±${fmt(e.err_m, 0)} m`;
+      logItem("station", `<span class="chip station">station</span> ${t} Fire ${e.fire + 1} ${how}`);
+      return true;
+    }
+    case "forecast": {
+      const lines = (e.brief || []).map((b) => `<div class="why">${esc(b.text)}</div>`).join("");
+      logItem("station", `<span class="chip station">station</span> ${t} spread forecast ${e.forecast + 1} for the fire crews${lines}`);
+      valley.brief = e.brief || [];
+      valley.briefT = e.t;
+      drawValley();
+      return true;
+    }
+    case "alert_drafted":
+      valley.alerts.set(e.alert, { id: e.alert, level: e.level, phones: e.phones, message: e.message, state: "checked", check: null });
+      logItem("station", `<span class="chip station">station</span> ${t} drafted alert ${e.alert + 1}: ${esc(e.level)} for ${e.phones} simulated phones` +
+        `<div class="why">${esc(e.message)}</div>`);
+      drawValley();
+      return true;
+    case "alert_check": {
+      const a = valley.alerts.get(e.alert);
+      if (a) { a.check = e; if (!e.ok) a.state = "rejected"; }
+      logItem("station", `<span class="chip station">station</span> ${t} alert ${e.alert + 1} ${e.ok ? "passed the alert check; waiting for approval" : `rejected by the alert check: ${esc((e.reasons || []).join("; "))}`}`);
+      drawValley();
+      return true;
+    }
+    case "alert_approved":
+      logItem("station", `<span class="chip station">station</span> ${t} alert ${e.alert + 1} approved by ${esc(e.by)}`);
+      return true;
+    case "alert_delivered": {
+      const a = valley.alerts.get(e.alert);
+      if (a) { a.state = "delivered"; a.delivered = e.phones; a.of = e.of; }
+      logItem("station", `<span class="chip station">station</span> ${t} alert ${e.alert + 1} delivered to ${e.phones} of ${e.of} simulated phones`);
+      drawValley();
+      return true;
+    }
+  }
+  return false;
+}
+
+function drawValley() {
+  if (!valley) return;
+  $("#fc-when").textContent = valley.briefT != null ? `forecast at t=${fmt(valley.briefT, 0)} s` : "";
+  const brief = valley.brief.length ? valley.brief.map((b) => `<li>${esc(b.text)}</li>`).join("")
+    : '<li class="muted">Waiting for the first fire to be located…</li>';
+  if (brief !== valley.briefHtml) { $("#brief").innerHTML = valley.briefHtml = brief; }
+  const items = [...valley.alerts.values()].map((a) => {
+    const state = a.state === "delivered" ? `delivered to ${a.delivered} of ${a.of} phones`
+      : a.state === "rejected" ? "rejected by the alert check" : "checked; waiting for the incident commander";
+    const btn = a.state === "checked" ? `<button data-approve="${a.id}">Approve and send</button>` : "";
+    return `<li class="alert ${esc(a.level)} ${esc(a.state)}"><b>${a.level === "evacuate" ? "Evacuate" : "Warning"}</b> · ${a.phones} phones · ${state}` +
+      `<div class="why">${esc(a.message)}</div>${btn}</li>`;
+  });
+  const html = items.length ? items.join("") : '<li class="muted">No alert drafted yet.</li>';
+  if (html !== valley.alertsHtml) { $("#alerts").innerHTML = valley.alertsHtml = html; }   // frames come at 10 Hz: keep the buttons stable
+  $("#valley-stats").textContent = `${valley.located} fires located · ${valley.smoke} smoke reports from the drones · ${valley.warned} phones alerted`;
+}
+
+// Approve a checked alert as the incident commander: it then goes to the simulated phones in its zone.
+async function approveAlert(id) {
+  if (!run) return;
+  try {
+    const out = await api(`/api/runs/${run.id}/approve`, { alert: id });
+    if (!out.ok) throw new Error(out.reason);
+    logItem("operator", `<span class="chip">you</span> approved alert ${id + 1} as the incident commander`);
+  } catch (err) { alert(err.message); }
+}
+window.haloApprove = approveAlert;   // the recorder approves through the same action as the button
 
 function drawSpark() {
   const cv = $("#spark");
@@ -124,7 +206,14 @@ function onFrame(f) {
   $("#m-batt").textContent = fmt(m.battery_mean, 0, "%");
   $("#m-speed").textContent = fmt(m.leader_speed, 1, " m/s");
   $("#m-progress").style.width = `${Math.min(100, (100 * m.progress_m) / Math.max(1, m.path_m))}%`;
-  const scout = m.targets_total != null ? `, hotspots ${m.targets_found}/${m.targets_total}, area ${fmt(m.coverage_pct, 0)}%` : "";
+  let scout = m.targets_total != null ? `, hotspots ${m.targets_found}/${m.targets_total}, area ${fmt(m.coverage_pct, 0)}%` : "";
+  if (valley) {
+    valley.located = (f.located || []).length;
+    valley.warned = (f.phones_alerted || []).filter((l) => l > 0).length;
+    scout = `, fires located ${valley.located}, area ${fmt(m.coverage_pct, 0)}%`;
+    if (f.alerts) for (const a of f.alerts) { const k = valley.alerts.get(a.id); if (k && k.state !== a.state && a.state !== "approved") k.state = a.state; }
+    drawValley();
+  }
   setHud(`${run.scenario.title}, t = ${fmt(f.t)} s${scout}`, f.directive);
   $("#ai-wait").textContent = f.ai_pending ? "Nemotron is thinking…" : "";
   spark.push([f.t, m.formation_error_m]);
@@ -140,10 +229,16 @@ async function start(extra = {}) {
   const speed = Number($("#speed .active").dataset.speed);
   try {
     const drones = Number($("#drones").value) || undefined;   // blank = the scenario's own swarm size
-    run = await api("/api/runs", { scenario: $("#scenario").value, config: $("#config").value, seed: Number($("#seed").value), speed, n: drones, ...extra });
+    // In the wildfire valley every evacuation alert waits for a person to approve it on this page.
+    run = await api("/api/runs", { scenario: $("#scenario").value, config: $("#config").value, seed: Number($("#seed").value), speed, n: drones,
+      approval: "manual", ...extra });
   } catch (err) { alert(err.message); return; }
   view.build(run);
   $$(".scout-only").forEach((el) => { el.style.display = run.sensor ? "" : "none"; });
+  $$(".hotspot-only").forEach((el) => { el.style.display = run.sensor && !run.wildfire ? "" : "none"; });
+  $$(".valley-only").forEach((el) => { el.hidden = !run.wildfire; });
+  valley = run.wildfire ? { located: 0, smoke: 0, warned: 0, brief: [], briefT: null, alerts: new Map() } : null;
+  drawValley();
   view.setSpeed(speed); view.setPaused(false);
   setHud(run.scenario.title, run.directive);
   $("#pause").textContent = "Pause";
@@ -209,6 +304,10 @@ $$("[data-inject]").forEach((b) => b.addEventListener("click", async () => {
     logItem("operator", `<span class="chip">you</span> injected ${esc(info.kind.replace("_", " "))}${info.drone !== undefined ? ` on drone ${info.drone}` : ""}`);
   } catch (err) { alert(err.message); }
 }));
+$("#alerts").addEventListener("click", (e) => {
+  const b = e.target.closest("[data-approve]");
+  if (b) { b.disabled = true; approveAlert(Number(b.dataset.approve)); }
+});
 $("#order").addEventListener("click", async () => {
   if (!run) return;
   await api(`/api/runs/${run.id}/inject`, { kind: "directive", changes: { formation: $("#order-shape").value } }).catch((e) => alert(e.message));

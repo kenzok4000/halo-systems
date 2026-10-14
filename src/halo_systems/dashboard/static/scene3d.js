@@ -1,11 +1,15 @@
-// Halo Systems dashboard: the 3D view. Draws what the run sends: obstacles, path, drones, hotspots,
-// survey area, wind, camera coverage and found events. Drawn for looks only, never touching the
-// simulation: the scenery (distant hills and mountains, forests, and low shrubs under 1.5 m, also over
-// the flight area), the tree crowns above the simulated trunks, and each found hotspot's glow, embers
-// and smoke (the scorched patch marks every hotspot); the particles drift with the simulated wind.
+// Halo Systems dashboard: the 3D view. Draws what the run sends: terrain and land cover (the wildfire
+// valley), obstacles, path, drones (the scout's CAD model), hotspots, survey area, wind, camera
+// coverage and found events; wildfire3d.js adds the valley's fires, smoke, forecasts and alerts.
+// Drawn for looks only, never touching the simulation: the scenery beyond the run (distant hills and
+// mountains, forests, and low shrubs under 1.5 m, also over the flight area where a run has no land
+// cover), the tree crowns above the simulated trunks, and each found hotspot's glow, embers and smoke
+// (the scorched patch marks every hotspot); the particles drift with the simulated wind.
 import * as THREE from "three";
 import { OrbitControls } from "/static/vendor/OrbitControls.js";
 import { mergeGeometries, canvasTexture, hash, fbm, ridge, smooth } from "/static/util3d.js";
+import { WildfireLayer } from "/static/wildfire3d.js";
+import { loadDroneModel, DRONE_MODEL_URL } from "/static/drone_model.js";
 
 // Simulation frame is x east, y north, z up; three.js is y up, so (x, y, z) -> (x, z, -y).
 const toV = (p) => new THREE.Vector3(p[0], p[2], -p[1]);
@@ -170,7 +174,19 @@ export class SwarmView {
     this._sky();
     this._lights();
     this._buildScenery(null);
-    this.smoke = new Particles(4200, false, this.puffTex);
+    // The scout's CAD model; drones are drawn as simple shapes until it has loaded.
+    this.model = null;
+    this.modelState = "loading";
+    loadDroneModel(DRONE_MODEL_URL, DRONE_SCALE).then((m) => {
+      // The CAD materials are metallic, which looks black without an environment map: tone them down.
+      for (const part of m.body) {
+        if (part.material.metalness > 0.5) { part.material.metalness = 0.35; part.material.roughness = Math.max(0.45, part.material.roughness); }
+      }
+      this.model = m;
+      this.modelState = "ready";
+      if (this.hello) this._buildDrones(this.hello);
+    }).catch((err) => { this.modelState = "failed"; console.warn("drone model not loaded; drawing simple drones", err); });
+    this.smoke = new Particles(5000, false, this.puffTex);
     this.flames = new Particles(1600, true, this.flameTex);
     for (const p of [this.smoke, this.flames]) p.points.material.uniforms.fogDensity.value = scene.fog.density;
     this.smoke.points.renderOrder = 3; this.flames.points.renderOrder = 4;
@@ -325,7 +341,8 @@ export class SwarmView {
       if (!tbox) return rolling(x, y);
       const d = outside(tbox, x, y);
       if (d === 0) return this.groundAt(x, y) - 3;   // under the run's terrain, which draws itself
-      return this.groundAt(x, y) + (rolling(x, y) - this.groundAt(x, y)) * smooth(0, 320, d);
+      // Past the run's terrain its edge carries on, sinking into the hills and mountains beyond.
+      return this.groundAt(x, y) * (1 - smooth(0, 900, d)) + rolling(x, y) * smooth(0, 320, d);
     };
     this.sceneryHeight = height;
 
@@ -409,6 +426,7 @@ export class SwarmView {
       for (let y = box[1] - pad; y < box[3] + pad; y += S) {
         const jx = x + (hash(x, y + 1) - 0.5) * S, jy = y + (hash(y + 1, x) - 0.5) * S;
         if (block && jx > block[0] && jx < block[2] && jy > block[1] && jy < block[3]) continue;
+        if (this.landcover && outside(tbox, jx, jy) === 0) continue;   // the run's own land cover draws its scrub
         if (targets.some((tg) => Math.hypot(jx - tg.x, jy - tg.y) < Math.max(tg.radius_m, 1.5) * 2.4 + 2)) continue;
         const mask = fbm(jx / 38 + 3, jy / 38 + 8);
         if (mask < 0.5 || hash(jx * 1.7, jy * 0.3) > 0.55 + mask * 0.4) continue;
@@ -451,7 +469,8 @@ export class SwarmView {
     return (z(i0, j0) * (1 - a) + z(i0 + 1, j0) * a) * (1 - b) + (z(i0, j0 + 1) * (1 - a) + z(i0 + 1, j0 + 1) * a) * b;
   }
 
-  _buildTerrain(t) {
+  _buildTerrain(t, lc) {
+    // The run's height grid, coloured by its land cover where it sends one (else by height and slope).
     const w = (t.nx - 1) * t.cell_m, h = (t.ny - 1) * t.cell_m;
     const geo = new THREE.PlaneGeometry(w, h, t.nx - 1, t.ny - 1);
     geo.rotateX(-Math.PI / 2);   // plane now in x/z, with z = -y
@@ -459,15 +478,32 @@ export class SwarmView {
     let zmin = Infinity, zmax = -Infinity;
     for (const v of t.z) { zmin = Math.min(zmin, v); zmax = Math.max(zmax, v); }
     const dry = new THREE.Color(0xcbb67e), scrub = new THREE.Color(0x8c8a55), pine = new THREE.Color(0x4b5a33),
-      rock = new THREE.Color(0x8c857c), c = new THREE.Color();
+      rock = new THREE.Color(0x8c857c), c = new THREE.Color(), d = new THREE.Color();
+    // Land-cover classes by name (rock, grass, scrub, forest, bare): dry-season colours.
+    const COVER = { rock: 0x8f8579, grass: 0xcfb878, scrub: 0x9c9258, forest: 0x56603b, bare: 0xbfa98a };
+    const coverCol = lc ? lc.classes.map((name) => new THREE.Color(COVER[name] ?? 0xb8a57c)) : null;
     for (let k = 0; k < pos.count; k++) {
       const x = pos.getX(k) + t.origin[0] + w / 2, y = -pos.getZ(k) + t.origin[1] + h / 2;
       const z = this.groundAt(x, y);
       pos.setXYZ(k, x, z, -y);
       const slope = Math.hypot(this.groundAt(x + 2, y) - this.groundAt(x - 2, y), this.groundAt(x, y + 2) - this.groundAt(x, y - 2)) / 4;
-      const hf = (z - zmin) / Math.max(1, zmax - zmin);
-      c.copy(dry).lerp(scrub, smooth(0.4, 0.75, fbm(x / 120, y / 120)))
-        .lerp(pine, Math.min(0.75, Math.max(0, hf - 0.25) * 1.4)).lerp(rock, Math.min(1, smooth(0.5, 0.9, slope) + Math.max(0, hf - 0.82) * 2.5));
+      if (coverCol) {
+        // Average the classes around the node so the edges between them are soft.
+        const ix = Math.round((x - lc.x0) / lc.cell_m), iy = Math.round((y - lc.y0) / lc.cell_m);
+        c.setRGB(0, 0, 0);
+        let n = 0;
+        for (let dy = -1; dy <= 1; dy++) for (let dx = -1; dx <= 1; dx++) {
+          const jx = ix + dx, jy = iy + dy;
+          if (jx < 0 || jy < 0 || jx >= lc.nx || jy >= lc.ny) continue;
+          d.copy(coverCol[lc.grid[jy * lc.nx + jx]]); c.r += d.r; c.g += d.g; c.b += d.b; n++;
+        }
+        c.multiplyScalar(1 / Math.max(1, n));
+        c.lerp(dry, 0.25 * smooth(0.45, 0.8, fbm(x / 90, y / 90))).lerp(rock, 0.5 * smooth(0.6, 1.1, slope));
+      } else {
+        const hf = (z - zmin) / Math.max(1, zmax - zmin);
+        c.copy(dry).lerp(scrub, smooth(0.4, 0.75, fbm(x / 120, y / 120)))
+          .lerp(pine, Math.min(0.75, Math.max(0, hf - 0.25) * 1.4)).lerp(rock, Math.min(1, smooth(0.5, 0.9, slope) + Math.max(0, hf - 0.82) * 2.5));
+      }
       col.set([c.r, c.g, c.b], k * 3);
     }
     geo.setAttribute("color", new THREE.BufferAttribute(col, 3));
@@ -480,12 +516,62 @@ export class SwarmView {
     return mesh;
   }
 
+  _buildLandcover(lc) {
+    // The run's trees and scrub: a conifer on every forest cell, as tall as the run's canopy height there
+    // (drones fly above it), and a bush on about half the scrub cells.
+    const forest = lc.classes.indexOf("forest"), scrubK = lc.classes.indexOf("scrub");
+    const trees = [], bushes = [];
+    for (let iy = 0; iy < lc.ny; iy++) {
+      for (let ix = 0; ix < lc.nx; ix++) {
+        const k = iy * lc.nx + ix, h = lc.canopy_m ? lc.canopy_m[k] : 0;
+        const x = lc.x0 + ix * lc.cell_m + (hash(ix, iy) - 0.5) * lc.cell_m * 0.8;
+        const y = lc.y0 + iy * lc.cell_m + (hash(iy, ix) - 0.5) * lc.cell_m * 0.8;
+        if (lc.grid[k] === forest && h >= 3) trees.push([x, y, h]);
+        else if (lc.grid[k] === scrubK && h > 0 && hash(ix * 0.37, iy * 1.3) < 0.5) bushes.push([x, y, h]);
+      }
+    }
+    const m = new THREE.Object3D(), tc = new THREE.Color();
+    if (trees.length) {
+      const crownGeo = mergeGeometries([
+        new THREE.ConeGeometry(1, 0.55, 8).translate(0, 0.3, 0),
+        new THREE.ConeGeometry(0.78, 0.5, 8).translate(0, 0.58, 0),
+        new THREE.ConeGeometry(0.5, 0.4, 8).translate(0, 0.84, 0),
+        new THREE.CylinderGeometry(0.07, 0.1, 0.3, 5).translate(0, 0.12, 0)]);
+      crownGeo.computeVertexNormals();
+      const im = new THREE.InstancedMesh(crownGeo, new THREE.MeshLambertMaterial({ color: 0xffffff, flatShading: true }), trees.length);
+      trees.forEach(([x, y, h], i) => {
+        const s = h * (0.92 + 0.16 * hash(x, y)), wd = s * (0.26 + 0.08 * hash(y, x));
+        m.position.set(x, this.groundAt(x, y) - 0.3, -y); m.rotation.set(0, hash(x, 7) * 6.28, 0); m.scale.set(wd, s, wd); m.updateMatrix();
+        im.setMatrixAt(i, m.matrix);
+        tc.setHSL(0.22 + 0.07 * hash(x, 3), 0.28 + 0.18 * hash(y, 5), 0.16 + 0.08 * hash(x, y)); im.setColorAt(i, tc);
+      });
+      im.castShadow = true; im.receiveShadow = true;
+      this.world.add(im);
+    }
+    if (bushes.length) {
+      const sg = mergeGeometries([new THREE.IcosahedronGeometry(1, 0), new THREE.IcosahedronGeometry(0.7, 0).translate(0.6, -0.1, 0.3),
+        new THREE.IcosahedronGeometry(0.6, 0).translate(-0.5, -0.15, -0.4)]);
+      sg.computeVertexNormals();
+      const im = new THREE.InstancedMesh(sg, new THREE.MeshLambertMaterial({ color: 0xffffff }), bushes.length);
+      bushes.forEach(([x, y, h], i) => {
+        const s = Math.max(0.5, h * 0.55) * (0.7 + 0.6 * hash(x, y));
+        m.position.set(x, this.groundAt(x, y) + s * 0.35, -y); m.rotation.set(0, hash(y, 2) * 6.28, 0); m.scale.set(s, s * 0.75, s);
+        m.updateMatrix(); im.setMatrixAt(i, m.matrix);
+        tc.setHSL(0.15 + 0.08 * hash(x * 0.3, y * 0.7), 0.25 + 0.2 * hash(y, x), 0.17 + 0.08 * hash(x + 2, y)); im.setColorAt(i, tc);
+      });
+      im.receiveShadow = true;
+      this.world.add(im);
+    }
+  }
+
   // -- a new run ----------------------------------------------------------------------------------
   build(hello) {
     this.hello = hello;
     this.scene.remove(this.world);
     const shared = new Set([this.dotTex, this.puffTex, this.flameTex, this.markerTex, this.rotorTex, this.scorchTex]);
+    this.droneGroup = null;
     this.world.traverse((o) => {
+      if (o.userData.shared) return;   // the CAD model's geometries and materials are reused by every run
       o.geometry?.dispose();
       for (const mat of [].concat(o.material || [])) {
         for (const tex of [mat.map, mat.uniforms?.uTex?.value]) if (tex && !shared.has(tex)) tex.dispose();
@@ -495,11 +581,16 @@ export class SwarmView {
     this.world = new THREE.Group();
     this.scene.add(this.world);
     this.smoke.clear(); this.flames.clear();
-    this.terrain = null;
+    // Terrain (heights[iy * nx + ix] on a grid from (x0, y0)) and land cover, when the run has them.
+    const wt = hello.world.terrain;
+    this.terrain = wt ? { origin: [wt.x0, wt.y0], cell_m: wt.cell_m, nx: wt.nx, ny: wt.ny, z: wt.heights } : null;
+    this.landcover = hello.world.landcover || null;
     this._buildScenery(hello);
-    if (this.terrain) this.world.add(this._buildTerrain(this.terrain));
+    if (this.terrain) this.world.add(this._buildTerrain(this.terrain, this.landcover));
+    if (this.landcover) this._buildLandcover(this.landcover);
     this._buildObstacles(hello);
-    this._buildTargets(hello);
+    this.wildfire = hello.wildfire ? new WildfireLayer(this, hello) : null;
+    this._buildTargets(this.wildfire ? {} : hello);   // the valley's fires are drawn by the wildfire layer
     this._buildOverlay(hello);
     this._buildPath(hello);
     this._buildDrones(hello);
@@ -515,6 +606,7 @@ export class SwarmView {
   }
 
   _buildObstacles(hello) {
+    if (this.terrain) return this._buildTerrainObstacles(hello);
     const obs = hello.world.obstacles;
     const trees = obs.filter((o) => o.kind === "cylinder" && (!o.type || o.type === "tree"));
     const rocks = obs.filter((o) => o.kind === "cylinder" && o.type && o.type !== "tree");
@@ -594,6 +686,49 @@ export class SwarmView {
     }
   }
 
+  _buildTerrainObstacles(hello) {
+    // On terrain a cylinder's height is the absolute height of its top. The wide one is a radio mast,
+    // the thin ones dead snags standing above the crowns; boxes are rock shelves (drawn with the fires).
+    this.canyon = false;
+    const steel = new THREE.MeshStandardMaterial({ color: 0xc9ccd0, roughness: 0.5, metalness: 0.6 });
+    const red = new THREE.MeshStandardMaterial({ color: 0xc8382c, roughness: 0.6 });
+    const wood = new THREE.MeshStandardMaterial({ color: 0x7a6d62, roughness: 1, flatShading: true });
+    for (const o of hello.world.obstacles) {
+      if (o.kind !== "cylinder") continue;
+      const g = this.groundAt(o.x, o.y), hgt = Math.max(1, o.height - g);
+      const grp = new THREE.Group();
+      grp.position.set(o.x, g, -o.y);
+      if (o.radius >= 1) {
+        // A lattice mast: a slim four-sided tower in red and white bands, a beacon and two dishes.
+        const bands = 8;
+        for (let b = 0; b < bands; b++) {
+          const r0 = o.radius * (1 - 0.6 * b / bands), r1 = o.radius * (1 - 0.6 * (b + 1) / bands);
+          const seg = new THREE.Mesh(new THREE.CylinderGeometry(r1, r0, hgt / bands, 4, 1), b % 2 ? steel : red);
+          seg.position.y = (b + 0.5) * hgt / bands; seg.rotation.y = Math.PI / 4; grp.add(seg);
+        }
+        const lamp = new THREE.Mesh(new THREE.SphereGeometry(0.5, 10, 8), new THREE.MeshBasicMaterial({ color: 0xff3020 }));
+        lamp.position.y = hgt + 0.4; grp.add(lamp);
+        for (const [y, a] of [[0.72, 0.4], [0.58, 2.6]]) {
+          const dish = new THREE.Mesh(new THREE.SphereGeometry(1.1, 14, 6, 0, Math.PI * 2, 0, 0.9), steel);
+          dish.position.set(Math.cos(a) * o.radius * 0.6, hgt * y, Math.sin(a) * o.radius * 0.6);
+          dish.rotation.set(Math.PI / 2, 0, -a); grp.add(dish);
+        }
+      } else {
+        // A dead snag: a bare, tapering trunk with a few broken limbs.
+        const trunk = new THREE.Mesh(new THREE.CylinderGeometry(o.radius * 0.25, o.radius, hgt, 7, 4), wood);
+        trunk.position.y = hgt / 2; grp.add(trunk);
+        for (let b = 0; b < 4; b++) {
+          const len = 1.5 + 2.5 * hash(o.x + b, o.y), limb = new THREE.Mesh(new THREE.CylinderGeometry(0.06, 0.16, len, 5), wood);
+          const a = hash(o.y, b) * 6.28, y = hgt * (0.45 + 0.13 * b);
+          limb.position.set(Math.cos(a) * len * 0.4, y, Math.sin(a) * len * 0.4);
+          limb.rotation.set(Math.sin(a) * 1.0, 0, -Math.cos(a) * 1.0); grp.add(limb);
+        }
+      }
+      grp.traverse((m) => { if (m.isMesh) m.castShadow = m.receiveShadow = true; });
+      this.world.add(grp);
+    }
+  }
+
   _buildTargets(hello) {
     // Hotspots: a scorched patch; once found, a glow, embers and smoke, a ring, a beacon and a label.
     this.targets = [];
@@ -620,7 +755,7 @@ export class SwarmView {
     }
   }
 
-  _label(text) {
+  _label(text, dot = "#ff8a3d") {
     // A label that stays the same size on screen however far away it is.
     const cv = document.createElement("canvas");
     cv.width = 640; cv.height = 112;
@@ -631,6 +766,7 @@ export class SwarmView {
     sprite.center.set(0.5, 0);
     sprite.renderOrder = 10;
     sprite.userData.setText = (s) => {
+      sprite.userData.text = s;
       const g = cv.getContext("2d");
       g.clearRect(0, 0, cv.width, cv.height);
       g.font = "600 40px Inter, system-ui, sans-serif";
@@ -639,7 +775,7 @@ export class SwarmView {
       g.fillStyle = "rgba(16,20,24,.82)";
       g.beginPath(); g.roundRect(x0, 8, w, 72, 16); g.fill();
       g.beginPath(); g.moveTo(cv.width / 2 - 12, 80); g.lineTo(cv.width / 2 + 12, 80); g.lineTo(cv.width / 2, 100); g.fill();
-      g.fillStyle = "#ff8a3d"; g.beginPath(); g.arc(x0 + 30, 44, 8, 0, Math.PI * 2); g.fill();
+      g.fillStyle = dot; g.beginPath(); g.arc(x0 + 30, 44, 8, 0, Math.PI * 2); g.fill();
       g.fillStyle = "#fff4e6"; g.textAlign = "left"; g.textBaseline = "middle";
       g.fillText(s, x0 + 48, 46);
       tex.needsUpdate = true;
@@ -692,6 +828,7 @@ export class SwarmView {
     if (!o) return;
     const g = o.cv.getContext("2d");
     g.clearRect(0, 0, o.cv.width, o.cv.height);
+    if (this.wildfire) this.wildfire.drawUnder(g);
     // Ground the cameras have seen: a light teal wash.
     g.globalAlpha = 0.2; g.drawImage(o.cover, 0, 0); g.globalAlpha = 1;
     if (o.area) {
@@ -705,6 +842,7 @@ export class SwarmView {
         g.beginPath(); g.moveTo(u + su * L, v); g.lineTo(u, v); g.lineTo(u, v + sv * L); g.stroke();
       }
     }
+    if (this.wildfire) this.wildfire.drawOver(g);
     o.tex.needsUpdate = true;
   }
 
@@ -717,46 +855,67 @@ export class SwarmView {
   }
 
   _buildDrones(hello) {
+    if (this.droneGroup) {   // rebuilt when the CAD model arrives mid-run
+      this.world.remove(this.droneGroup);
+      this.droneGroup.traverse((o) => { if (!o.userData.shared) { o.geometry?.dispose(); o.material?.dispose(); } });
+    }
     const n = this.n = hello.n;
     const R = hello.body_radius_m * DRONE_SCALE;
-    // Proportions in units of the body radius.
-    const arm = 1.3 * R, rotorR = 0.55 * R;
-    const d = arm / Math.SQRT2;
-    this.motorOffsets = [[d, d], [d, -d], [-d, d], [-d, -d]];
-    const frameParts = [new THREE.BoxGeometry(0.95 * R, 0.32 * R, 0.95 * R)];
-    for (const [sx, sz] of [[1, 1], [1, -1]]) {
-      const a = new THREE.BoxGeometry(2 * arm, 0.1 * R, 0.13 * R);
-      a.rotateY(Math.atan2(sz, sx)); frameParts.push(a);
+    const model = this.model;
+    const inst = (geo, mat, count) => {
+      const im = new THREE.InstancedMesh(geo, mat, count);
+      im.instanceMatrix.setUsage(THREE.DynamicDrawUsage); im.frustumCulled = false;
+      return im;
+    };
+    let bodies, blades = [], top;
+    let rotorR;
+    if (model) {
+      // The scout's CAD model (hardware/), drawn DRONE_SCALE times its real size like everything here.
+      bodies = model.body.map((b) => { const im = inst(b.geometry, b.material, n); im.userData.shared = true; return im; });
+      blades = model.props.map((p) => { const im = inst(p.geometry, p.material, n); im.userData.shared = true; return { im, hub: p.hub, spin: p.spin }; });
+      this.motorOffsets = model.props.map((p) => [p.hub.x, p.hub.z]);
+      rotorR = model.bladeDiameter / 2;
+      this.rotorY = model.props[0].hub.y + 0.03;
+      top = 0.55 * R;
+    } else {
+      // Until the model has loaded (or if it cannot be): a simple quadcopter in units of the body radius.
+      const arm = 1.3 * R;
+      rotorR = 0.55 * R;
+      const d = arm / Math.SQRT2;
+      this.motorOffsets = [[d, d], [d, -d], [-d, d], [-d, -d]];
+      this.rotorY = 0.22 * R;
+      top = 0.32 * R;
+      const frameParts = [new THREE.BoxGeometry(0.95 * R, 0.32 * R, 0.95 * R)];
+      for (const [sx, sz] of [[1, 1], [1, -1]]) {
+        const a = new THREE.BoxGeometry(2 * arm, 0.1 * R, 0.13 * R);
+        a.rotateY(Math.atan2(sz, sx)); frameParts.push(a);
+      }
+      for (const [x, z] of this.motorOffsets) frameParts.push(new THREE.CylinderGeometry(0.13 * R, 0.13 * R, 0.24 * R, 10).translate(x, 0.08 * R, z));
+      if (hello.sensor) frameParts.push(new THREE.SphereGeometry(0.2 * R, 10, 8).translate(0, -0.28 * R, 0));   // thermal camera
+      for (const [x, z] of this.motorOffsets) frameParts.push(new THREE.BoxGeometry(0.06 * R, 0.4 * R, 0.06 * R).translate(x * 0.55, -0.3 * R, z * 0.55));   // legs
+      bodies = [inst(mergeGeometries(frameParts), new THREE.MeshStandardMaterial({ color: 0x2b3036, roughness: 0.55, metalness: 0.35 }), n),
+        inst(new THREE.SphereGeometry(0.42 * R, 16, 8, 0, Math.PI * 2, 0, Math.PI / 2).translate(0, 0.14 * R, 0),
+          new THREE.MeshStandardMaterial({ color: 0xd8dde2, roughness: 0.3, metalness: 0.1 }), n)];
     }
-    for (const [x, z] of this.motorOffsets) frameParts.push(new THREE.CylinderGeometry(0.13 * R, 0.13 * R, 0.24 * R, 10).translate(x, 0.08 * R, z));
-    if (hello.sensor) frameParts.push(new THREE.SphereGeometry(0.2 * R, 10, 8).translate(0, -0.28 * R, 0));   // thermal camera
-    for (const [x, z] of this.motorOffsets) frameParts.push(new THREE.BoxGeometry(0.06 * R, 0.4 * R, 0.06 * R).translate(x * 0.55, -0.3 * R, z * 0.55));   // legs
-    const frame = new THREE.InstancedMesh(mergeGeometries(frameParts),
-      new THREE.MeshStandardMaterial({ color: 0x2b3036, roughness: 0.55, metalness: 0.35 }), n);
-    const shell = new THREE.InstancedMesh(new THREE.SphereGeometry(0.42 * R, 16, 8, 0, Math.PI * 2, 0, Math.PI / 2).translate(0, 0.14 * R, 0),
-      new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.3, metalness: 0.1 }), n);
-    const leds = new THREE.InstancedMesh(new THREE.SphereGeometry(0.12 * R, 8, 6),
-      new THREE.MeshBasicMaterial({ color: 0xffffff, toneMapped: false }), n);
-    const rotorGeo = new THREE.CircleGeometry(rotorR, 24); rotorGeo.rotateX(-Math.PI / 2); rotorGeo.translate(0, 0.22 * R, 0);
-    const rotors = new THREE.InstancedMesh(rotorGeo, new THREE.MeshBasicMaterial({ map: this.rotorTex, transparent: true,
-      depthWrite: false, side: THREE.DoubleSide }), n * 4);
-    const slots = new THREE.InstancedMesh(new THREE.TorusGeometry(0.9, 0.07, 6, 28),
-      new THREE.MeshBasicMaterial({ color: 0xffb347, transparent: true, opacity: 0.75 }), n);
+    // A status light on top of each drone, in the status colour (flying, failed, left for battery).
+    const leds = inst(new THREE.SphereGeometry(0.12 * R, 8, 6), new THREE.MeshBasicMaterial({ color: 0xffffff, toneMapped: false }), n);
+    // Spinning rotors are drawn as blurred discs; blades show only when a rotor has stopped.
+    const rotorGeo = new THREE.CircleGeometry(rotorR, 24); rotorGeo.rotateX(-Math.PI / 2);
+    const rotors = inst(rotorGeo, new THREE.MeshBasicMaterial({ map: this.rotorTex, transparent: true, depthWrite: false, side: THREE.DoubleSide }), n * 4);
+    const slots = inst(new THREE.TorusGeometry(0.9, 0.07, 6, 28), new THREE.MeshBasicMaterial({ color: 0xffb347, transparent: true, opacity: 0.75 }), n);
     // Camera footprints: a thin ring and a faint fill where each thermal camera is looking.
-    const fp = new THREE.InstancedMesh(new THREE.CircleGeometry(1, 48),
+    const fp = inst(new THREE.CircleGeometry(1, 48),
       new THREE.MeshBasicMaterial({ color: 0x8ff0ff, transparent: true, opacity: 0.07, depthWrite: false, polygonOffset: true, polygonOffsetFactor: -3 }), n);
-    const fpRing = new THREE.InstancedMesh(new THREE.RingGeometry(0.965, 1, 64),
+    const fpRing = inst(new THREE.RingGeometry(0.965, 1, 64),
       new THREE.MeshBasicMaterial({ color: 0xb8f7ff, transparent: true, opacity: 0.55, depthWrite: false, polygonOffset: true, polygonOffsetFactor: -3 }), n);
     fp.visible = fpRing.visible = !!hello.sensor;
     // Hidden until the first frame places them; until then every instance would sit at the origin.
     const group = this.droneGroup = new THREE.Group();
     group.visible = false;
     this.world.add(group);
-    for (const im of [frame, shell, leds, rotors, slots, fp, fpRing]) {
-      im.instanceMatrix.setUsage(THREE.DynamicDrawUsage); im.frustumCulled = false; group.add(im);
-    }
-    frame.castShadow = shell.castShadow = true;
-    for (let i = 0; i < n; i++) { shell.setColorAt(i, STATUS_COLOR[0]); leds.setColorAt(i, STATUS_COLOR[0]); }
+    for (const im of [...bodies, ...blades.map((b) => b.im), leds, rotors, slots, fp, fpRing]) group.add(im);
+    for (const im of bodies) im.castShadow = true;
+    for (let i = 0; i < n; i++) leds.setColorAt(i, STATUS_COLOR[0]);
     // Far-away markers: a dot per drone at a fixed size on screen, faded out once the drone itself is big enough to see.
     const mg = new THREE.BufferGeometry();
     mg.setAttribute("position", new THREE.BufferAttribute(new Float32Array(n * 3), 3).setUsage(THREE.DynamicDrawUsage));
@@ -773,7 +932,7 @@ export class SwarmView {
     markers.frustumCulled = false;
     markers.renderOrder = 9;
     group.add(markers);
-    this.drones = { frame, shell, leds, rotors, slots, fp, fpRing, markers, R };
+    this.drones = { bodies, blades, leds, rotors, slots, fp, fpRing, markers, R, top };
     this.yaw = new Float32Array(n);
     this.camFootR = hello.sensor ? Math.tan((hello.sensor.fov_deg * Math.PI) / 360) : 0;
     this.resize();
@@ -797,6 +956,7 @@ export class SwarmView {
       const tg = this.targets[i];
       if (tg && hit && !tg.found) { tg.found = true; tg.label.visible = true; tg.foundAt = this.vt; }
     });
+    if (this.wildfire) this.wildfire.frame(f);
     this._paintCoverage(f);
   }
 
@@ -805,6 +965,7 @@ export class SwarmView {
       const tg = this.targets[e.target];
       if (tg) tg.label.userData.setText(`Hotspot ${e.target + 1} found at ${Number(e.t).toFixed(1)} s`);
     }
+    if (this.wildfire) this.wildfire.event(e);
   }
 
   _paintCoverage(f) {
@@ -847,6 +1008,7 @@ export class SwarmView {
     this.vt += dtView;
     if (this.hello && this.cur) this._drawDrones(simNow);
     this._drawFire(dtSim, this.vt);
+    if (this.wildfire) this.wildfire.step(dtSim);
     this.smoke.update(dtSim, this.wind);
     this.flames.update(dtSim, this.wind);
     if (this.overlayDirty && (this.film || this.vt - this.overlayDrawnAt > 0.25)) {
@@ -869,7 +1031,7 @@ export class SwarmView {
   }
 
   _drawDrones(simNow) {
-    const { frame, shell, leds, rotors, slots, fp, fpRing, markers, R } = this.drones;
+    const { bodies, blades, leds, rotors, slots, fp, fpRing, markers, R, top } = this.drones;
     const f = this.lastFrame, n = this.n, t = this.vt;
     let a = 1;
     if (this.prev && simNow != null) a = Math.max(0, Math.min(1, (simNow - this.prev.t) / Math.max(1e-3, this.cur.t - this.prev.t)));
@@ -894,16 +1056,21 @@ export class SwarmView {
       m.rotateZ(-lean);
       m.scale.setScalar(1);
       m.updateMatrix();
-      frame.setMatrixAt(i, m.matrix); shell.setMatrixAt(i, m.matrix);
-      part.position.set(0, 0.32 * R, 0); part.rotation.set(0, 0, 0); part.updateMatrix();
+      for (const im of bodies) im.setMatrixAt(i, m.matrix);
+      part.position.set(0, top, 0); part.rotation.set(0, 0, 0); part.scale.setScalar(1); part.updateMatrix();
       leds.setMatrixAt(i, m.matrix.clone().multiply(part.matrix));
       const col = STATUS_COLOR[st] || STATUS_COLOR[0];
-      shell.setColorAt(i, col); leds.setColorAt(i, col);
-      const spin = st === 0 || st === 3 ? t * 55 + i : 0;
+      leds.setColorAt(i, col);
+      const turning = st === 0 || st === 3, spin = turning ? t * 55 + i : 0;
       this.motorOffsets.forEach(([ox, oz], j) => {
-        part.position.set(ox, 0, oz); part.rotation.set(0, (j % 2 ? 1 : -1) * spin, 0); part.updateMatrix();
+        part.position.set(ox, this.rotorY, oz); part.rotation.set(0, (j % 2 ? 1 : -1) * spin, 0);
+        part.scale.setScalar(turning ? 1 : 1e-4); part.updateMatrix();
         rotors.setMatrixAt(i * 4 + j, m.matrix.clone().multiply(part.matrix));
       });
+      for (const b of blades) {
+        part.position.copy(b.hub); part.rotation.set(0, b.spin * (0.7 * i), 0); part.scale.setScalar(turning ? 1e-4 : 1); part.updateMatrix();
+        b.im.setMatrixAt(i, m.matrix.clone().multiply(part.matrix));
+      }
       mPos.setXYZ(i, x, z + 0.3 * R, -y);
       mCol.setXYZ(i, col.r, col.g, col.b);
       const dist = this.camera.position.distanceTo(m.position);
@@ -920,8 +1087,8 @@ export class SwarmView {
         c.add(new THREE.Vector3(x, z, -y)); k++; pts.push([x, z, -y]);
       } else { m.position.set(0, -1e4, 0); m.scale.setScalar(1e-4); m.updateMatrix(); fp.setMatrixAt(i, m.matrix); fpRing.setMatrixAt(i, m.matrix); }
     }
-    for (const im of [frame, shell, leds, rotors, slots, fp, fpRing]) im.instanceMatrix.needsUpdate = true;
-    shell.instanceColor.needsUpdate = true; leds.instanceColor.needsUpdate = true;
+    for (const im of [...bodies, ...blades.map((b) => b.im), leds, rotors, slots, fp, fpRing]) im.instanceMatrix.needsUpdate = true;
+    leds.instanceColor.needsUpdate = true;
     mPos.needsUpdate = mCol.needsUpdate = mAlpha.needsUpdate = true;
     this.droneGroup.visible = true;
     if (k) {
@@ -1010,6 +1177,9 @@ export class SwarmView {
       want = new THREE.Vector3(f.x, f.y + Math.max(150, e * 2.6 + 70), f.z + 1);
     }
     if (want) this.camera.position.lerp(want, this.film ? Math.min(1, dt * 2.5) : k);
+    // Never under the ground (on a run with hills the camera can swing behind a slope).
+    const cp = this.camera.position, floor = (this.sceneryHeight ? this.sceneryHeight(cp.x, -cp.z) : 0) + 12;
+    if (cp.y < floor) cp.y = floor;
     this.aim = this.aim == null ? aim : this.aim + (aim - this.aim) * k;
     this.controls.target.set(f.x, f.y + this.aim, f.z);
   }

@@ -37,6 +37,7 @@ from ..sim.engine import STATUS_NAMES, Simulation
 from ..supervisor.base import Decision, Supervisor
 
 STATIC = Path(__file__).with_name("static")
+mimetypes.add_type("model/gltf-binary", ".glb")   # Python's own table lacks it; /etc/mime.types is not everywhere
 FRAME_HZ = 10.0
 MAX_RUNS = 4
 

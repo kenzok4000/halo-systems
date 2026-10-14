@@ -21,4 +21,4 @@ halo = "halo_systems.cli:main"
 where = ["src"]
 
 [tool.setuptools.package-data]
-halo_systems = ["dashboard/static/*", "dashboard/static/vendor/*", "ai/*.json"]
+halo_systems = ["dashboard/static/*", "dashboard/static/vendor/*", "dashboard/static/models/*", "ai/*.json"]

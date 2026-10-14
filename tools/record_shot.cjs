@@ -17,7 +17,9 @@
 // machine without a GPU: the page (opened with ?film=1) buffers the run as it streams, then steps through it
 // one video frame at a time, and each frame is a screenshot of the whole page. --speed is then the playback
 // speed (simulated seconds per video second, any value), --inject times are simulated seconds, and --out is
-// an .mp4 made with ffmpeg. The run itself is the same live run of the real simulator.
+// an .mp4 made with ffmpeg. The run itself is the same live run of the real simulator. In the wildfire
+// valley, --approve 0@40,1@44 approves those evacuation alerts at those simulated seconds, through the same
+// action as the page's Approve button (alert 0 is the first one drafted).
 // Needs Playwright (`npm install playwright && npx playwright install chromium`, or a global install
 // with NODE_PATH set).
 const { chromium } = require("playwright");
@@ -117,19 +119,23 @@ async function film() {
     if (args.n) await page.fill("#drones", String(args.n));
     await page.click("#start");
   }
-  await page.waitForFunction(() => window.haloFilm.status() !== null, null, { timeout: 120000 });   // the run exists
+  // The run exists, and the drone model has loaded (or failed, and simple drones are drawn).
+  await page.waitForFunction(() => { const s = window.haloFilm.status(); return s !== null && s.model !== "loading"; }, null, { timeout: 120000 });
   await page.click('#speed button[data-speed="5"]');   // buffer as fast as the server's pacing allows
   if (args.view) await page.click(`#view-${args.view === "follow" ? "reset" : args.view}`);
   // The page buffers at 5x, but the video plays at --speed: show that speed on the buttons (display only).
   await page.evaluate((sp) => document.querySelectorAll("#speed button").forEach((b) => b.classList.toggle("active", Number(b.dataset.speed) === sp)), playback);
   const need = seconds * playback;
-  const injects = (args.inject || "").split(",").filter(Boolean).map((s) => s.split("@")).map(([kind, at]) => ({ kind, at: Number(at || 0) }))
-    .sort((a, b) => a.at - b.at);
+  const injects = [
+    ...(args.inject || "").split(",").filter(Boolean).map((s) => s.split("@")).map(([kind, at]) => ({ kind, at: Number(at || 0) })),
+    ...(args.approve || "").split(",").filter(Boolean).map((s) => s.split("@")).map(([id, at]) => ({ kind: "approve", id: Number(id), at: Number(at || 0) })),
+  ].sort((a, b) => a.at - b.at);
   const buffered = () => page.evaluate(() => window.haloFilm.status());
   for (const inj of injects) {
     await page.waitForFunction((t) => { const s = window.haloFilm.status(); return s.ended || s.buffered_s >= t; }, inj.at, { polling: 50, timeout: 0 });
     if ((await buffered()).ended) { console.warn(`run ended before ${inj.kind}@${inj.at}; skipped`); break; }
-    await page.click(`button[data-inject="${inj.kind}"]`);
+    if (inj.kind === "approve") await page.evaluate((id) => window.haloApprove(id), inj.id);
+    else await page.click(`button[data-inject="${inj.kind}"]`);
   }
   // Playback starts at the first frame the page received, so the shot is `seconds` long from there.
   await page.waitForFunction((t) => { const s = window.haloFilm.status(); return s.ended || (s.first_s !== null && s.buffered_s >= s.first_s + t + 0.5); }, need, { polling: 500, timeout: 0 });
