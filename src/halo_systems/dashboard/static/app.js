@@ -117,6 +117,9 @@ function onValleyEvent(e) {
       logItem("station", `<span class="chip station">station</span> ${t} Fire ${e.fire + 1} ${how}`);
       return true;
     }
+    case "fire_merged":   // two finds on one patch of burning ground are one fire
+      logItem("station", `<span class="chip station">station</span> ${t} Fire ${e.fire + 1} is the same fire as Fire ${e.into + 1}; merged`);
+      return true;
     case "forecast": {
       const lines = (e.brief || []).map((b) => `<div class="why">${esc(b.text)}</div>`).join("");
       logItem("station", `<span class="chip station">station</span> ${t} spread forecast ${e.forecast + 1} for the fire crews${lines}`);

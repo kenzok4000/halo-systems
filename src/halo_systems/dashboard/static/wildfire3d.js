@@ -176,6 +176,13 @@ export class WildfireLayer {
       if (label.userData.text !== text) { label.userData.setText(text); changed = true; }
       label.position.set(l.x, this.view.groundAt(l.x, l.y) + 16, -l.y);
     }
+    // A located fire folded into another (both on one patch of burning ground) drops out of the list.
+    const ids = new Set(list.map((l) => l.id));
+    for (const [id, label] of this.labels) {
+      if (ids.has(id)) continue;
+      this.group.remove(label); label.material.map?.dispose(); label.material.dispose();
+      this.labels.delete(id); changed = true;
+    }
     this.located = list;
     if (changed) this.view.overlayDirty = true;
   }
