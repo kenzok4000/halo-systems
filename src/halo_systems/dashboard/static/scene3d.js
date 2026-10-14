@@ -49,6 +49,26 @@ float gNoise(vec2 p) { vec2 i = floor(p), f = fract(p), u = f * f * (3.0 - 2.0 *
 // Cutaway for tree crowns near the swarm: an instanced crown within `radius` of the swarm (horizontally)
 // shrinks smoothly into its base, so drones under the canopy stay visible; trunks, the collision
 // obstacles, are always drawn. Shadows keep the full crowns.
+// The lowest value within r cells of each cell of an nx by ny grid (a square window, done row then column).
+function minFilter(z, nx, ny, r) {
+  const a = new Float32Array(nx * ny), b = new Float32Array(nx * ny);
+  for (let j = 0; j < ny; j++) {
+    for (let i = 0; i < nx; i++) {
+      let m = Infinity;
+      for (let k = Math.max(0, i - r); k <= Math.min(nx - 1, i + r); k++) m = Math.min(m, z[j * nx + k]);
+      a[j * nx + i] = m;
+    }
+  }
+  for (let j = 0; j < ny; j++) {
+    for (let i = 0; i < nx; i++) {
+      let m = Infinity;
+      for (let k = Math.max(0, j - r); k <= Math.min(ny - 1, j + r); k++) m = Math.min(m, a[k * nx + i]);
+      b[j * nx + i] = m;
+    }
+  }
+  return b;
+}
+
 function addCrownCutaway(material, uniforms) {
   material.onBeforeCompile = (shader) => {
     shader.uniforms.uFocus = uniforms.focus;
@@ -340,11 +360,27 @@ export class SwarmView {
     const height = (x, y) => {
       if (!tbox) return rolling(x, y);
       const d = outside(tbox, x, y);
-      if (d === 0) return this.groundAt(x, y) - 3;   // under the run's terrain, which draws itself
+      if (d === 0) return this.groundAt(x, y);
       // Past the run's terrain its edge carries on, sinking into the hills and mountains beyond.
       return this.groundAt(x, y) * (1 - smooth(0, 900, d)) + rolling(x, y) * smooth(0, 320, d);
     };
-    this.sceneryHeight = height;
+    this.sceneryHeight = height;   // the ground's height everywhere (the camera keeps above it)
+    // Under the run's terrain, which draws itself, the scenery's ground stays below the lowest terrain within
+    // 30 m, so its coarser triangles never cut up through a gully; at the terrain's edge it meets the edge.
+    let meshHeight = height;
+    if (t) {
+      const low = minFilter(t.z, t.nx, t.ny, 6);
+      const lowAt = (x, y) => {
+        const i = Math.max(0, Math.min(t.nx - 1.001, (x - t.origin[0]) / t.cell_m)), j = Math.max(0, Math.min(t.ny - 1.001, (y - t.origin[1]) / t.cell_m));
+        const i0 = Math.floor(i), j0 = Math.floor(j), a = i - i0, b = j - j0, z = (ii, jj) => low[jj * t.nx + ii];
+        return (z(i0, j0) * (1 - a) + z(i0 + 1, j0) * a) * (1 - b) + (z(i0, j0 + 1) * (1 - a) + z(i0 + 1, j0 + 1) * a) * b;
+      };
+      meshHeight = (x, y) => {
+        if (outside(tbox, x, y) > 0) return height(x, y);
+        const e = Math.min(x - tbox[0], tbox[2] - x, y - tbox[1], tbox[3] - y), w = smooth(0, 40, e);
+        return (this.groundAt(x, y) - 3) * (1 - w) + (lowAt(x, y) - 3) * w;
+      };
+    }
 
     // Ground mesh, 8 km across.
     const SIZE = 8000, SEG = 320;
@@ -356,7 +392,7 @@ export class SwarmView {
       rock = new THREE.Color(0x8c857c), pale = new THREE.Color(0xb4aea4), c = new THREE.Color();
     for (let k = 0; k < pos.count; k++) {
       const x = pos.getX(k) + cx, y = -pos.getZ(k) + cy;
-      const h = height(x, y);
+      const h = meshHeight(x, y);
       pos.setXYZ(k, x, h, -y);
       const n1 = fbm(x / 160, y / 160), n2 = fbm(x / 55 + 40, y / 55 + 9), n3 = fbm(x / 300 + 11, y / 300 + 4);
       c.copy(dry).lerp(straw, smooth(0.35, 0.75, n2)).lerp(scrub, smooth(0.42, 0.78, n1) * 0.65).lerp(green, smooth(0.62, 0.88, n1) * 0.4)
@@ -581,6 +617,7 @@ export class SwarmView {
     this.world = new THREE.Group();
     this.scene.add(this.world);
     this.smoke.clear(); this.flames.clear();
+    this.footprints = null; this.ride = null;
     // Terrain (heights[iy * nx + ix] on a grid from (x0, y0)) and land cover, when the run has them.
     const wt = hello.world.terrain;
     this.terrain = wt ? { origin: [wt.x0, wt.y0], cell_m: wt.cell_m, nx: wt.nx, ny: wt.ny, z: wt.heights } : null;
@@ -805,7 +842,8 @@ export class SwarmView {
     const tex = new THREE.CanvasTexture(cv);
     tex.colorSpace = THREE.SRGBColorSpace;
     tex.anisotropy = 4;
-    const seg = this.terrain ? [Math.min(200, this.terrain.nx * 2), Math.min(200, this.terrain.ny * 2)] : [1, 1];
+    // On terrain, one overlay vertex per terrain node, so it lies exactly 0.25 m above every terrain triangle.
+    const seg = this.terrain ? [this.terrain.nx - 1, this.terrain.ny - 1] : [1, 1];
     const geo = new THREE.PlaneGeometry(w, h, seg[0], seg[1]);
     geo.rotateX(-Math.PI / 2);
     const pos = geo.attributes.position;
@@ -831,6 +869,16 @@ export class SwarmView {
     if (this.wildfire) this.wildfire.drawUnder(g);
     // Ground the cameras have seen: a light teal wash.
     g.globalAlpha = 0.2; g.drawImage(o.cover, 0, 0); g.globalAlpha = 1;
+    if (this.terrain && this.hello.sensor && this.footprints) {
+      // Where each thermal camera is looking now: a faint fill and a thin ring, draped over the slopes.
+      g.lineWidth = Math.max(1.2, 0.35 * o.px);
+      for (const [x, y, r] of this.footprints) {
+        const [u, v] = this._toPx(x, y);
+        g.beginPath(); g.arc(u, v, r * o.px, 0, Math.PI * 2);
+        g.fillStyle = "rgba(143,240,255,.08)"; g.fill();
+        g.strokeStyle = "rgba(184,247,255,.6)"; g.stroke();
+      }
+    }
     if (o.area) {
       const [a, b] = this._toPx(o.area[0], o.area[3]), [c, d] = this._toPx(o.area[2], o.area[1]);
       g.strokeStyle = "rgba(255,196,96,.9)"; g.lineWidth = Math.max(1.5, 0.45 * o.px);
@@ -908,7 +956,8 @@ export class SwarmView {
       new THREE.MeshBasicMaterial({ color: 0x8ff0ff, transparent: true, opacity: 0.07, depthWrite: false, polygonOffset: true, polygonOffsetFactor: -3 }), n);
     const fpRing = inst(new THREE.RingGeometry(0.965, 1, 64),
       new THREE.MeshBasicMaterial({ color: 0xb8f7ff, transparent: true, opacity: 0.55, depthWrite: false, polygonOffset: true, polygonOffsetFactor: -3 }), n);
-    fp.visible = fpRing.visible = !!hello.sensor;
+    // On a run with terrain the footprints are painted on the draped ground overlay instead, so they follow the slopes.
+    fp.visible = fpRing.visible = !!hello.sensor && !this.terrain;
     // Hidden until the first frame places them; until then every instance would sit at the origin.
     const group = this.droneGroup = new THREE.Group();
     group.visible = false;
@@ -1041,10 +1090,11 @@ export class SwarmView {
     // Pixels per metre at distance 1, to decide when a drone is big enough on screen to drop its marker.
     const pxPerM = this.canvas.clientHeight / (2 * Math.tan((this.camera.fov * Math.PI) / 360));
     let k = 0, extent = 0;
-    const pts = [];
+    const pts = [], feet = this.footprints = [], at = this.dronePos = [];
     for (let i = 0; i < n; i++) {
       const q1 = this.cur.p[i], q0 = this.prev ? this.prev.p[i] : q1;
       const x = q0[0] + (q1[0] - q0[0]) * a, y = q0[1] + (q1[1] - q0[1]) * a, z = q0[2] + (q1[2] - q0[2]) * a;
+      at.push([x, z, -y]);
       const v = this.vel ? this.vel[i] : [0, 0, 0];
       const sp = Math.hypot(v[0], v[1]);
       if (sp > 0.6) this.yaw[i] = Math.atan2(v[1], v[0]);
@@ -1084,10 +1134,12 @@ export class SwarmView {
         const g = this.groundAt(x, y), r = Math.max(0.01, (z - g) * this.camFootR);
         m.position.set(x, g + 0.3, -y); m.rotation.set(-Math.PI / 2, 0, 0); m.scale.set(r, r, 1); m.updateMatrix();
         fp.setMatrixAt(i, m.matrix); fpRing.setMatrixAt(i, m.matrix);
+        feet.push([x, y, r]);
         c.add(new THREE.Vector3(x, z, -y)); k++; pts.push([x, z, -y]);
       } else { m.position.set(0, -1e4, 0); m.scale.setScalar(1e-4); m.updateMatrix(); fp.setMatrixAt(i, m.matrix); fpRing.setMatrixAt(i, m.matrix); }
     }
     for (const im of [...bodies, ...blades.map((b) => b.im), leds, rotors, slots, fp, fpRing]) im.instanceMatrix.needsUpdate = true;
+    if (this.terrain && this.hello.sensor) this.overlayDirty = true;   // the footprints move with the drones
     leds.instanceColor.needsUpdate = true;
     mPos.needsUpdate = mCol.needsUpdate = mAlpha.needsUpdate = true;
     this.droneGroup.visible = true;
@@ -1146,6 +1198,7 @@ export class SwarmView {
   _camera(dt) {
     if (!this.hello) return;
     const k = 1 - Math.exp(-dt * 3);
+    if (this.mode === "ride" && !this.userMoved && this._rideCamera(dt)) return;
     if (this.swarmCentre) {
       const delta = this.swarmCentre.clone().sub(this.focus).multiplyScalar(k);
       this.focus.add(delta);
@@ -1182,5 +1235,37 @@ export class SwarmView {
     if (cp.y < floor) cp.y = floor;
     this.aim = this.aim == null ? aim : this.aim + (aim - this.aim) * k;
     this.controls.target.set(f.x, f.y + this.aim, f.z);
+  }
+  // Ride along: close behind one drone near the middle of the swarm, looking ahead and down at the ground its
+  // camera sweeps. The drone is kept until it stops flying; the view turns with it, smoothly, at each pass's end.
+  _rideCamera(dt) {
+    const f = this.lastFrame, at = this.dronePos;
+    if (!f || !at || !at.length || !this.swarmCentre) return false;
+    let r = this.ride;
+    if (!r || f.s[r.i] !== 0) {
+      let best = -1, bd = Infinity;
+      at.forEach((p, i) => {
+        const d = Math.hypot(p[0] - this.swarmCentre.x, p[2] - this.swarmCentre.z);
+        if (f.s[i] === 0 && d < bd) { bd = d; best = i; }
+      });
+      if (best < 0) return false;
+      r = this.ride = { i: best, yaw: r ? r.yaw : this.yaw[best], target: null };
+    }
+    const p = new THREE.Vector3(...at[r.i]);
+    let dy = this.yaw[r.i] - r.yaw;
+    dy = Math.atan2(Math.sin(dy), Math.cos(dy));
+    r.yaw += dy * (1 - Math.exp(-dt * 1.2));
+    const fwd = new THREE.Vector3(Math.cos(r.yaw), 0, -Math.sin(r.yaw));
+    const want = p.clone().addScaledVector(fwd, -11).add(new THREE.Vector3(0, 4, 0));
+    const look = p.clone().addScaledVector(fwd, 32).add(new THREE.Vector3(0, -11, 0));
+    const k = this.film ? Math.min(1, dt * 4) : 1 - Math.exp(-dt * 4);
+    if (!r.target) { r.target = look.clone(); this.camera.position.copy(want); }
+    this.camera.position.lerp(want, k);
+    r.target.lerp(look, k);
+    const cp = this.camera.position, floor = (this.sceneryHeight ? this.sceneryHeight(cp.x, -cp.z) : 0) + 12;
+    if (cp.y < floor) cp.y = floor;
+    this.focus.copy(p);
+    this.controls.target.copy(r.target);
+    return true;
   }
 }

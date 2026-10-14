@@ -129,6 +129,12 @@ export class WildfireLayer {
   frame(f) {
     this.t = f.t;
     if (f.fires_state) f.fires_state.forEach((s) => { this.state[s.id] = s; });
+    if (!this.warmed) {
+      // A fire that was already burning when the run began already has its plume: grow it before the first frame.
+      this.warmed = true;
+      const rise = this.smokeModel.rise_mps, top = Math.max(0, ...this.state.map((s) => s.smoke_top_m || 0));
+      for (let s = 0; s < (1.3 * top) / rise; s += 0.5) { this._smoke(0.5); this.view.smoke.update(0.5, this.view.wind); }
+    }
     if (f.phones_alerted) this._colourPhones(f.phones_alerted);
     if (f.alerts) for (const a of f.alerts) {
       const known = this.alerts.get(a.id);
@@ -264,9 +270,14 @@ export class WildfireLayer {
   // -- particles ----------------------------------------------------------------------------------
   step(dt) {
     if (!dt) return;
-    const v = this.view, t = this.t, wind = v.wind;
+    this._flames(dt);
+    this._smoke(dt);
+  }
+
+  _flames(dt) {
+    const v = this.view, t = this.t;
     const chance = (rate) => { const e = rate * dt; return Math.floor(e) + (Math.random() < e - Math.floor(e) ? 1 : 0); };
-    const ember = new THREE.Color(), smokeCol = new THREE.Color();
+    const ember = new THREE.Color();
     // Flames on the cells the fire reached in the last few minutes.
     const { nx, cell_m: c, x0, y0, arrival_s: a } = this.truth;
     for (let i = this.burnNext - 1; i >= 0; i--) {
@@ -281,17 +292,29 @@ export class WildfireLayer {
           0.5 + 0.6 * Math.random(), 1.6 + 2.2 * s, -0.6, 0.9, ember);
       }
     }
-    // Each fire: embers where it smoulders, and a plume that rises to its simulated smoke top.
-    const rise = this.smokeModel.rise_mps;
+    // Embers where a fire smoulders.
     this.fires.forEach((fire, i) => {
       const st = this.state[i];
-      if (!st || !st.smoke_top_m) return;
+      if (!st || !st.smoke_top_m || st.active) return;
       const g = v.groundAt(fire.x, fire.y);
-      if (!st.active) for (let q = chance(6); q > 0; q--) {
+      for (let q = chance(6); q > 0; q--) {
         ember.setHSL(0.03 + 0.05 * Math.random(), 1, 0.45 + 0.15 * Math.random());
         v.flames.emit(fire.x + (Math.random() - 0.5) * 1.6, g + 0.2, -fire.y + (Math.random() - 0.5) * 1.6,
           0, 0.4 + 0.6 * Math.random(), 0, 0.5 + 0.5 * Math.random(), 0.9, -0.4, 0.8, ember);
       }
+    });
+  }
+
+  _smoke(dt) {
+    // Each fire's plume rises to its simulated smoke top. When the plumes would need more puffs than the
+    // pool holds, fewer and bigger puffs are emitted, so none is cut off before the top.
+    const v = this.view, wind = v.wind, rise = this.smokeModel.rise_mps;
+    const smokeCol = new THREE.Color();
+    const plumes = [];
+    this.fires.forEach((fire, i) => {
+      const st = this.state[i];
+      if (!st || !st.smoke_top_m) return;
+      const g = v.groundAt(fire.x, fire.y);
       let sx = fire.x, sy = fire.y, sz = g + 1;
       if (fire.shelter === "overhang" && this.shelves.length) {
         const sh = this.shelves.reduce((b, s) => (Math.hypot(s.x - fire.x, s.y - fire.y) < Math.hypot(b.x - fire.x, b.y - fire.y) ? s : b));
@@ -302,13 +325,19 @@ export class WildfireLayer {
       const top = st.smoke_top_m, life = 1.1 * Math.max(3, (top - (sz - g)) / rise);
       const vy0 = (Math.max(1, top - (sz - g)) * 0.08) / (1 - Math.exp(-0.08 * life));
       const big = Math.sqrt(st.area_m2);
-      for (let q = chance(4 + 0.9 * big); q > 0; q--) {
+      plumes.push({ st, sx, sy, sz, top, life, vy0, big, rate: 4 + 0.9 * big });
+    });
+    const demand = plumes.reduce((n, p) => n + p.rate * p.life, 0);
+    const scale = Math.min(1, (0.85 * v.smoke.max) / Math.max(1, demand)), grow = 1 / Math.sqrt(scale);
+    const chance = (rate) => { const e = rate * dt; return Math.floor(e) + (Math.random() < e - Math.floor(e) ? 1 : 0); };
+    for (const { st, sx, sy, sz, top, life, vy0, big, rate } of plumes) {
+      for (let q = chance(rate * scale); q > 0; q--) {
         const d = 0.08 * Math.random(), base = st.active ? 0.5 : 0.74;
         smokeCol.setRGB(base + d + 0.03, base + d, base + d - 0.03);
         v.smoke.emit(sx + (Math.random() - 0.5) * Math.min(12, 1 + big / 4), sz, -sy + (Math.random() - 0.5) * Math.min(12, 1 + big / 4),
           wind.x, vy0 * (0.85 + 0.3 * Math.random()), wind.z, life * (0.8 + 0.4 * Math.random()),
-          1.6 + big / 7, 0.3 + top / life / 4, st.active ? 0.55 : 0.42, smokeCol);
+          (1.6 + big / 7) * grow, (0.3 + top / life / 4) * grow, st.active ? 0.55 : 0.42, smokeCol);
       }
-    });
+    }
   }
 }

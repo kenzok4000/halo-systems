@@ -9,7 +9,7 @@
 // --inject gust@6,motor_failure@12 (kinds gust, motor_failure or blackout; seconds after the start),
 // --mission "text" (Mission tab: compile, then fly it; --no-fly stops after compiling),
 // --speed 1|2|5 (the page's speed buttons; any other value has no button, so the click times out),
-// --view follow|chase|orbit|top (the page's view buttons), --seconds (default 15), --out (default video/shot.webm),
+// --view follow|chase|orbit|ride|top (the page's view buttons), --seconds (default 15), --out (default video/shot.webm),
 // --scroll (scroll the side panel while recording).
 // The video starts when the page opens, so it also holds the page load and set-up before the shot.
 //
@@ -39,6 +39,7 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 (async () => {
   mkdirSync(dirname(out), { recursive: true });
   if (args.film) return film();
+  if (args.approve) console.warn("--approve needs --film; ignored");
   const browser = await chromium.launch({ args: ["--use-angle=swiftshader", "--enable-unsafe-swiftshader", "--ignore-gpu-blocklist"] });
   const context = await browser.newContext({ viewport: { width: 1920, height: 1080 },
     recordVideo: { dir: dirname(out), size: { width: 1920, height: 1080 } } });
@@ -130,12 +131,16 @@ async function film() {
     ...(args.inject || "").split(",").filter(Boolean).map((s) => s.split("@")).map(([kind, at]) => ({ kind, at: Number(at || 0) })),
     ...(args.approve || "").split(",").filter(Boolean).map((s) => s.split("@")).map(([id, at]) => ({ kind: "approve", id: Number(id), at: Number(at || 0) })),
   ].sort((a, b) => a.at - b.at);
+  const bad = injects.find((i) => i.kind === "approve" && !Number.isInteger(i.id));
+  if (bad) throw new Error(`--approve takes alert numbers, as in 0@40,1@44`);
   const buffered = () => page.evaluate(() => window.haloFilm.status());
   for (const inj of injects) {
     await page.waitForFunction((t) => { const s = window.haloFilm.status(); return s.ended || s.buffered_s >= t; }, inj.at, { polling: 50, timeout: 0 });
     if ((await buffered()).ended) { console.warn(`run ended before ${inj.kind}@${inj.at}; skipped`); break; }
-    if (inj.kind === "approve") await page.evaluate((id) => window.haloApprove(id), inj.id);
-    else await page.click(`button[data-inject="${inj.kind}"]`);
+    if (inj.kind === "approve") {
+      const r = await page.evaluate((id) => window.haloApprove(id), inj.id);
+      if (!r || !r.ok) console.warn(`approving alert ${inj.id} at ${inj.at} s failed: ${r && r.reason}`);
+    } else await page.click(`button[data-inject="${inj.kind}"]`);
   }
   // Playback starts at the first frame the page received, so the shot is `seconds` long from there.
   await page.waitForFunction((t) => { const s = window.haloFilm.status(); return s.ended || (s.first_s !== null && s.buffered_s >= s.first_s + t + 0.5); }, need, { polling: 500, timeout: 0 });

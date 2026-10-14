@@ -174,7 +174,9 @@ class LiveRun:
                                 sim.pending.append((sim.t, t_req, decision))
             if sim.t >= next_frame:
                 next_frame = sim.t + 1.0 / FRAME_HZ
-                self.publish("frame", self.frame())
+                with self.lock:   # the page's alert approvals change the simulation from another thread
+                    frame = self.frame()
+                self.publish("frame", frame)
                 self._flush_logs()
         self._flush_logs()
         self.publish("end", {"metrics": sim.result().metrics if sim.series["t"] else {}})
@@ -444,9 +446,13 @@ def make_handler(state: State, host: str = "127.0.0.1"):
                         # The incident commander approves a checked alert; it then goes to the simulated phones.
                         if run.sim.wildfire is None:
                             return self._error("this run has no alerts")
+                        alert = body.get("alert")
+                        if not isinstance(alert, int) or isinstance(alert, bool):
+                            return self._error("alert must be an alert number")
                         with run.lock:
-                            out = run.sim.wildfire.approve(run.sim, int(body.get("alert", -1)),
-                                                           by="incident commander (dashboard)")
+                            if run.sim.ended or run.stop:
+                                return self._json({"ok": False, "reason": "the flight has ended"})
+                            out = run.sim.wildfire.approve(run.sim, alert, by="incident commander (dashboard)")
                         return self._json(out)
                     if parts[3] == "control":
                         if "speed" in body:

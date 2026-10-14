@@ -159,9 +159,10 @@ function drawValley() {
     : '<li class="muted">Waiting for the first fire to be located…</li>';
   if (brief !== valley.briefHtml) { $("#brief").innerHTML = valley.briefHtml = brief; }
   const items = [...valley.alerts.values()].map((a) => {
-    const state = a.state === "delivered" ? `delivered to ${a.delivered} of ${a.of} phones`
-      : a.state === "rejected" ? "rejected by the alert check" : "checked; waiting for the incident commander";
-    const btn = a.state === "checked" ? `<button data-approve="${a.id}">Approve and send</button>` : "";
+    const state = a.state === "delivered" ? (a.delivered != null ? `delivered to ${a.delivered} of ${a.of} phones` : "delivered")
+      : a.state === "rejected" ? "rejected by the alert check"
+      : valley.ended ? "not approved before the flight ended" : "checked; waiting for the incident commander";
+    const btn = a.state === "checked" && !valley.ended ? `<button data-approve="${a.id}">Approve and send</button>` : "";
     return `<li class="alert ${esc(a.level)} ${esc(a.state)}"><b>${a.level === "evacuate" ? "Evacuate" : "Warning"}</b> · ${a.phones} phones · ${state}` +
       `<div class="why">${esc(a.message)}</div>${btn}</li>`;
   });
@@ -171,13 +172,15 @@ function drawValley() {
 }
 
 // Approve a checked alert as the incident commander: it then goes to the simulated phones in its zone.
+// Returns the server's answer, so the recorder can tell whether it worked.
 async function approveAlert(id) {
-  if (!run) return;
+  if (!run) return { ok: false, reason: "no flight" };
   try {
     const out = await api(`/api/runs/${run.id}/approve`, { alert: id });
     if (!out.ok) throw new Error(out.reason);
     logItem("operator", `<span class="chip">you</span> approved alert ${id + 1} as the incident commander`);
-  } catch (err) { alert(err.message); }
+    return out;
+  } catch (err) { alert(err.message); return { ok: false, reason: err.message }; }
 }
 window.haloApprove = approveAlert;   // the recorder approves through the same action as the button
 
@@ -211,7 +214,8 @@ function onFrame(f) {
     valley.located = (f.located || []).length;
     valley.warned = (f.phones_alerted || []).filter((l) => l > 0).length;
     scout = `, fires located ${valley.located}, area ${fmt(m.coverage_pct, 0)}%`;
-    if (f.alerts) for (const a of f.alerts) { const k = valley.alerts.get(a.id); if (k && k.state !== a.state && a.state !== "approved") k.state = a.state; }
+    // "delivered" comes with its phone counts in the alert_delivered event, just after this frame.
+    if (f.alerts) for (const a of f.alerts) { const k = valley.alerts.get(a.id); if (k && k.state !== a.state && a.state !== "approved" && a.state !== "delivered") k.state = a.state; }
     drawValley();
   }
   setHud(`${run.scenario.title}, t = ${fmt(f.t)} s${scout}`, f.directive);
@@ -264,6 +268,7 @@ async function start(extra = {}) {
     const crashes = (m.collisions || 0) * 2 + (m.obstacle_crashes || 0) + (m.ground_crashes || 0);   // drones destroyed, as in the Crashes tile
     const done = m.completed == null ? "not applicable (looped route)" : m.completed ? "yes" : "no";
     logItem("event", `<b>Flight ended.</b> In formation ${fmt(m.time_formed_pct, 0)}% of the time, ${crashes} ${crashes === 1 ? "drone" : "drones"} lost in crashes, completed: ${done}`);
+    if (valley) { valley.ended = true; drawValley(); }   // alerts can no longer be approved
     if (source) { source.close(); source = null; }
   });
   if (film) source.addEventListener("end", () => { source.close(); source = null; });
@@ -279,7 +284,7 @@ $$(".tabs button").forEach((b) => b.addEventListener("click", () => {
   if (b.dataset.tab === "about") loadEvidence();
 }));
 $("#start").addEventListener("click", () => start());
-for (const [id, mode] of [["view-reset", "follow"], ["view-top", "top"], ["view-orbit", "orbit"], ["view-chase", "chase"]]) {
+for (const [id, mode] of [["view-reset", "follow"], ["view-top", "top"], ["view-orbit", "orbit"], ["view-chase", "chase"], ["view-ride", "ride"]]) {
   $(`#${id}`).addEventListener("click", () => {
     view.setMode(mode);
     $$("#viewbtns button").forEach((b) => b.classList.toggle("active", b.id === id));
