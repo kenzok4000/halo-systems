@@ -4,7 +4,7 @@
 
 [![Licence: Apache-2.0](https://img.shields.io/badge/licence-Apache--2.0-blue)](LICENSE)
 
-A language model never flies the drones. They fly themselves at 50 Hz behind a safety filter. NVIDIA Nemotron, served by Nebius Token Factory, supervises them every 5 seconds, turns an operator's plain-language request into a mission plan, and works as a test engineer that hunts for the conditions that make the swarm fail. Every decision it makes passes a safety check, and every flight result below is measured against conventional baselines on seeds held out from tuning.
+A language model never flies the drones. They fly themselves at 50 Hz behind a safety filter. The simulator tests them flying through injected gust fronts, which stand in for the wind a fire makes. NVIDIA Nemotron, served by Nebius Token Factory, supervises them every 5 seconds, turns an operator's plain-language request into a mission plan, and works as a test engineer that hunts for the conditions that make the swarm fail. Every decision it makes passes a safety check, and every flight result below is measured against conventional baselines on seeds held out from tuning. The wildfire results at the top of this page were flown with the hand-written rule supervisor, and Nemotron's supervision is measured in the [nine supervision scenarios](#supervision-results) further down.
 
 ![Sixteen drones sweep a block of dry scrub line abreast and light up six smouldering hotspots as their cameras pass over them; the live dashboard, wildfire scout scenario, seed 1000](docs/wildfire.gif)
 
@@ -17,7 +17,7 @@ The results below come from 20 held-out valleys (seeds 4000-4019, 100 fires), ea
 | Question | Answer | Evidence |
 |---|---|---|
 | How many fires does one flight find? | 1 drone 60%, 4 drones 77% [72, 82], 16 drones 86% [80, 91]. Only smoke found the fire under the overhang and the one across the valley: 16 drones found 75% and 85% of them, one drone none | [Finding the fires](results/wildfire_valley/REPORT.md#finding-the-fires) |
-| How many are found while still smouldering? | 16 drones found 59% [52, 66] of all fires while they still smouldered at about 4 m², a median 20 minutes before they started to spread (missed fires counted as never found). None of today's methods modelled here finds a fire before it spreads | [Drones against today's ways](results/wildfire_valley/REPORT.md#drones-against-todays-ways-of-finding-fires) |
+| How many are found while still smouldering? | 16 drones found 59% [52, 66] of all fires while they still smouldered at about 4 m². Half of all 100 fires were reported at least 20 minutes before they started to spread (missed fires counted as never found). Today's methods are modelled to start looking only once a fire spreads, so none finds a smouldering fire | [Drones against today's ways](results/wildfire_valley/REPORT.md#drones-against-todays-ways-of-finding-fires) |
 | Are they reported before today's earliest method? | 16 drones reported 60 of the 100 fires before the earliest of today's four (geostationary and polar satellites, AI cameras with a clear view, public calls), by a median of 69 minutes. 4 drones: 55, by 74 minutes. 1 drone: 40, by 112 minutes. An AI camera with a clear view, or a call from the public, reports a fire about 4 minutes after it starts to spread, at 100 to 200 m² | [Drones against today's ways](results/wildfire_valley/REPORT.md#drones-against-todays-ways-of-finding-fires) |
 | How late do satellites see them? | Geostationary (GOES, 5-minute scans): a median 55 minutes after the fire started to spread, at 15,700 m² (1.6 ha); 93% found in 4 hours. Polar-orbiting (MODIS, VIIRS): 128 minutes, at 72,800 m² (7.3 ha); 89% found | [Drones against today's ways](results/wildfire_valley/REPORT.md#drones-against-todays-ways-of-finding-fires) |
 | Are the phones warned in time? | With 16 drones, 94.7% [93.0, 96.4] of the phones the fire reached were warned before it arrived (the same share as with 1 drone), a median 126 minutes ahead; 32 of the 34 missed were phones without signal. Each valley has 63 simulated phones | [Warnings to phones](results/wildfire_valley/REPORT.md#warnings-to-phones) |
@@ -81,16 +81,16 @@ Every flight result below comes from held-out seeds 1000-1019, each flown once a
 git clone <repo-url> halo-systems && cd halo-systems
 python3 -m venv .venv && . .venv/bin/activate
 python3 -m pip install -e '.[report]'   # numpy, plus matplotlib for charts
-python3 -m unittest discover -s tests   # offline, no key, about 30 s
+python3 -m unittest discover -s tests   # offline, no key, about a minute
 halo list                               # the eleven scenarios
 halo run wildfire_scout --config improved+rule --seed 1000 --n 16   # one sweep: all_found_s 33.6, as in results/wildfire
 halo run wildfire_valley --config improved+rule --seed 4000 --n 16  # one valley flight: fires_located 5, all_located_s 76.1, as in results/wildfire_valley
 halo serve --open                       # live 3D dashboard on http://127.0.0.1:8765; Ctrl-C stops it
 ```
 
-Run the commands from the repository folder: the dashboard reads `results/` and `evidence/` from there. CI runs the tests on Python 3.10 to 3.13 ([tests.yml](.github/workflows/tests.yml)).
+Run the commands from the repository folder: the dashboard reads `results/` and `evidence/` from there. In the valley run, `targets_found` (3) and `all_found_s` (null) are the generic sweep metrics the scout uses: `targets_found` counts only fires a downward thermal camera held in view, and `all_found_s`, the time until it had all five, stays null because two of the five fires are out of its reach. The valley's own results are `fires_located` and `all_located_s`. CI runs the tests on Python 3.10 to 3.13 ([tests.yml](.github/workflows/tests.yml)).
 
-With no key, `halo serve` replays the recorded Nemotron 3 Nano flights: pick a scenario, a seed from 1000 to 1019 and the Nemotron supervisor, and every call is answered from `results/nemotron_cache.jsonl`, so the flight is the one in the results. On a seed or scenario that was not recorded, the rules take that step and the log says so. A new mission typed into the Mission tab is parsed by the regex baseline, and the page says why.
+With no key, `halo serve` replays the recorded Nemotron 3 Nano flights: pick a scenario, a seed from 1000 to 1019 and the Nemotron supervisor, and every call is answered from `results/nemotron_cache.jsonl`, so the flight is the one in the results. On a seed or scenario that was not recorded, the rules take that step and the log says so. A new mission typed into the Mission tab is parsed by the regex baseline, and the page says why; only the default request and the examples can then be flown.
 
 To check one recorded Nemotron flight from the command line, exactly and with no key:
 
@@ -119,9 +119,9 @@ A spend guard refuses any call that could take the estimated total past `HALO_BU
 | Scenario, seed, swarm size, controller, supervisor | Starts a new flight; the same seed gives the same conditions |
 | Gust front, motor failure, radio blackout | Injected into the running flight; the controller and supervisor react |
 | Formation buttons | An operator order, checked by the same safety validator as any directive |
-| Mission tab | Plain words to a mission plan (Nemotron with a key, the regex baseline without), then fly it |
+| Mission tab | Plain words to a mission plan with Nemotron, then fly it. Without a key, the regex baseline parses the request, and only the default request and the examples fly |
 | Decision log | Every directive with its source (mission, rules, Nemotron, fallback, operator) and reason |
-| Results tab | The committed benchmark tables and charts |
+| Results tab | The wildfire valley's held-out results, then the committed benchmark tables and charts |
 
 ## How it works
 
@@ -205,7 +205,7 @@ halo bench --scenarios open_transit,formation_changes,forest_trail,urban_canyon,
 halo report check/runs.jsonl --out check
 halo bench --scenarios wildfire_scout --configs improved+rule --seeds heldout --n 1,4,16 --out check/wildfire/runs.jsonl
 halo report check/wildfire/runs.jsonl --out check/wildfire
-halo mission-eval --sets heldout --out check/mission_eval_baseline.json   # regex baseline, no key; add --model <id> for Nemotron
+mkdir -p check && halo mission-eval --sets heldout --out check/mission_eval_baseline.json   # regex baseline, no key; add --model <id> for Nemotron
 PYTHONPATH=src python3 tools/wildfire_valley_sweep.py --out check/wildfire_valley/runs.jsonl   # seeds 4000-4019: 1, 4 and 16 drones, and the distance-rule ablation
 PYTHONPATH=src python3 tools/wildfire_valley_report.py check/wildfire_valley/runs.jsonl        # writes REPORT.md and summary.json next to the rows
 ```
@@ -233,7 +233,7 @@ The committed rows already hold every flight, so these commands write to a new `
 ## Limits and responsible use
 
 * **This is a simulation.** The airframe, power and sensor models are textbook approximations that have not been calibrated against hardware, obstacles are simple shapes, and smoke and heat detection are probability models, not image recognition. Only the wildfire valley simulates the fire's spread, by Rothermel's surface model; crown fire, spotting and the fire's effect on its own wind are not modelled, and the wildfire scout's hotspots do not spread. The results compare methods under identical simulated conditions; they are not flight-test results. Today's ways of finding fires are modelled from cited figures, with the benefit of the doubt. [ARCHITECTURE.md](docs/ARCHITECTURE.md#known-simplifications) lists the simplifications a code review found, which apply equally to every configuration.
-* **Civilian use only.** The mission compiler refuses requests to harm, chase or intimidate people, animals or vehicles, to drop objects on people or to jam radios, and nothing in the code controls a payload. The valley's evacuation alerts go to simulated phones only.
+* **Civilian use only.** With a key, the Nemotron mission compiler refuses requests to harm, chase or intimidate people, animals or vehicles, to drop objects on people or to jam radios. Without a key, the dashboard parses requests with the regex baseline, whose keyword guard catches only explicit wording (it refused 1 of the 3 held-out harmful requests, [docs/RESULTS.md](docs/RESULTS.md#mission-compiler-20-held-out-requests)), so the dashboard then flies only its default request and example missions. Nothing in the code controls a payload. The valley's evacuation alerts go to simulated phones only.
 * **The model is advisory.** It never commands the motors, every directive is validated, and the safety filter acts whatever the directive. The stress search shows the filter is not a guarantee: it found conditions in which the swarm fails with the filter on.
 
 ## About this entry

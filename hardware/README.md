@@ -2,13 +2,13 @@
 
 ![Three-quarter view of the Halo scout: a 7-inch quadcopter with a battery on top, an orange sensor pod underneath and a GNSS mast at the rear](renders/three_quarter.png)
 
-The Halo scout is a 7-inch quadcopter built from off-the-shelf hobby parts. It looks down with a radiometric thermal camera for smouldering hotspots after lightning, looks ahead with an RGB camera for smoke, samples the air with a particulate sensor and reports over a shared 900 MHz radio. It flies ArduPilot, with a Raspberry Pi Zero 2 W as companion computer. It carries cameras, sensors and radios only.
+The Halo scout is a 7-inch quadcopter designed around off-the-shelf hobby parts. It has not been built yet. It looks down with a radiometric thermal camera for smouldering hotspots after lightning, looks ahead with an RGB camera for smoke, samples the air with a particulate sensor and reports over a shared 900 MHz radio. It flies ArduPilot, with a Raspberry Pi Zero 2 W as companion computer. It carries cameras, sensors and radios only.
 
-This folder is its hardware design: parametric CAD, exports, renders, a costed bill of materials, running costs and build steps, all checked against the airframe in [`src/halo_systems/sim/body.py`](../src/halo_systems/sim/body.py). Nothing under `src/` or `tests/` was changed.
+This folder is its hardware design: parametric CAD, exports, renders, a costed bill of materials, running costs and build steps, all checked against the airframe in [`src/halo_systems/sim/body.py`](../src/halo_systems/sim/body.py).
 
 ## At a glance
 
-| Figure | Simulator | This build |
+| Figure | Simulator | This design |
 |---|---|---|
 | All-up mass | 1,200 g | 958 g in the CAD; 1,006 g with a 5% integration margin |
 | Props | four 7-inch, 0.0993 m^2 of disk | four 7x4x3 tri-blades, 0.0993 m^2 |
@@ -54,15 +54,17 @@ This folder is its hardware design: parametric CAD, exports, renders, a costed b
 ## Regenerate
 
 ```bash
+# Run from the repository root.
+
 # CAD and exports (one library: CadQuery 2.8.0; numpy and Pillow come with it)
 python3 -m venv cad_venv && cad_venv/bin/pip install cadquery==2.8.0
-cad_venv/bin/python swarmlab/hardware/cad/halo_scout.py
+cad_venv/bin/python hardware/cad/halo_scout.py
 
 # BOM.md, COSTS.md and budget.json (needs only numpy, like the simulator)
-python3 swarmlab/hardware/budget.py
+python3 hardware/budget.py
 
 # Renders (Node 18+ with Playwright; CHROMIUM_PATH optional)
-cd swarmlab && NODE_PATH=/path/to/node_modules node hardware/renders/render.cjs
+NODE_PATH=/path/to/node_modules node hardware/renders/render.cjs
 ```
 
 Edit `bom.csv` for prices and parts, the constants at the top of `cad/halo_scout.py` for geometry, and the assumptions at the top of `budget.py` for running costs. Then run the three steps in order.
@@ -76,7 +78,7 @@ Edit `bom.csv` for prices and parts, the constants at the top of `cad/halo_scout
 - **Props:** `prop_FR`, `prop_RL`, `prop_FL` and `prop_RR` are separate nodes with their origin on the motor shaft, so spinning one is a rotation of that node about its own +Y. Their `extras` give `spin` (`ccw` or `cw`, seen from above; `ccw` is a positive rotation about +Y) and `ardupilot_motor`, the motor number in ArduPilot's standard Quad X (front right 1 and rear left 2 turn counter-clockwise; front left 3 and rear right 4 clockwise). [BUILD.md](BUILD.md) keeps the flight controller's default Betaflight X order, which numbers the same motors 2, 3, 4 and 1 with the same spin directions.
 - **Inertia:** `exports/mass_properties.json` gives the inertia tensor about the centre of mass in both CAD and glTF axes.
 
-To fly it in the Halo Systems dashboard, which maps a simulator point (x east, y north, z up) to three.js with `toV(p) = (x, z, -y)`:
+To fly it in a three.js view like the Halo Systems dashboard, which maps a simulator point (x east, y north, z up) to three.js with `toV(p) = (x, z, -y)`:
 
 ```js
 // drone = the loaded GLB scene; three.js puts glTF extras in userData.
@@ -88,7 +90,7 @@ for (const name of ["prop_FR", "prop_RL", "prop_FL", "prop_RR"]) {
 }
 ```
 
-The simulator has no yaw state, so take `yaw = atan2(v_north, v_east)` from the velocity. The dashboard does not vendor three.js's `GLTFLoader`; either add it, or reuse the small GLB reader in `renders/render.html`.
+The simulator has no yaw state, so take `yaw = atan2(v_north, v_east)` from the velocity. The dashboard already flies this model: [`drone_model.js`](../src/halo_systems/dashboard/static/drone_model.js) loads a copy of this GLB (`static/models/halo_scout.glb`) with the vendored `GLTFLoader`, and `scene3d.js` takes the yaw from the velocity the same way.
 
 ## Gaps against the simulator
 
@@ -104,8 +106,9 @@ Where real parts cannot match `body.py` or the wildfire scenario, the gap is sta
 8. **Hotspot size.** The simulated hotspots are 3 to 8 m across, 22 to 59 Lepton pixels at 20 m. A fresh ignition after lightning can be well under a metre, a few pixels. A hot spot that small still stands out by temperature, but the simulator does not model detection at that scale.
 9. **Navigation error: about six times the simulator's.** The simulator's GNSS error is about 0.29 m per axis (0.15 m noise plus a 0.25 m drifting bias). The Micro M10 is specified at 2.0 m CEP, about 1.7 m per axis. Neighbouring camera strips overlap by only 2.6 m at 14 m spacing, about one standard deviation of the error between two independent receivers, so gaps between strips would appear. Nearby receivers share much of their error, so the real relative error is smaller, but the receiver does not specify it. Fixes: RTK GNSS, or use the Lepton's full 57 degrees, which gives 7.7 m of overlap at the same spacing.
 10. **Radio rate: far below 50 Hz.** In the simulator every drone broadcasts its state every 0.02 s step, with 50 ms latency, 2% loss and 400 m range. On one shared 900 MHz channel, 16 drones each sending a 40-byte MAVLink position message 50 times a second need 256 kbit/s of payload alone. The radio's default air rate is 64 kbit/s (up to 750 kbit/s at shorter range), which allows at most about 12 updates per drone per second before overheads. Expect a few. The simulator's radio model has no rate setting, so this was not tested.
-11. **Smoke sensor: not simulated.** The SPS30 sits in the rotor wash, so its readings are relative: a rise above the block's background.
+11. **Smoke sensor: a threshold, not readings.** The wildfire valley simulates the PM2.5 sensor as a trigger at 35 ug/m3 above background in a Gaussian plume (`pm_threshold_ugm3` in [`sim/smoke.py`](../src/halo_systems/sim/smoke.py)); the wildfire scout scenario has no smoke. The SPS30 sits in the rotor wash, so its readings are relative: a rise above the block's background. The simulator does not model the rotor wash or the sensor's response time.
 12. **Software: no hardware bridge yet.** The repository has no onboard program for the Pi and no MAVLink bridge between the simulator's controller and ArduPilot. The intended split: ArduPilot flies each drone in GUIDED mode, the companion computer turns the controller's output into acceleration or velocity set-points, and the ground station runs the supervisor.
+13. **Forward RGB camera: narrower than simulated.** The Camera Module 3's standard lens sees 66 x 41 degrees and is tilted 20 degrees down, so its view ends just above the horizon. The simulator's smoke camera sees 90 degrees across with no vertical limit (`camera_hfov_deg` in [`sim/smoke.py`](../src/halo_systems/sim/smoke.py)). So the smoke sightings were not tested with the real lens, and in the wildfire valley smoke gave the only finds of the fire under the overhang and the fire across the valley.
 
 ## Options
 

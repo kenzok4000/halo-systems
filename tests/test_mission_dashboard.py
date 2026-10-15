@@ -201,6 +201,26 @@ class DashboardSmokeTest(unittest.TestCase):
         self.assertEqual([c["label"] for c in r["configs"]],
                          ["Original + fixed plan", "Improved + rules", "Improved + Nemotron Nano"])
 
+    def test_results_include_the_wildfire_valley_report_and_charts(self):
+        from pathlib import Path
+        from halo_systems.dashboard.server import _results
+        with tempfile.TemporaryDirectory() as tmp:
+            self.assertNotIn("wildfire_valley", _results(Path(tmp)))
+            valley, scout = Path(tmp, "wildfire_valley"), Path(tmp, "wildfire")
+            valley.mkdir()
+            scout.mkdir()
+            (valley / "REPORT.md").write_text("# Wildfire valley\n\n| Drones | Fires found (%) |\n|---|---|\n| 16 | 86.0 |\n")
+            for name in ("detection.png", "map.png"):
+                (valley / name).write_bytes(b"png")
+            (scout / "REPORT.md").write_text("# Benchmark report\n")
+            r = _results(Path(tmp))
+        self.assertIn("| 16 | 86.0 |", r["wildfire_valley"]["report_md"])
+        self.assertEqual(r["wildfire_valley"]["charts"], ["wildfire_valley/detection.png", "wildfire_valley/map.png"])
+        self.assertEqual(r["wildfire_scout"], {"report": "wildfire/REPORT.md"})
+        # The committed results have the valley's report and its three charts.
+        committed = _results(Path(__file__).resolve().parents[1] / "results")
+        self.assertEqual(len(committed["wildfire_valley"]["charts"]), 3)
+
     def test_server_runs_a_flight_and_streams_frames(self):
         from http.server import ThreadingHTTPServer
         from pathlib import Path
@@ -220,6 +240,10 @@ class DashboardSmokeTest(unittest.TestCase):
             self.assertIn("Halo Systems", urllib.request.urlopen(base + "/", timeout=10).read().decode())
             status = json.loads(urllib.request.urlopen(base + "/api/status", timeout=10).read())
             self.assertIn("ai_available", status)
+            # Files in a folder inside the results folder are served too (the wildfire valley's charts).
+            Path(tmp.name, "wildfire_valley").mkdir()
+            Path(tmp.name, "wildfire_valley", "detection.png").write_bytes(b"png")
+            self.assertEqual(urllib.request.urlopen(base + "/results/wildfire_valley/detection.png", timeout=10).read(), b"png")
             run = post("/api/runs", {"scenario": "open_transit", "config": "improved+rule", "seed": 1, "speed": 10})
             post(f"/api/runs/{run['id']}/inject", {"kind": "gust"})
             stream = urllib.request.urlopen(f"{base}/api/runs/{run['id']}/stream", timeout=10)
@@ -246,6 +270,7 @@ class DashboardSmokeTest(unittest.TestCase):
             self.assertEqual(refused({"Content-Type": "application/json", "Host": f"evil.example:{port}"}), 403)
         finally:
             httpd.shutdown()
+            httpd.server_close()
             tmp.cleanup()
 
 

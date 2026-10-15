@@ -1,8 +1,9 @@
 """Point-mass multirotor dynamics with an autopilot thrust loop.
 
-This is the same model as in the earlier private simulator (not in this
-repo): thrust bounded by the thrust-to-weight ratio, quadratic air drag on
-the air-relative velocity, gravity, semi-implicit Euler at 50 Hz. Two
+It uses the same standard equations as the earlier private simulator (not
+in this repo), written new here so results stay comparable: thrust bounded
+by the thrust-to-weight ratio, quadratic air drag on the air-relative
+velocity, gravity, semi-implicit Euler at 50 Hz. Two
 additions, both documented in docs/ARCHITECTURE.md: a first-order thrust
 response (motor lag) and a no-downward-thrust limit, since a quadcopter
 cannot push itself down. There are no attitude or rotor dynamics.

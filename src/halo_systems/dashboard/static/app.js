@@ -3,6 +3,7 @@ import { SwarmView, DRONE_SCALE } from "/static/scene3d.js";
 
 const $ = (s) => document.querySelector(s);
 const $$ = (s) => [...document.querySelectorAll(s)];
+const plural = (k, word) => `${k} ${word}${k === 1 ? "" : "s"}`;
 const api = async (path, body) => {
   const res = await fetch(path, body === undefined ? {} : {
     method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
@@ -47,8 +48,8 @@ $("#scale-note").textContent = `Drones drawn ${DRONE_SCALE}x actual size`;
 let run = null, source = null, spark = [], scenarios = [], status = null, compiled = null;
 let valley = null;   // the wildfire valley's station state for the panel: located fires, alerts, smoke reports
 // How the wildfire valley's evacuation alerts go out: "auto" (the default), the station's fixed rules send each
-// checked alert at once, as Japan's warnings do, and the incident commander can cancel it or give a zone the
-// all-clear; "manual", each waits for the commander's tap here (for drills). ?approval=manual picks that.
+// checked alert at once, like Japan's earthquake early warning, and the incident commander can cancel it or give
+// a zone the all-clear; "manual", each waits for the commander's tap here (for drills). ?approval=manual picks that.
 const APPROVAL = new URLSearchParams(location.search).get("approval") === "manual" ? "manual" : "auto";
 
 function fmt(x, d = 1, unit = "") { return x === null || x === undefined ? "–" : `${Number(x).toFixed(d)}${unit}`; }
@@ -69,9 +70,17 @@ function logItem(cls, html) {
   const log = $("#log");
   log.prepend(li);
   while (log.children.length > 80) log.lastChild.remove();
+  return li;
 }
 
 const esc = (s) => String(s ?? "").replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+
+// The rule supervisor works out a squeezed spacing from formation widths rounded to 0.1 m, so it can send
+// its plan again a centimetre off every 5 s. An accepted plan that matches the newest logged one at the
+// precision shown here (formation, spacing, speed, altitude and margin, same source and reason) is counted
+// in that entry rather than logged again. Any change that shows gets its own entry.
+let lastPlan = null;   // the newest logged plan change: { key, li, n, more }
+const planKey = (src, d) => [src, d.formation, fmt(d.spacing_m), fmt(d.speed_mps), fmt(d.altitude_m), fmt(d.safety_margin_m), d.reason || ""].join("|");
 
 function onDirective(d) {
   const src = d.action === "rejected" ? "rejected" : (d.source || "");
@@ -79,9 +88,17 @@ function onDirective(d) {
     logItem(src, `<span class="chip ${esc(src)}">${esc(src)}</span> t=${fmt(d.t)} s keeps the plan <span class="why">${esc(d.reason)}</span>`);
     return;
   }
+  const plain = d.action === "accepted" && !(d.violations && d.violations.length);
+  const key = planKey(src, d);
+  if (plain && lastPlan && lastPlan.key === key && lastPlan.li.isConnected) {
+    lastPlan.n++;
+    lastPlan.more.textContent = `${lastPlan.n === 1 ? "Once more" : `${lastPlan.n} more times`} to t=${fmt(d.t)} s, with changes below the precision shown`;
+    return;
+  }
   const viol = d.violations && d.violations.length ? `<div class="why">validator: ${esc(d.violations.join("; "))}</div>` : "";
-  logItem(src, `<span class="chip ${esc(src)}">${esc(src)}</span> t=${fmt(d.t)} s <b>${esc(d.action)}</b>: ${esc(d.formation)}, ${fmt(d.spacing_m)} m, ${fmt(d.speed_mps)} m/s` +
-    `${d.reason ? `<div class="why">${esc(d.reason)}</div>` : ""}${viol}`);
+  const li = logItem(src, `<span class="chip ${esc(src)}">${esc(src)}</span> t=${fmt(d.t)} s <b>${esc(d.action)}</b>: ${esc(d.formation)}, ${fmt(d.spacing_m)} m, ${fmt(d.speed_mps)} m/s` +
+    `${d.reason ? `<div class="why">${esc(d.reason)}</div>` : ""}${viol}<div class="why more"></div>`);
+  lastPlan = plain && li ? { key, li, n: 0, more: li.querySelector(".more") } : null;
 }
 
 function onAi(a) {
@@ -103,7 +120,7 @@ function onEvent(e) {
   // One function per kind: only the matching one runs, since each reads fields only its kind has.
   const text = { motor_failure: () => `motor failure on drone ${e.drone}`,
     gust_front: () => `gust front ${fmt(Math.hypot(...(e.velocity_mps || [0, 0]).slice(0, 2)))} m/s`,
-    comms_blackout: () => `radio blackout for ${(e.drones || []).length} drones`,
+    comms_blackout: () => `radio blackout for ${(e.drones || []).length} drone${(e.drones || []).length === 1 ? "" : "s"}`,
     collision: () => `collision: drones ${e.drone} and ${e.other}`,
     obstacle_crash: () => `drone ${e.drone} hit an obstacle`, ground_crash: () => `drone ${e.drone} hit the ground`,
     retired_low_battery: () => `drone ${e.drone} left at ${e.battery_pct}% battery`, mission_complete: () => "mission complete",
@@ -142,7 +159,7 @@ function onValleyEvent(e) {
     case "alert_drafted":
       valley.alerts.set(e.alert, { id: e.alert, level: e.level, zone: typeof e.zone === "string" ? e.zone : null, phones: e.phones,
         message: e.message, state: "checked", check: null });
-      logItem("station", `<span class="chip station">station</span> ${t} drafted alert ${e.alert + 1}: ${levelName(e.level)}${zoneText(e.zone)} for ${e.phones} simulated phones` +
+      logItem("station", `<span class="chip station">station</span> ${t} drafted alert ${e.alert + 1}: ${levelName(e.level)}${zoneText(e.zone)} for ${plural(e.phones, "simulated phone")}` +
         `${e.channel ? ` by ${esc(e.channel)}` : ""}<div class="why">${esc(e.message)}</div>`);
       drawValley();
       return true;
@@ -159,7 +176,7 @@ function onValleyEvent(e) {
     case "alert_delivered": {
       const a = valley.alerts.get(e.alert);
       if (a) { a.state = "delivered"; a.delivered = e.phones; a.of = e.of; }
-      logItem("station", `<span class="chip station">station</span> ${t} alert ${e.alert + 1} delivered to ${e.phones} of ${e.of} simulated phones`);
+      logItem("station", `<span class="chip station">station</span> ${t} alert ${e.alert + 1} delivered to ${e.phones} of ${plural(e.of, "simulated phone")}`);
       drawValley();
       return true;
     }
@@ -167,7 +184,7 @@ function onValleyEvent(e) {
       const a = e.alert != null ? valley.alerts.get(e.alert) : null;
       if (a) a.state = "cancelled";
       const what = e.kind === "all_clear" ? `all-clear${zoneText(e.zone)}` : `alert ${e.alert + 1}${zoneText(e.zone)} cancelled`;
-      logItem("station", `<span class="chip station">station</span> ${t} ${what} by ${esc(e.by || "the station")}; ${e.phones ?? 0} simulated phones told` +
+      logItem("station", `<span class="chip station">station</span> ${t} ${what} by ${esc(e.by || "the station")}; ${plural(e.phones ?? 0, "simulated phone")} told` +
         `${e.message ? `<div class="why">${esc(e.message)}</div>` : ""}`);
       drawValley();
       return true;
@@ -210,19 +227,19 @@ function drawValley() {
   for (const a of valley.alerts.values()) if (a.zone && ["checked", "approved", "delivered"].includes(a.state)) newest.set(a.zone, Math.max(newest.get(a.zone) ?? -1, a.id));
   const cancellable = (a) => a.state === "delivered" && a.zone && newest.get(a.zone) === a.id && level.get(a.zone) > 0;
   const items = [...valley.alerts.values()].reverse().slice(0, 6).map((a) => {
-    const state = a.state === "delivered" ? (a.delivered != null ? `delivered to ${a.delivered} of ${a.of} phones` : "delivered")
+    const state = a.state === "delivered" ? (a.delivered != null ? `delivered to ${a.delivered} of ${plural(a.of, "phone")}` : "delivered")
       : a.state === "rejected" ? "rejected by the alert check" : a.state === "cancelled" ? "cancelled"
       : a.state === "superseded" ? "replaced by a newer alert" : a.state === "cleared" ? "ended by the all-clear"
       : valley.ended ? "not approved before the flight ended" : valley.approval === "auto" ? "checked; sending" : "checked; waiting for the incident commander";
     const btn = valley.ended ? "" : a.state === "checked" && valley.approval !== "auto" ? `<button data-approve="${a.id}">Approve and send</button>`
       : cancellable(a) ? `<button data-cancel="${a.id}">Cancel alert</button>` : "";
     const lvl = typeof a.level === "number" ? `<span class="lvl l${a.level}">${levelName(a.level)}</span>` : `<b>${levelName(a.level)}</b>`;
-    return `<li class="alert ${esc(String(a.level))} ${esc(a.state)}">${lvl}${a.zone ? ` · ${esc(a.zone)}` : ""} · ${a.phones} phones · ${state}` +
+    return `<li class="alert ${esc(String(a.level))} ${esc(a.state)}">${lvl}${a.zone ? ` · ${esc(a.zone)}` : ""} · ${plural(a.phones, "phone")} · ${state}` +
       `<div class="why">${esc(a.message)}</div>${btn}</li>`;
   });
   const html = items.length ? items.join("") : '<li class="muted">No alert drafted yet.</li>';
   if (html !== valley.alertsHtml) { $("#alerts").innerHTML = valley.alertsHtml = html; }   // frames come at 10 Hz: keep the buttons stable
-  $("#valley-stats").textContent = `${valley.located} fires located · ${valley.smoke} smoke reports from the drones · ${valley.warned} phones alerted`;
+  $("#valley-stats").textContent = `${plural(valley.located, "fire")} located · ${plural(valley.smoke, "smoke report")} from the drones · ${plural(valley.warned, "phone")} alerted`;
 }
 
 // The incident commander's actions on alerts (simulated phones only): approve a checked alert, cancel a
@@ -288,6 +305,7 @@ async function start(extra = {}) {
   if (source) { source.close(); source = null; }
   if (run) api(`/api/runs/${run.id}/control`, { stop: true }).catch(() => {});
   $("#log").innerHTML = "";
+  lastPlan = null;
   spark = [];
   const speed = Number($("#speed .active").dataset.speed);
   try {
@@ -395,12 +413,17 @@ $("#scenario").addEventListener("change", () => {
   $("#scenario-desc").textContent = s ? `${s.description} (${s.n} drones; ${s.use_case})` : "";
 });
 $$(".examples button").forEach((b) => b.addEventListener("click", () => { $("#mission-text").value = b.dataset.ex; }));
+// Without Nemotron (no key, or a failed call) the regex baseline's keyword guard catches only explicit wording,
+// so only the page's own requests can be flown: the default text and the examples.
+const KNOWN_MISSIONS = new Set([$("#mission-text").defaultValue, ...$$(".examples button").map((b) => b.dataset.ex)].map((t) => t.trim()));
 $("#compile").addEventListener("click", async () => {
   $("#compile-out").innerHTML = '<p class="muted">Compiling…</p>';
   $("#fly-mission").disabled = true;
+  const text = $("#mission-text").value;
   try {
-    compiled = await api("/api/compile", { text: $("#mission-text").value });
-  } catch (err) { $("#compile-out").innerHTML = `<p>${esc(err.message)}</p>`; return; }
+    compiled = await api("/api/compile", { text });
+  } catch (err) { compiled = null; $("#compile-out").innerHTML = `<p>${esc(err.message)}</p>`; return; }
+  compiled.text = text;
   const s = compiled.spec;
   const by = compiled.source === "nemotron" ? `Nemotron (${esc(compiled.model)})` : compiled.source === "guard" ? "the safety guard" : "the regex baseline";
   if (s.refused) {
@@ -415,12 +438,14 @@ $("#compile").addEventListener("click", async () => {
     `<table>${rows.map(([k, v]) => `<tr><th>${k}</th><td>${v === null || v === undefined ? '<span class="muted">default</span>' : esc(v)}</td></tr>`).join("")}</table>` +
     (s.notes ? `<p class="muted small">${esc(s.notes)}</p>` : "") +
     (compiled.problems && compiled.problems.length ? `<p class="muted small">${esc(compiled.problems.join("; "))}</p>` : "");
-  $("#fly-mission").disabled = false;
+  const flyable = compiled.source !== "regex-baseline" || KNOWN_MISSIONS.has(text.trim());
+  if (!flyable) $("#compile-out").innerHTML += "<p>Flying a typed request needs Nemotron's civilian check, which did not run here (see the note above). The default request and the examples can be flown.</p>";
+  $("#fly-mission").disabled = !flyable;
 });
 $("#fly-mission").addEventListener("click", () => {
   if (!compiled) return;
   $$(".tabs button")[0].click();
-  start({ mission: compiled.spec, mission_text: $("#mission-text").value });
+  start({ mission: compiled.spec, mission_text: compiled.text });
 });
 
 const HEADLINE = [["completed", "Missions completed (%)", 0], ["time_formed_pct", "Time in formation (%)", 0],
@@ -436,14 +461,48 @@ function headline(r) {
       html += `<tr><td>${esc(title(sc))}</td>` + r.configs.map((c) => `<td>${fmt(r.summary[`${sc}|${c.id}`]?.[metric]?.mean, digits)}</td>`).join("") + "</tr>";
     }
     html += "</table>";
+    // A looped route has no finish: the flight runs for a set time, so "completed" does not apply.
+    const looped = r.scenarios.filter((sc) => (scenarios.find((s) => s.name === sc) || {}).loop);
+    if (metric === "completed" && looped.length) {
+      html += `<p class="muted small">No value for ${looped.map((sc) => esc(title(sc))).join(", ")}: it loops round its route for a set time, so it has no finish to reach.</p>`;
+    }
   }
   return html;
 }
 
+// The committed reports, as the tab shows them: headings, paragraphs and tables. The first heading is left
+// out, since the section has its own.
+function reportHtml(md) {
+  const inline = (s) => esc(s).replace(/`([^`]+)`/g, "<code>$1</code>");
+  const cells = (row) => row.trim().replace(/^\||\|$/g, "").split("|").map((c) => c.trim());
+  const blocks = md.split(/\n\s*\n/).map((b) => b.trim()).filter(Boolean);
+  return blocks.map((b) => {
+    if (/^# /.test(b)) return "";
+    if (/^#+ /.test(b)) return `<h4>${inline(b.replace(/^#+ /, ""))}</h4>`;
+    if (b.startsWith("|")) {
+      const rows = b.split("\n").filter((l) => !/^\|[\s|:-]+\|$/.test(l.trim()));
+      return '<div class="table-wrap"><table class="report">' + rows.map((l, k) => `<tr>${cells(l).map((c) => k ? `<td>${inline(c)}</td>` : `<th>${inline(c)}</th>`).join("")}</tr>`).join("") + "</table></div>";
+    }
+    return b.split("\n").map((l) => `<p class="small">${inline(l)}</p>`).join("");
+  }).join("");
+}
+
+const chartImg = (c) => `<img src="/results/${c.split("/").map(encodeURIComponent).join("/")}" alt="${esc(c)}">`;
+
 async function loadResults() {
   const r = await api("/api/results").catch(() => ({ available: false }));
-  if (!r.available) { $("#results").innerHTML = '<p class="muted">No benchmark results yet. Run <code>halo bench</code> then <code>halo report</code>.</p>'; return; }
-  let html = headline(r) + "<h3>Charts</h3>" + r.charts.map((c) => `<img src="/results/${encodeURIComponent(c)}" alt="${esc(c)}">`).join("");
+  let top = "";
+  if (r.wildfire_valley) {
+    top += "<h3>Wildfire valley (held-out seeds 4000-4019)</h3>" + reportHtml(r.wildfire_valley.report_md) +
+      "<h4>Charts</h4>" + r.wildfire_valley.charts.map(chartImg).join("") +
+      '<p class="muted small">Source: results/wildfire_valley/REPORT.md.</p>';
+  }
+  if (r.wildfire_scout) {
+    top += `<p class="small">Wildfire scout (1, 4 and 16 drones, seeds 1000-1019): <a href="/results/${esc(r.wildfire_scout.report)}" target="_blank" rel="noopener">results/${esc(r.wildfire_scout.report)}</a>.</p>`;
+  }
+  if (top) top += "<h3>Supervision benchmark</h3>";
+  if (!r.available) { $("#results").innerHTML = top + '<p class="muted">No benchmark results yet. Run <code>halo bench</code> then <code>halo report</code>.</p>'; return; }
+  let html = top + headline(r) + "<h3>Charts</h3>" + r.charts.map(chartImg).join("");
   if (r.mission_eval) {
     html += "<h3>Mission compiler accuracy</h3><table><tr><th>Prompt set</th><th>Parser</th><th>Fields right</th><th>All right</th></tr>";
     for (const [set, sum] of Object.entries(r.mission_eval)) {
@@ -460,7 +519,9 @@ async function loadEvidence() {
   if (!e.available) { $("#evidence").textContent = "No end-to-end evidence in this folder yet (run halo doctor)."; return; }
   $("#evidence").innerHTML = `<p>Last check ${esc(e.finished_utc)}: <b>${e.passed ? "passed" : "failed"}</b></p><ul>` +
     e.steps.map((s) => `<li>${s.ok ? "✓" : "✗"} ${esc(s.step)}${s.note ? `: ${esc(s.note)}` : ""}</li>`).join("") + "</ul>" +
-    (e.usage ? `<p class="small">${e.usage.calls} calls, ${e.usage.prompt_tokens + e.usage.completion_tokens} tokens</p>` : "");
+    // Newer checks count the flight's calls too (usage.flight); the day-one check counts only its own.
+    (e.usage?.flight ? `<p class="small">${plural(e.usage.calls + e.usage.flight.calls, "call")} in all, ${e.usage.run_prompt_tokens + e.usage.run_completion_tokens} tokens</p>`
+      : e.usage ? `<p class="small">Not counting the flight: ${plural(e.usage.calls, "call")}, ${e.usage.prompt_tokens + e.usage.completion_tokens} tokens</p>` : "");
 }
 
 async function init() {

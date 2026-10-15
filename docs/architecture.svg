@@ -26,7 +26,7 @@
   <rect x="422" y="186" width="330" height="84" rx="10" fill="#76b900" fill-opacity="0.12" stroke="#5a8f00" stroke-width="2.5"/>
   <text x="587" y="214" font-size="18" font-weight="700" text-anchor="middle" fill="#2f4f00">Nemotron mission compiler</text>
   <text x="587" y="238" font-size="15" text-anchor="middle" fill="#374151">Nebius Token Factory · JSON plan</text>
-  <text x="587" y="259" font-size="14" text-anchor="middle" fill="#6b7280">baseline: regex parser · refuses non-civilian use</text>
+  <text x="587" y="259" font-size="14" text-anchor="middle" fill="#6b7280">baseline: regex parser · keyword guard only</text>
 
   <line x1="752" y1="228" x2="838" y2="228" stroke="#4b5563" stroke-width="2.5" marker-end="url(#arrow)"/>
 

@@ -1,6 +1,6 @@
 # Evidence: the live end-to-end check
 
-`halo doctor --flight` (then called `swarmlab doctor`, before the project was renamed Halo Systems) wrote these files (it now writes to `evidence/latest/`, so a new check does not overwrite them). Both runs below are real calls to Nebius Token Factory on 12 October 2026, kept as they were written apart from moving them into this folder. The API key never appears in them.
+`halo doctor --flight` (then called `swarmlab doctor`, before the project was renamed Halo Systems) wrote these files (it now writes to `evidence/latest/`, so a new check does not overwrite them). Both runs below are real calls to Nebius Token Factory on 12 October 2026, kept as they were written apart from moving them into this folder and shortening the patch's path headers to start at this repository's root (its changes are as recorded). The API key never appears in them.
 
 ## `first-attempt/` (22:34 UTC): failed
 
@@ -8,7 +8,7 @@ The model list and model choice passed, then the supervisor call failed with an 
 
 ## This folder (22:36 UTC): passed
 
-This run used the code of the time plus a small local change, `thinking-off.patch`, which switches reasoning off for the supervisor. Commit dc6cf0d made the same default permanent, with a switch to turn reasoning on, and 53ea3ea stopped the client retrying a reply cut off at the token limit.
+This run used the code of the time plus a small local change, `thinking-off.patch`, which switches reasoning off for the supervisor. The patch applies to that day's code, laid out as `src/swarmlab/` before the rename, not to today's `src/halo_systems/`. Commit dc6cf0d made the same default permanent, with a switch to turn reasoning on, and 53ea3ea stopped the client retrying a reply cut off at the token limit.
 
 | File | What it is |
 |---|---|

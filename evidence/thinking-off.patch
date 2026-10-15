@@ -1,7 +1,7 @@
-diff --git a/swarmlab/src/swarmlab/ai/doctor.py b/swarmlab/src/swarmlab/ai/doctor.py
+diff --git a/src/swarmlab/ai/doctor.py b/src/swarmlab/ai/doctor.py
 index 76556aa..e751716 100644
---- a/swarmlab/src/swarmlab/ai/doctor.py
-+++ b/swarmlab/src/swarmlab/ai/doctor.py
+--- a/src/swarmlab/ai/doctor.py
++++ b/src/swarmlab/ai/doctor.py
 @@ -94,7 +94,8 @@ def run(evidence_dir: str = "evidence", model: str | None = None, flight: bool =
      sup = NemotronSupervisor(client=client, model=chosen, fallback="none")
      t0 = time.perf_counter()
@@ -12,10 +12,10 @@ index 76556aa..e751716 100644
      except NebiusError as exc:
          step("supervisor call", False, note=exc.reason[:300], http_status=exc.status)
          return finish(5)
-diff --git a/swarmlab/src/swarmlab/supervisor/nemotron.py b/swarmlab/src/swarmlab/supervisor/nemotron.py
+diff --git a/src/swarmlab/supervisor/nemotron.py b/src/swarmlab/supervisor/nemotron.py
 index 68cc843..ed611dc 100644
---- a/swarmlab/src/swarmlab/supervisor/nemotron.py
-+++ b/swarmlab/src/swarmlab/supervisor/nemotron.py
+--- a/src/swarmlab/supervisor/nemotron.py
++++ b/src/swarmlab/supervisor/nemotron.py
 @@ -40,7 +40,8 @@ class NemotronSupervisor(Supervisor):
          self.fallback = RuleSupervisor() if fallback == "rule" else None
          self.temperature = temperature

@@ -8,8 +8,8 @@ Writes REPORT.md and summary.json next to the rows. Intervals are 95% percentile
 
 from __future__ import annotations
 
+import argparse
 import json
-import sys
 from collections import defaultdict
 from pathlib import Path
 
@@ -300,4 +300,6 @@ def main(path: str) -> int:
 
 
 if __name__ == "__main__":
-    raise SystemExit(main(sys.argv[1] if len(sys.argv) > 1 else "results/wildfire_valley/runs.jsonl"))
+    ap = argparse.ArgumentParser(description="Write REPORT.md and summary.json next to the wildfire valley rows.")
+    ap.add_argument("runs", nargs="?", default="results/wildfire_valley/runs.jsonl", help="rows file (default: %(default)s)")
+    raise SystemExit(main(ap.parse_args().runs))

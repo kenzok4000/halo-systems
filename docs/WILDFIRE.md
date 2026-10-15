@@ -20,18 +20,19 @@ Nothing in this scenario calls a language model, so it costs nothing to run.
 Held-out seeds 4000 to 4019 (20 valleys, 100 fires), each flown once with the final code; brackets are 95%
 bootstrap intervals over seeds. Full tables: [REPORT.md](../results/wildfire_valley/REPORT.md).
 
-- **Finding fires before they spread.** Sixteen drones on one flight found 86% of the fires [80, 91], 59%
-  [52, 66] of them while they still smouldered at about 4 m^2, a median 20 minutes before they started to
-  spread (missed fires counted as never found). None of today's methods modelled here finds a fire before it
-  spreads.
+- **Finding fires before they spread.** Sixteen drones on one flight found 86% of the fires [80, 91], and 59%
+  [52, 66] of all fires while they still smouldered at about 4 m^2. Half of all 100 fires were reported at least 20
+  minutes before they started to spread (missed fires counted as never found). Today's methods are modelled
+  to start looking only once a fire spreads.
 - **Against today's methods, given every benefit of the doubt.** An AI camera with a clear view, or a call
   from the public, reports a fire about 4 minutes after it starts to spread, at 100 to 200 m^2; a
   geostationary satellite after 55 minutes, at 1.6 ha; polar satellites after 128 minutes, at 7.3 ha. As
   deployed in California in 2024, cameras saw 22% of fires. The sixteen drones reported 60 of the 100 fires
-  before the earliest of today's four methods, by a median of 69 minutes.
-- **Forecast.** With sixteen drones, the forecast's median matched the true spread with a Sorensen overlap of
-  0.71 [0.63, 0.78] at 1 hour and 0.83 [0.79, 0.86] at 3 hours. One drone scores 0.77 and 0.89, because it
-  finishes later and forecasts with more of the fire mapped.
+  before the earliest of today's four methods, by a median of 69 minutes. That lead comes mostly from the
+  smouldering phase, whose length the scenario sets (see "Assumptions and sources").
+- **Forecast.** With sixteen drones, the forecast's median matched the true spread of the fires the station
+  knew were spreading with a Sorensen overlap of 0.71 [0.63, 0.78] at 1 hour and 0.83 [0.79, 0.86] at 3 hours.
+  One drone scores 0.77 and 0.89, because it finishes later and forecasts with more of the fire mapped.
 - **Warnings.** 94.7% [93.0, 96.4] of the phones the fire reached were warned before it arrived, a median
   126 minutes ahead; 32 of the 34 missed were phones without signal. Against alerts by distance alone, the
   forecast rule told 24 [18, 30] fewer phones per flight to evacuate that the fire did not reach, with the
@@ -66,7 +67,8 @@ fewer lanes the more drones there are.
 - **The same camera maps burning ground.** Once a second, every 10 m cell inside a drone's footprint that is
   burning or burnt is marked on the station's map, placed by the drone's position estimate. Under tree crowns a
   look sees the fire 40% of the time. Mapping is how the station learns a spreading fire's real shape and size.
-- **RGB camera, looking ahead (90 degree field of view).** A plume point counts as visible when it is above
+- **RGB camera, looking ahead (90 degree field of view; the scout's lens sees 66, a gap listed in
+  [hardware/README.md](../hardware/README.md)).** A plume point counts as visible when it is above
   whatever hides the fire, in the field of view, within the 2.5 km haze limit and not behind terrain. A plume of
   burning area A at range r is noticed at a rate ln 2 (R50 / r)^3 per second, with R50 = 300 m x sqrt(A / 10 m2):
   a smouldering patch is seen within a second half the time at about 200 m, a spreading fire across the whole
@@ -210,6 +212,7 @@ rules with no one in the loop, and keeps a person able to cancel or clear.
 | PM2.5 trigger | 35 ug/m3 | US EPA 24-hour PM2.5 standard |
 | Alert length | 360 characters | Wireless Emergency Alerts, 47 CFR 10.430 (FCC Report and Order 16-127, in force since May 2019); ETSI TS 102 900 for EU-Alert |
 | Smoke detection range, plume rise and top, bearing and elevation errors, emission rate | As above | Stated assumptions, to be calibrated against real footage and sensor logs |
+| Smouldering phase | 3 to 6 m2 until each fire starts to spread, at a seeded time (uniform): under crowns 20 to 150 min after take-off, under the overhang 10 to 90, in the open 30 to 240, across the valley from 20 min before take-off to 30 after. The fire already spreading started 10 to 35 min before take-off | Stated assumption, chosen by the authors; the drones' lead over today's methods comes mostly from this phase. Observed lightning holdover (strike to detection) has medians of 1.4 to 53.6 h across 42 datasets (Moris et al. 2023) |
 | Alert levels | Five levels, 3 to 5 sent to phones | Japan's evacuation alert levels as revised on 20 May 2021 (Cabinet Office and Fire and Disaster Management Agency); the probability and time thresholds are stated assumptions |
 | Today's detection methods | See "Drones against today's methods" | Sources in that section |
 | Weather forecast errors, patchiness of spread, delivery delay, phones without signal | As above | Stated assumptions |
@@ -220,8 +223,8 @@ rules with no one in the loop, and keeps a person able to cancel or clear.
   Each makes real fires faster and less predictable than this forecast assumes.
 - Image recognition. Smoke and heat detection is a probability model of a detector, not a neural network run
   on rendered images.
-- The build's navigation error. The simulator's GNSS error is about a sixth of the scout's receiver
-  ([hardware/README.md](../hardware/README.md) lists this and the other gaps between the build and the simulator).
+- The design's navigation error. The simulator's GNSS error is about a sixth of the scout's receiver
+  ([hardware/README.md](../hardware/README.md) lists this and the other gaps between the design and the simulator).
 - Re-tasking. The swarm flies its sweep and lands; it does not go back to watch a fire or check a doubtful fix.
 - Flying over flames. The scouts sweep 20 m above the canopy straight over a spreading fire, through its heat
   and smoke; a real crew would climb or route around it.

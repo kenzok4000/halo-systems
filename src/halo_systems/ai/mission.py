@@ -14,7 +14,9 @@ directive, which clamps it to the flight envelope, including the
 operator's altitude ceiling. Requests outside civilian use (weapons,
 attacking or ramming anything, dropping objects on people, jamming) are
 refused by a keyword guard before the model is called, or by the model
-itself, and never become a flight.
+itself. Without a model, the regex baseline below has only the keyword
+guard, which catches explicit wording only; the dashboard then flies only
+its own default and example requests.
 
 A deterministic regex/keyword parser is the baseline it is scored against
 (``halo mission-eval``).

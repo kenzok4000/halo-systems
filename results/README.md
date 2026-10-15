@@ -31,9 +31,9 @@ The conventional rows (original controller, improved controller, rule supervisor
 | `swarm_size.png` | Fires found, 1-hour forecast overlap, arrival error at phones and phones warned in time, by swarm size, drawn from `summary.json` | 4d892bd |
 | `map.png` | One flight re-flown, seed 4012 with 16 drones: the true spread against the forecast, the fires found and the phones alerted | 4d892bd |
 
-The valley was built on seeds 2000-2011 and 3000-3019, then flown once on seeds 4000-4019 with the code at 4d892bd. A sweep of an earlier version on seeds 4000-4019 was stopped part-way and its rows set aside unread ([docs/WILDFIRE.md](../docs/WILDFIRE.md#how-results-are-scored)). Later commits changed the dashboard, its recording tool and the docs, not the simulator, the scenario or the three scripts below.
+The valley was built on seeds 2000-2011 and 3000-3019, then flown once on seeds 4000-4019 with the code at 4d892bd. A sweep of an earlier version on seeds 4000-4019 was stopped part-way and its rows set aside unread ([docs/WILDFIRE.md](../docs/WILDFIRE.md#how-results-are-scored)). Later commits changed the dashboard, its recording tool and the docs; in the simulator, the scenarios and the three scripts below they changed only comments, descriptions and argument parsing, and the scripts still write the same files.
 
-To regenerate, from `swarmlab/`:
+To regenerate, from the repository root:
 
 ```bash
 PYTHONPATH=src python3 tools/wildfire_valley_sweep.py --out check/wildfire_valley/runs.jsonl   # defaults: --seeds 4000-4019 --sizes 1,4,16 --ablation-sizes 16

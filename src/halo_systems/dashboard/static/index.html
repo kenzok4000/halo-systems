@@ -51,6 +51,8 @@
             <option value="improved+nemotron" id="opt-nemotron">Improved + Nemotron supervisor</option>
           </select>
         </label>
+      </div>
+      <div class="row">
         <label class="narrow">Seed <input id="seed" type="number" value="1000" min="0"></label>
         <label class="narrow">Drones <input id="drones" type="number" placeholder="16" min="1" max="64"></label>
       </div>
@@ -101,12 +103,12 @@
     </div>
 
     <div class="tab" id="tab-mission">
-      <p>Describe a civilian mission in plain words. Nemotron turns it into a checked mission plan; anything outside civilian use is refused.</p>
+      <p>Describe a civilian mission in plain words. With a Nebius key, Nemotron turns it into a checked mission plan and refuses anything outside civilian use. Without a key, a regex parser reads it instead, and its keyword guard catches only explicit wording, so only the default request and the examples can be flown.</p>
       <textarea id="mission-text" rows="4">Search the 400 by 250 m meadow for a missing hiker with 12 drones line abreast, 8 m apart, at 30 m.</textarea>
       <div class="row wrap examples">
-        <button data-ex="Send the swarm single file down the 400 m forest trail at 4 m/s, stay under 20 m.">Forest trail</button>
+        <button data-ex="Send the swarm single file down the 400 m forest trail at a steady 4 m/s, stay under 20 m.">Forest trail</button>
         <button data-ex="Orbit the water tower with a ring of 10 drones, 5 m apart, at 40 m.">Orbit</button>
-        <button data-ex="Delivery convoy of 8 in a column, 20 mph, 50 m up, 1.5 km to the depot.">Convoy</button>
+        <button data-ex="Supply run to the fire camp: 8 drones in a column, 20 mph, 50 m up, 1.5 km.">Supply run</button>
       </div>
       <div class="row"><button id="compile" class="primary">Compile mission</button><button id="fly-mission" disabled>Fly this mission</button></div>
       <div id="compile-out"></div>
@@ -121,8 +123,9 @@
       <p>Each drone runs a 50 Hz controller: it tracks its slot in the formation, and a safety filter (control barrier functions) keeps it clear of other drones, obstacles and the ground. No language model is in this loop.</p>
       <p>Every 5 seconds a supervisor reads a short status report and may change the formation, spacing, speed, altitude or safety margin. The supervisor is either hand-written rules or NVIDIA Nemotron on Nebius Token Factory. Every directive passes a safety validator first. If Nemotron fails or replies badly, the rules take over for that step.</p>
       <p>The simulation includes wind and gust fronts, noisy GPS, lossy and delayed radio, motor failures, batteries and obstacles. It is a simulation, not flight hardware.</p>
-      <p>In the wildfire valley the terrain, forest, fire spread (Rothermel's model on the land cover, slope and wind), smoke plume heights, the drones' smoke sightings, the ground station's fire locations, forecasts and alerts, and the phones they go to are all simulated; the station sends each evacuation alert by fixed rules from the forecast, zone by zone at Japan's warning levels, once it passes a check; no language model takes part, the alerts reach simulated phones only, and the incident commander can cancel an alert or give a zone the all-clear. Elsewhere the scenery, flames and smoke are drawn for looks: the simulator models those hotspots as fixed points.</p>
+      <p>In the wildfire valley the terrain, forest, fire spread (Rothermel's model on the land cover, slope and wind), smoke plume heights, the drones' smoke sightings, the ground station's fire locations, forecasts and alerts, and the phones they go to are all simulated; the station sends each evacuation alert by fixed rules from the forecast, zone by zone at Japan-style warning levels, once it passes a check; no language model takes part, the alerts reach simulated phones only, and the incident commander can cancel an alert or give a zone the all-clear. Elsewhere the scenery, flames and smoke are drawn for looks: the simulator models those hotspots as fixed points.</p>
       <h3>Nebius evidence</h3>
+      <p class="muted small">A recorded live check (<code>halo doctor --flight</code>): real calls to Nebius Token Factory, shown as written, so it reads the same when this page runs without a key. Its flight step checks that Nemotron supervised a whole flight with at least one answer used without a fallback, not that the flight finished; this one made 30 calls with no fallbacks. In the day-one check of 12 October 2026 the model kept a grid that did not fit the trail; with later code, Nano and Super with reasoning off finished every forest flight (<code>evidence/README.md</code>).</p>
       <div id="evidence" class="muted">Loading…</div>
     </div>
   </aside>

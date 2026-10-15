@@ -1,9 +1,9 @@
 // Render the PNGs in this folder from ../exports/halo_scout.glb with headless Chromium.
 //
-//   node hardware/renders/render.cjs            (from the swarmlab folder)
+//   node hardware/renders/render.cjs            (from the repository root)
 //
 // Needs Node 18+ with Playwright (NODE_PATH pointing at it) and a Chromium. It serves the
-// swarmlab folder on a local port so the page can import the dashboard's
+// repository root on a local port so the page can import the dashboard's
 // vendored three.js and fetch the GLB.
 const { chromium } = require("playwright");
 const http = require("node:http");
@@ -22,8 +22,8 @@ const server = http.createServer((req, res) => {
 (async () => {
   await new Promise((r) => server.listen(0, "127.0.0.1", r));
   const port = server.address().port;
-  // CHROMIUM_PATH if set, else the sandbox path, else Playwright's own browser.
-  const exe = [process.env.CHROMIUM_PATH, "/opt/pw-browsers/chromium"]
+  // CHROMIUM_PATH if set, else Playwright's own browser.
+  const exe = [process.env.CHROMIUM_PATH]
     .find((p) => p && fs.existsSync(p) && fs.statSync(p).isFile());
   const browser = await chromium.launch({ executablePath: exe,
     args: ["--use-angle=swiftshader", "--enable-unsafe-swiftshader", "--ignore-gpu-blocklist"] });

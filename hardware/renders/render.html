@@ -212,7 +212,7 @@ const VIEWS = {
     const cam = persp([0.62, 0.34, 0.72], [0, -0.012, 0.012], 21);
     renderer.render(scene, cam);
     caption("Halo Systems scout quadcopter",
-      `${(meta.mass_kg * 1000).toFixed(0)} g as built, 295 mm motor to motor, 7-inch props, downward thermal camera, oblique RGB camera, PM2.5 smoke sensor`);
+      `${(meta.mass_kg * 1000).toFixed(0)} g as designed (not yet built), 295 mm motor to motor, 7-inch props, downward thermal camera, oblique RGB camera, PM2.5 smoke sensor`);
   },
   top() {
     setExplode(0); spinProps(0); floor.visible = false;

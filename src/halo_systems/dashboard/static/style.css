@@ -79,6 +79,9 @@ button.primary { background: var(--accent); color: #062a26; border-color: var(--
 table { border-collapse: collapse; width: 100%; font-size: 12px; margin: 6px 0 12px; }
 td, th { border-bottom: 1px solid var(--line); padding: 3px 4px; text-align: left; }
 #results img { width: 100%; border-radius: 6px; background: #fff; margin: 6px 0; }
+#results h4 { font-size: 13px; margin: 14px 0 6px; }
+#results a { color: var(--accent); }
+.table-wrap { overflow-x: auto; }
 body.wide aside { width: min(1000px, 70vw); max-width: none; }
 table.headline th:not(:first-child), table.headline td:not(:first-child) { text-align: right; font-variant-numeric: tabular-nums; }
 .examples button { font-size: 12px; }

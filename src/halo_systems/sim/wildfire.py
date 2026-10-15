@@ -35,8 +35,10 @@ What the ground station knows, and does with it:
    within 3 hours, counting smouldering fires as if they took off; Level 4 (everyone leave now) within 60
    minutes from the spreading fires; Level 5 (fire is here; get to safety) at even odds within 15 minutes.
    A zone's level only rises automatically. Each alert passes ``AlertCheck`` and then goes out at once, by
-   cell broadcast to every phone in the zone (simulated phones only). An operator can cancel an alert or
-   give a zone the all-clear; a manual approval mode is kept for drills.
+   cell broadcast to every phone in the zone (simulated phones only). Sending at once by fixed rules follows
+   the idea of Japan's earthquake early warning, which is fully automatic; Japan's Levels 3 to 5
+   are decided by mayors (docs/WILDFIRE.md). An operator can cancel an alert or give a zone the
+   all-clear; a manual approval mode is kept for drills.
 
 Nothing here calls a language model; the forecast and the alert rules are deterministic given the seed.
 """

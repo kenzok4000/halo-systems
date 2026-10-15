@@ -323,10 +323,11 @@ def make_handler(state: State, host: str = "127.0.0.1"):
     """The request handler class. Routes:
 
     GET  /, /static/<path>             the page and its files
-    GET  /results/<file>               a file from the results folder (charts)
+    GET  /results/<path>               a file inside the results folder (charts and reports)
     GET  /api/status                   key, model and AI mode, and the live run ids
-    GET  /api/scenarios                name, title, description, n and use case of each scenario
-    GET  /api/results                  benchmark summary, chart names, REPORT.md, mission-compiler scores
+    GET  /api/scenarios                name, title, description, n, use case and looped route of each scenario
+    GET  /api/results                  benchmark summary, chart names, REPORT.md, mission-compiler scores,
+                                       and the wildfire valley's report and charts
     GET  /api/evidence                 the last ``halo doctor`` check
     GET  /api/runs/<id>/stream         Server-Sent Events: hello, frame, event, directive, ai, end
     GET  /api/runs/<id>/export         the run's result with its time series
@@ -389,6 +390,8 @@ def make_handler(state: State, host: str = "127.0.0.1"):
             ctype = mimetypes.guess_type(path.name)[0] or "application/octet-stream"
             if path.suffix == ".js":
                 ctype = "text/javascript"
+            elif path.suffix == ".md":   # the reports: shown as text in the browser, not downloaded
+                ctype = "text/plain; charset=utf-8"
             self.send_response(HTTPStatus.OK)
             self.send_header("Content-Type", ctype)
             self.send_header("Content-Length", str(len(data)))
@@ -406,8 +409,8 @@ def make_handler(state: State, host: str = "127.0.0.1"):
                     if STATIC.resolve() not in target.parents:
                         return self._error("not found", HTTPStatus.NOT_FOUND)
                     return self._file(target)
-                if parts[0] == "results" and len(parts) == 2:
-                    target = (state.results_dir / parts[1]).resolve()
+                if parts[0] == "results" and len(parts) >= 2:
+                    target = (state.results_dir / "/".join(parts[1:])).resolve()
                     if state.results_dir.resolve() not in target.parents:
                         return self._error("not found", HTTPStatus.NOT_FOUND)
                     return self._file(target)
@@ -418,7 +421,7 @@ def make_handler(state: State, host: str = "127.0.0.1"):
                     for name in SCENARIOS:
                         sc = make(name, 0)
                         out.append({"name": name, "title": sc.title, "description": sc.description, "n": sc.n,
-                                    "use_case": sc.use_case})
+                                    "use_case": sc.use_case, "loop": sc.loop})
                     return self._json(out)
                 if parts[:2] == ["api", "results"]:
                     return self._json(_results(state.results_dir))
@@ -590,6 +593,14 @@ def _results(results_dir: Path) -> dict:
             rows = out.setdefault("mission_eval", {}).setdefault(set_name, {})
             for who, summ in v["summary"].items():
                 rows["regex baseline" if who == "baseline" else name] = summ
+    # The wildfire results have their own folders: the valley (held-out seeds 4000-4019) and the scout.
+    valley = results_dir / "wildfire_valley"
+    if (valley / "REPORT.md").exists():
+        out["wildfire_valley"] = {"report_md": (valley / "REPORT.md").read_text(encoding="utf-8"),
+                                  "charts": [f"wildfire_valley/{c}" for c in ("detection.png", "swarm_size.png", "map.png")
+                                             if (valley / c).exists()]}
+    if (results_dir / "wildfire" / "REPORT.md").exists():
+        out["wildfire_scout"] = {"report": "wildfire/REPORT.md"}
     return out
 
 

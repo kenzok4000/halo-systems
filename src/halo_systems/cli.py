@@ -251,7 +251,8 @@ def cmd_serve(args) -> int:
 
 
 def main(argv=None) -> int:
-    p = argparse.ArgumentParser(prog="halo", description="Halo Systems: supervised drone-swarm formation testbed.")
+    p = argparse.ArgumentParser(prog="halo", description="Halo Systems: drone swarms that find wildfires early, "
+                                "supervised by NVIDIA Nemotron or hand-written rules.")
     sub = p.add_subparsers(dest="cmd", required=True)
 
     s = sub.add_parser("list", help="list the scenarios")

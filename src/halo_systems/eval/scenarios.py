@@ -11,8 +11,8 @@ each ``Directive(...)`` call are formation, spacing_m, speed_mps,
 altitude_m and safety_margin_m.
 
 Civilian use cases covered: wildfire scouting, search and rescue,
-agricultural and forest survey, infrastructure inspection, delivery convoys,
-and light shows.
+agricultural and forest survey, infrastructure inspection, delivery and
+inspection transit, and light shows.
 """
 
 from __future__ import annotations
@@ -50,7 +50,7 @@ def open_transit(seed: int = 0, n: int = 16) -> Scenario:
         n=n, duration_s=80.0, waypoints=[(0.0, 0.0), (300.0, 0.0)],
         directive=Directive("grid", 6.0, 6.0, 20.0, 1.0, source="mission"),
         wind=_wind_from(rng, rng.uniform(1.0, 4.0)),
-        use_case="delivery convoy / inspection transit", tags=("baseline",),
+        use_case="delivery and inspection transit", tags=("baseline",),
     )
 
 
@@ -161,7 +161,7 @@ def motor_failures(seed: int = 0, n: int = 16) -> Scenario:
         directive=Directive("ring", 5.0, 5.0, 25.0, 1.0, source="mission"),
         wind=_wind_from(rng, rng.uniform(1.0, 3.0)),
         failures=[MotorFailure(float(t), int(d)) for t, d in zip(times, drones)],
-        use_case="light show / persistent monitoring", tags=("failure",),
+        use_case="light show / long survey flights", tags=("failure",),
     )
 
 

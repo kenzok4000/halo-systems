@@ -62,6 +62,7 @@ for s in 0 1 2 3 4; do
   halo stress --searcher nemotron-think:$NANO --budget 40 --batch 4 --seed $s --workers 4 \
     --ai-log results/stress/nemotron_calls.jsonl --out results/stress/nemotron-think_$s.json
 done
+gzip results/stress/nemotron_calls.jsonl
 ```
 
 To re-fly a search's tests on another configuration, with the same conditions and seeds (here without the safety filter), and then compare everything:
@@ -94,6 +95,15 @@ halo budget                       # spend so far against the cap
 Spend is capped by the guard described in [NVIDIA_NEBIUS.md](NVIDIA_NEBIUS.md). `improved+nemotron-think:<model id>` turns reasoning on.
 
 The supervisor runs can be replayed exactly with no key and no cost: run the same `bench` command with `--cache-mode replay` (and a new `--out`). Every call is answered from `results/nemotron_cache.jsonl`, so the flights match the published rows apart from timing fields. The dashboard does the same: with no key, `halo serve` replays `results/nemotron_cache.jsonl` with Nemotron 3 Nano.
+
+`results/replay_check/runs.jsonl` holds 24 of these flights replayed this way, with no key. The rows do not record the exact command; this one flies the same 24 flights:
+
+```bash
+NANO=nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B; SUPER=nvidia/nemotron-3-super-120b-a12b
+env -u NEBIUS_API_KEY halo bench --scenarios forest_trail,low_battery,comms_degraded \
+  --configs improved+nemotron:$NANO,improved+nemotron:$SUPER --seeds 1000-1003 --workers 4 \
+  --cache results/nemotron_cache.jsonl --cache-mode replay --out results/replay_check/runs.jsonl
+```
 
 ## Mission compiler (needs a key, except for the baseline)
 
@@ -138,4 +148,4 @@ python3 -m unittest discover -s tests -v                    # after pip install 
 PYTHONPATH=src python3 -m unittest discover -s tests -v     # or without installing
 ```
 
-The tests need no key and no internet connection: model calls go to a fake transport, and two tests start a local server on 127.0.0.1. The suite takes about half a minute on a laptop, and CI runs it on Python 3.10 to 3.13 ([tests.yml](../.github/workflows/tests.yml)).
+The tests need no key and no internet connection: model calls go to a fake transport, and two tests start a local server on 127.0.0.1. The suite takes about a minute on a laptop, and CI runs it on Python 3.10 to 3.13 ([tests.yml](../.github/workflows/tests.yml)).
