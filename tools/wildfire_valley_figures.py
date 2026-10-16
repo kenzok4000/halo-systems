@@ -263,7 +263,7 @@ def direction_chart() -> None:
     ax.set_ylim(0, 100)
     ax.set_xticks(range(0, 181, 30))
     ax.set_xlabel("error in the head's direction (degrees)")
-    ax.set_ylabel("fires within that error (%)")
+    ax.set_ylabel("briefs within that error (%)")
     seeds = sorted({r["seed"] for r in rows})
     ax.set_title(f"Which way the fire's head runs in the next hour: {len(table)} briefs, seeds {seeds[0]}-{seeds[-1]}\n"
                  "each flight's last forecast; a brief that called it not advancing counts as 180°", fontsize=10.5)

@@ -277,7 +277,7 @@ class ValleyFlightTest(unittest.TestCase):
             self.assertGreaterEqual(b["cone_deg"], 0.0)
             self.assertEqual(b["direction"], compass_of(b["head_bearing_deg"]))
             self.assertIn("driven by", b["text"])
-            self.assertIn(b["drivers"]["main"], ("wind", "slope", "wind and slope", "neither"))
+            self.assertIn(b["drivers"]["main"], ("wind", "slope", "wind and slope", "fuel", "neither"))
             self.assertAlmostEqual(sum(f["share"] for f in b["drivers"]["fuel_ahead"]), 1.0, delta=0.03)
             self.assertAlmostEqual(sum(b["drivers"]["shares"].values()), 1.0, delta=0.02)
             self.assertEqual([p[0] for p in b["head_track"]], sorted(p[0] for p in b["head_track"]))
@@ -406,6 +406,13 @@ class ValleyFlightTest(unittest.TestCase):
             self.assertAlmostEqual(d["shares"]["fuel"], 1.0 / (1.0 + phi_e), delta=0.006)
             self.assertAlmostEqual(d["shares"]["slope"], sign * ps / (1.0 + phi_e), delta=0.006)
             self.assertEqual("working against it" in d["why"], want_against is not None)
+        # A head the brief says runs down the slope and into the wind is driven by neither: it follows the fuel.
+        up = math.degrees(math.atan2(sx, sy)) % 360.0
+        d = wf._drivers(loc, none, (speed * sx / t, speed * sy / t), moist, bearing=(up + 180.0) % 360.0)
+        self.assertEqual(d["main"], "fuel")
+        self.assertIn("where the fuel leads", d["why"])
+        self.assertEqual(d["why"].count("against it"), 2)
+        self.assertEqual(wf._drivers(loc, none, (speed * sx / t, speed * sy / t), moist, bearing=up)["main"], "wind")
         # Across the slope the two add as vectors, not as numbers.
         d = wf._drivers(loc, none, (speed * sy / t, -speed * sx / t), moist)
         self.assertAlmostEqual(d["shares"]["fuel"], 1.0 / (1.0 + math.hypot(pw, ps)), delta=0.006)

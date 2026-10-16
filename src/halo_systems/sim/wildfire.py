@@ -1205,7 +1205,7 @@ class Wildfire:
                 head_m_min, bearing, cone, head_from, head_xy = 0.0, None, None, None, None
                 direction = "not spreading" if state == "smouldering" else "not advancing"
                 track = []
-            drivers = self._drivers(l, ahead[key][i], (wx, wy), moist)
+            drivers = self._drivers(l, ahead[key][i], (wx, wy), moist, bearing)
             places = []
             for pl in self.cfg.places:
                 iy, ix = g.cell_of(pl["x"], pl["y"])
@@ -1240,16 +1240,31 @@ class Wildfire:
                         "places": places, "headline": headline, "text": text})
         return out
 
-    def _drivers(self, loc: dict, ahead: np.ndarray, wind: tuple[float, float], moist: Moisture) -> dict:
-        """What pushes a fire's head: the measured wind, the slope under the fire, the fuel ahead and its dryness.
+    def _drivers(self, loc: dict, ahead: np.ndarray, wind: tuple[float, float], moist: Moisture,
+                 bearing: float | None = None) -> dict:
+        """What pushes a fire's head: the measured wind, the slope ahead, the fuel ahead and its dryness.
 
-        ``ahead``: per cell, how many ensemble members burn it as this fire's ground in the next hour.
+        ``ahead``: per cell, how many ensemble members burn it as this fire's ground in the next hour. The slope
+        and the fuel are those of that ground (the members' average slope, the commonest fuel), the terrain and
+        fuel the head runs into, so the reasons explain the head the brief gives; a single point under the fire
+        can tilt another way, at the foot of a rock face, say. With no ground ahead, the slope and fuel under the
+        fire.
+
+        The driver named is the one pushing the head the way the brief says it runs (``bearing``): each factor's
+        push along that bearing. Where neither pushes that way (the head runs where the fuel lets it, across or
+        against both), the brief says so. Without a bearing, the pushes are taken along the model's own head
+        direction at that slope and fuel.
         """
         g = self.grid
         wx, wy = wind
         w10 = math.hypot(wx, wy)
         iy, ix = g.cell_of(loc["x"], loc["y"])
-        sx, sy = float(g.slope_x[iy, ix]), float(g.slope_y[iy, ix])
+        weight = float(ahead.sum())
+        if weight > 0:
+            sx, sy = float((g.slope_x * ahead).sum()) / weight, float((g.slope_y * ahead).sum()) / weight
+        else:
+            sx, sy = float(g.slope_x[iy, ix]), float(g.slope_y[iy, ix])
+        where = "ahead" if weight > 0 else "under the fire"
         tan = math.hypot(sx, sy)
         counts = np.bincount(g.fuel.ravel().astype(int), weights=ahead.ravel())
         fuels = np.flatnonzero(counts)
@@ -1258,13 +1273,14 @@ class Wildfire:
         total = max(float(counts.sum()), 1.0)
         fuel_ahead = [{"fuel": FUEL_MODELS[int(fuels[k])].name if fuels[k] else "rock or bare ground",
                   "share": round(float(counts[k]) / total, 2)} for k in order]
-        # Rothermel's factors for the fuel under the fire (or the commonest fuel ahead, if the fix is on rock).
-        here = int(g.fuel[iy, ix]) or next((int(fuels[k]) for k in order if fuels[k]), 0)
+        # Rothermel's factors for the commonest fuel ahead (or the fuel under the fire, with none ahead).
+        here = next((int(fuels[k]) for k in order if fuels[k]), 0) or int(g.fuel[iy, ix])
         phi_w, phi_s = wind_slope_factors(FUEL_MODELS[here], moist, w10, tan) if here else (0.0, 0.0)
         wind_from = (bearing_deg(wx, wy) + 180.0) % 360.0 if w10 > 0 else None
         upslope = bearing_deg(sx, sy) if tan > 0 else None
         wind_txt = f"the wind ({w10:.1f} m/s from the {compass_of(wind_from)})" if wind_from is not None else "no wind"
-        slope_txt = f"the slope ({100 * tan:.0f}% rising to the {compass_of(upslope)})" if upslope is not None else "flat ground"
+        slope_txt = f"the slope {where} ({100 * tan:.0f}% rising to the {compass_of(upslope)})" if upslope is not None \
+            else "flat ground"
         # The model combines them as vectors, as SpreadGrid does: phi_e = |phi_w u + phi_s s| along the wind (u)
         # and up the slope (s), and the head runs at R0 (1 + phi_e). Each factor's part is its push along phi_e;
         # a downslope wind's or slope's part is negative: it works against the head.
@@ -1273,23 +1289,38 @@ class Wildfire:
         phi_e = math.hypot(vx, vy)
         wind_part = (phi_w * (wx * vx + wy * vy) / (w10 * phi_e)) if w10 > 0 and phi_e > 0 else 0.0
         slope_part = (phi_s * (sx * vx + sy * vy) / (tan * phi_e)) if tan > 0 and phi_e > 0 else 0.0
+        # Each factor's push along the head the brief gives (or, with none, along phi_e).
+        if bearing is not None:
+            hx, hy = math.sin(math.radians(bearing)), math.cos(math.radians(bearing))
+            wind_push = phi_w * (wx * hx + wy * hy) / w10 if w10 > 0 else 0.0
+            slope_push = phi_s * (sx * hx + sy * hy) / tan if tan > 0 else 0.0
+        else:
+            wind_push, slope_push = wind_part, slope_part
+        small = 0.1 * max(phi_w, phi_s)
+        against = None
         if phi_e <= 0:
             main, why = "neither", "neither wind nor slope"
-        elif wind_part >= 2.0 * slope_part:
+        elif wind_push <= small and slope_push <= small:
+            # Neither pushes the head this way: it runs where there is fuel to burn.
+            main = "fuel"
+            rel = [f"{txt} {'against' if push < -small else 'across'} it" for txt, push, phi in
+                   ((wind_txt, wind_push, phi_w), (slope_txt, slope_push, phi_s)) if phi > 0]
+            why = "where the fuel leads" + (", with " + " and ".join(rel) if rel else "")
+        elif wind_push >= 2.0 * slope_push:
             main, why = "wind", wind_txt
-        elif slope_part >= 2.0 * wind_part:
+        elif slope_push >= 2.0 * wind_push:
             main, why = "slope", slope_txt
         else:
             main, why = "wind and slope", f"{wind_txt} and {slope_txt}"
-        against = None
         if main in ("wind", "slope"):
-            part, txt = (slope_part, slope_txt) if main == "wind" else (wind_part, wind_txt)
-            if part < 0 and -part >= 0.1 * max(phi_w, phi_s):
+            push, txt = (slope_push, slope_txt) if main == "wind" else (wind_push, wind_txt)
+            if push < -small:
                 against = "slope" if main == "wind" else "wind"
                 why += f", with {txt} working against it"
         return {"main": main, "against": against, "why": why, "wind_mps": round(w10, 1),
                 "wind_from_deg": None if wind_from is None else round(wind_from, 1) % 360.0,
                 "slope_pct": round(100 * tan, 1), "upslope_deg": None if upslope is None else round(upslope, 1) % 360.0,
+                "slope_where": where,
                 "phi_wind": round(phi_w, 2), "phi_slope": round(phi_s, 2),
                 # Shares of the head's rate R0 (1 + phi_e): the fuel alone on flat calm ground, and the wind's and
                 # the slope's parts (negative when working against the head). They sum to 1.
@@ -1724,7 +1755,10 @@ class Wildfire:
             if j not in moving:
                 continue
             _, _, run, true_b = truth[j][2]
-            up = b["drivers"]["upslope_deg"] if b["drivers"]["slope_pct"] >= 2.0 else None
+            # The slope-only rule: straight up the slope under the located fire, where it is 2% or more.
+            cy, cx = g.cell_of(l["x"], l["y"])
+            sx, sy = float(g.slope_x[cy, cx]), float(g.slope_y[cy, cx])
+            up = round(bearing_deg(sx, sy), 1) % 360.0 if round(100 * math.hypot(sx, sy), 1) >= 2.0 else None
             got = b["head_bearing_deg"]
             rows.append({"fire": b["fire"], "truth_fire": j, "state": b["state"],
                          "truth_bearing_deg": round(true_b, 1) % 360.0, "truth_m_per_min": round(run / 60.0, 2),
