@@ -78,7 +78,7 @@ Every flight result below comes from held-out seeds 1000-1019, each flown once a
 ## Try it, no key needed
 
 ```bash
-git clone <repo-url> halo-systems && cd halo-systems
+git clone https://github.com/kenzok4000/halo-systems halo-systems && cd halo-systems
 python3 -m venv .venv && . .venv/bin/activate
 python3 -m pip install -e '.[report]'   # numpy, plus matplotlib for charts
 python3 -m unittest discover -s tests   # offline, no key, one to two minutes

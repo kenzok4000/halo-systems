@@ -16,7 +16,7 @@ Physical AI
 
 ## Links
 
-* Repository: `<repo-url>` (Apache-2.0).
+* Repository: `https://github.com/kenzok4000/halo-systems` (Apache-2.0).
 * Video: the demo video on this page, public on YouTube and under 3 minutes.
 * Everything a judge needs runs from the repository without a key: the README quick start replays the recorded Nemotron flights, and the wildfire valley calls no language model at all.
 
