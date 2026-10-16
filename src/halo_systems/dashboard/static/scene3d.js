@@ -7,13 +7,19 @@
 // (the scorched patch marks every hotspot); the particles drift with the simulated wind.
 import * as THREE from "three";
 import { OrbitControls } from "/static/vendor/OrbitControls.js";
-import { mergeGeometries, canvasTexture, hash, fbm, ridge, smooth, conifer } from "/static/util3d.js";
+import { mergeGeometries, canvasTexture, hash, fbm, ridge, smooth, conifer, coniferFar, shrub, stoneColors } from "/static/util3d.js";
+import { mergeVertices } from "/static/vendor/BufferGeometryUtils.js";
 import { WildfireLayer } from "/static/wildfire3d.js";
 import { loadDroneModel, DRONE_MODEL_URL } from "/static/drone_model.js";
+import { FilmLook } from "/static/postfx.js";
 
 // Simulation frame is x east, y north, z up; three.js is y up, so (x, y, z) -> (x, z, -y).
 const toV = (p) => new THREE.Vector3(p[0], p[2], -p[1]);
-export const DRONE_SCALE = 4;   // drones are drawn this many times their real size so they show from 150 m away
+export const DRONE_SCALE = 4;   // drones are drawn up to this many times their real size so they show from 150 m away
+// ...and at their real size close up: the drawn size grows from 1x within DRONE_TRUE_M of the camera to
+// DRONE_SCALE times beyond DRONE_FULL_M (evenly on a log scale in between).
+const DRONE_TRUE_M = 6, DRONE_FULL_M = 80;
+const droneSize = (dist) => Math.pow(DRONE_SCALE, smooth(0, 1, Math.log(Math.max(1, dist) / DRONE_TRUE_M) / Math.log(DRONE_FULL_M / DRONE_TRUE_M))) / DRONE_SCALE;
 
 // Status codes from sim/engine.py: 0 active, 1 failed (motor out, falling), 2 crashed, 3 retired, 4 down.
 const STATUS_COLOR = { 0: new THREE.Color(0x3fe0c8), 1: new THREE.Color(0xff4d45), 2: new THREE.Color(0xff4d45),
@@ -24,14 +30,19 @@ const SUN_DIR = new THREE.Vector3(-0.78, 0.5, 0.36).normalize();   // late-morni
 // ---------------------------------------------------------------- helpers
 // Fine ground detail without a repeating texture: value noise of the world position, a few metres
 // across, darkening and lightening the vertex colour; the finest octave fades out with distance.
-function addGroundDetail(material) {
+// overlay ({ map, on } uniforms), on the run's terrain: what is painted on the ground (coverage, forecast,
+// zones), blended over the finished ground colour as an unlit layer would be, in the same pass.
+function addGroundDetail(material, overlay = null) {
   material.onBeforeCompile = (shader) => {
     shader.vertexShader = shader.vertexShader
-      .replace("#include <common>", "#include <common>\nvarying vec2 vGroundXZ;")
-      .replace("#include <project_vertex>", "#include <project_vertex>\n  vGroundXZ = (modelMatrix * vec4(transformed, 1.0)).xz;");
+      .replace("#include <common>", "#include <common>\nvarying vec2 vGroundXZ;\nvarying vec2 vOverlayUv;")
+      .replace("#include <project_vertex>", "#include <project_vertex>\n  vGroundXZ = (modelMatrix * vec4(transformed, 1.0)).xz;\n  vOverlayUv = uv;");
     shader.fragmentShader = shader.fragmentShader
       .replace("#include <common>", `#include <common>
 varying vec2 vGroundXZ;
+varying vec2 vOverlayUv;
+uniform sampler2D uOverlay;
+uniform float uOverlayOn;
 float gHash(vec2 p) { return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
 float gNoise(vec2 p) { vec2 i = floor(p), f = fract(p), u = f * f * (3.0 - 2.0 * f);
   return mix(mix(gHash(i), gHash(i + vec2(1.0, 0.0)), u.x), mix(gHash(i + vec2(0.0, 1.0)), gHash(i + vec2(1.0, 1.0)), u.x), u.y); }`)
@@ -42,7 +53,27 @@ float gNoise(vec2 p) { vec2 i = floor(p), f = fract(p), u = f * f * (3.0 - 2.0 *
     float fine = 1.0 - smoothstep(0.25, 0.9, fw);
     float n = gNoise(gp * 0.045) * 0.45 + gNoise(gp * 0.16 + 3.1) * 0.35 + mix(0.5, gNoise(gp * 0.7 + 7.7), fine) * 0.2;
     diffuseColor.rgb *= mix(0.8, 1.13, n);
+    // Patches of greener, denser growth and of paler, drier grass, and tufts close up.
+    float lush = smoothstep(0.5, 0.82, gNoise(gp * 0.021 + 13.0) * 0.7 + gNoise(gp * 0.09 + 5.0) * 0.3);
+    diffuseColor.rgb = mix(diffuseColor.rgb, diffuseColor.rgb * vec3(0.8, 0.97, 0.62), lush * 0.42);
+    diffuseColor.rgb = mix(diffuseColor.rgb, diffuseColor.rgb * vec3(1.09, 1.04, 0.9), smoothstep(0.62, 0.86, gNoise(gp * 0.035 + 21.0)) * 0.35);
+    diffuseColor.rgb *= mix(1.0, 0.84, smoothstep(0.6, 0.8, gNoise(gp * 1.7 + 2.3)) * fine);
+  }`)
+      .replace("#include <fog_fragment>", `#include <fog_fragment>
+  if (uOverlayOn > 0.5) {
+    vec4 ov = texture2D(uOverlay, vOverlayUv);
+    vec3 oc = ov.rgb;
+    #if defined( TONE_MAPPING )
+      oc = toneMapping(oc);
+    #endif
+    oc = linearToOutputTexel(vec4(oc, 1.0)).rgb;
+    #ifdef USE_FOG
+      oc = mix(oc, fogColor, fogFactor);
+    #endif
+    gl_FragColor.rgb = mix(gl_FragColor.rgb, oc, ov.a);
   }`);
+    shader.uniforms.uOverlay = overlay ? overlay.map : { value: null };
+    shader.uniforms.uOverlayOn = overlay ? overlay.on : { value: 0 };
   };
 }
 
@@ -66,23 +97,140 @@ function minFilter(z, nx, ny, r) {
   return b;
 }
 
-// Cutaway for tree crowns near the swarm: an instanced crown within `radius` of the swarm (horizontally)
-// shrinks smoothly into its base, so drones under the canopy stay visible; trunks, the collision
-// obstacles, are always drawn. Shadows keep the full crowns.
+// Many copies of one plant, split into square tiles so the renderer skips the tiles out of view (it culls
+// whole meshes), each tile drawn in the detail its distance from the camera calls for. levels: [{geo, mat,
+// maxD}] from nearest to furthest, a null geo drawing nothing out there; place(i, m, c) sets plant i's
+// transform on the Object3D m (matrix updated) and its colour c. All levels of a tile share one set of
+// instance transforms and colours, so the wildfire layer recolours a tree once (setColor, then commit).
+class TiledPlants {
+  constructor(parent, points, tile, levels, place, shadow = true) {   // shadow: true, "receive" or false
+    const groups = new Map();
+    points.forEach((p, i) => {
+      const k = `${Math.floor(p[0] / tile)},${Math.floor(p[1] / tile)}`;
+      if (!groups.has(k)) groups.set(k, []);
+      groups.get(k).push(i);
+    });
+    this.where = new Int32Array(points.length * 2);
+    this.tiles = [];
+    const m = new THREE.Object3D(), c = new THREE.Color();
+    for (const idx of groups.values()) {
+      const lead = new THREE.InstancedMesh(levels[0].geo, levels[0].mat, idx.length);
+      const centre = new THREE.Vector3();
+      idx.forEach((i, j) => {
+        place(i, m, c);
+        lead.setMatrixAt(j, m.matrix); lead.setColorAt(j, c);
+        centre.add(m.position);
+        this.where[i * 2] = this.tiles.length; this.where[i * 2 + 1] = j;
+      });
+      centre.multiplyScalar(1 / idx.length);
+      lead.computeBoundingSphere();
+      const meshes = levels.map((lv, k) => {
+        if (!lv.geo) return null;
+        const im = k === 0 ? lead : new THREE.InstancedMesh(lv.geo, lv.mat, idx.length);
+        if (k) { im.instanceMatrix = lead.instanceMatrix; im.instanceColor = lead.instanceColor; im.boundingSphere = lead.boundingSphere; }
+        im.castShadow = shadow === true; im.receiveShadow = shadow !== false;
+        parent.add(im);
+        return im;
+      });
+      this.tiles.push({ meshes, centre, radius: lead.boundingSphere.radius, dirty: false });
+    }
+    this.maxD = levels.map((lv) => lv.maxD);
+  }
+  // Show each tile at the detail for its distance from the camera.
+  update(cam) {
+    for (const t of this.tiles) {
+      const d = Math.max(0, cam.distanceTo(t.centre) - 0.7 * t.radius);
+      let lo = 0;
+      t.meshes.forEach((im, k) => { if (im) im.visible = d >= lo && d < this.maxD[k]; lo = this.maxD[k]; });
+    }
+  }
+  getColor(i, c) { this.tiles[this.where[i * 2]].meshes[0].getColorAt(this.where[i * 2 + 1], c); }
+  setColor(i, c) { const t = this.tiles[this.where[i * 2]]; t.meshes[0].setColorAt(this.where[i * 2 + 1], c); t.dirty = true; }
+  commit() { for (const t of this.tiles) if (t.dirty) { t.meshes[0].instanceColor.needsUpdate = true; t.dirty = false; } }
+}
+
+// Cutaway for tree crowns between the camera and the swarm: an instanced crown within `radius` of the line
+// of sight to the swarm's centre (horizontally, the line carried on `ahead` metres past it to cover the drones
+// beyond), where that line runs through the canopy, shrinks smoothly into its base, so drones under the
+// canopy stay visible while the rest of the forest keeps its crowns; trunks, the collision obstacles, are
+// always drawn. Shadows keep the full crowns. radius 0 turns it off (camera under the canopy).
 function addCrownCutaway(material, uniforms) {
   material.onBeforeCompile = (shader) => {
     shader.uniforms.uFocus = uniforms.focus;
     shader.uniforms.uFadeR = uniforms.radius;
+    shader.uniforms.uCam = uniforms.cam;
+    shader.uniforms.uAhead = uniforms.ahead;
     shader.vertexShader = shader.vertexShader
-      .replace("#include <common>", "#include <common>\nuniform vec3 uFocus;\nuniform float uFadeR;")
+      .replace("#include <common>", "#include <common>\nuniform vec3 uFocus;\nuniform vec3 uCam;\nuniform float uFadeR;\nuniform float uAhead;")
       .replace("#include <begin_vertex>", `#include <begin_vertex>
 #ifdef USE_INSTANCING
-  {
-    vec3 cw = (modelMatrix * instanceMatrix * vec4(0.0, 0.0, 0.0, 1.0)).xyz;
-    transformed *= max(0.001, smoothstep(uFadeR * 0.6, uFadeR, length(cw.xz - uFocus.xz)));
+  if (uFadeR > 0.0) {
+    vec3 cw = (modelMatrix * instanceMatrix * vec4(0.0, 0.0, 0.0, 1.0)).xyz, top = cw + vec3(0.0, length(instanceMatrix[1].xyz), 0.0);
+    vec2 ab = uFocus.xz - uCam.xz;
+    float L = max(1.0, length(ab));
+    float t = clamp(dot(cw.xz - uCam.xz, ab) / (L * L), 0.0, 1.0 + uAhead / L), t1 = min(t, 1.0);
+    float d = length(cw.xz - (uCam.xz + ab * t)), ly = mix(uCam.y, uFocus.y, t1);
+    float blocks = step(cw.y - 8.0, ly) * step(ly, top.y + 4.0);   // the line of sight is in the canopy here
+    float r = uFadeR * mix(0.5, 1.0, t1);                           // narrower near the camera
+    transformed *= max(0.001, mix(1.0, smoothstep(r * 0.6, r, d), blocks));
   }
 #endif`);
   };
+}
+
+// Trees sway a little in the wind: the top of each instanced crown moves on a slow, uneven swing, out of
+// step with its neighbours so gusts seem to cross the forest. Looks only (shadows keep the still crowns).
+function addSway(material, time) {
+  material.onBeforeCompile = (shader) => {
+    shader.uniforms.uSwayT = time;
+    shader.vertexShader = shader.vertexShader
+      .replace("#include <common>", "#include <common>\nuniform float uSwayT;")
+      .replace("#include <begin_vertex>", `#include <begin_vertex>
+#ifdef USE_INSTANCING
+  {
+    vec3 ip = vec3(instanceMatrix[3]);
+    float h = max(0.0, transformed.y - 0.2), ph = uSwayT * 1.1 + ip.x * 0.043 + ip.z * 0.057;
+    transformed.xz += vec2(sin(ph) + 0.4 * sin(ph * 2.3 + 1.7), 0.5 * cos(ph * 0.8)) * 0.035 * h * h;
+  }
+#endif`);
+  };
+}
+
+// Wind streaks: faint lines drifting with the simulated wind round the swarm, seen only in strong wind (a gust
+// front), so a gust shows in the picture as well as on the wind gauge. Looks only.
+class WindStreaks {
+  constructor(n = 1100) {
+    this.n = n; this.p = null;
+    const geo = new THREE.BufferGeometry();
+    this.pos = new THREE.BufferAttribute(new Float32Array(n * 6), 3).setUsage(THREE.DynamicDrawUsage);
+    this.alpha = new THREE.BufferAttribute(new Float32Array(n * 2), 1).setUsage(THREE.DynamicDrawUsage);
+    geo.setAttribute("position", this.pos); geo.setAttribute("aA", this.alpha);
+    this.lines = new THREE.LineSegments(geo, new THREE.ShaderMaterial({
+      vertexShader: "attribute float aA; varying float vA; void main() { vA = aA; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }",
+      fragmentShader: "varying float vA; void main() { gl_FragColor = vec4(0.93, 0.96, 1.0, vA); }",
+      transparent: true, depthWrite: false }));
+    this.lines.frustumCulled = false; this.lines.renderOrder = 4; this.lines.visible = false;
+  }
+  update(dt, wind, focus) {
+    const speed = Math.hypot(wind.x, wind.z), a = 0.62 * smooth(3.5, 9, speed);
+    this.lines.visible = a > 0.01;
+    if (!this.lines.visible || !dt) return;
+    const H = 90, LO = -14, HI = 26, n = this.n, p = this.p || (this.p = Float32Array.from({ length: n * 3 }, (_, k) =>
+      (k % 3 === 1 ? LO + (HI - LO) * hash(k, 3) : (hash(k, 1) - 0.5) * 2 * H)));   // offsets from the focus
+    const tail = 3 + 0.8 * speed, ux = wind.x / speed, uz = wind.z / speed, P = this.pos.array, A = this.alpha.array;
+    for (let i = 0; i < n; i++) {
+      const v = 0.85 + 0.3 * hash(i, 7);
+      let x = p[i * 3] + wind.x * dt * v, z = p[i * 3 + 2] + wind.z * dt * v;
+      if (x > H) x -= 2 * H; else if (x < -H) x += 2 * H;
+      if (z > H) z -= 2 * H; else if (z < -H) z += 2 * H;
+      p[i * 3] = x; p[i * 3 + 2] = z;
+      const y = p[i * 3 + 1], X = focus.x + x, Y = focus.y + y, Z = focus.z + z;
+      const edge = (1 - smooth(0.7 * H, H, Math.max(Math.abs(x), Math.abs(z)))) * (0.4 + 0.6 * hash(i, 9));
+      P.set([X, Y, Z, X - ux * tail, Y, Z - uz * tail], i * 6);
+      A[i * 2] = a * edge; A[i * 2 + 1] = 0;
+    }
+    this.pos.needsUpdate = this.alpha.needsUpdate = true;
+  }
 }
 
 // ---------------------------------------------------------------- particles (smoke, flames, embers)
@@ -101,17 +249,23 @@ class Particles {
     geo.setAttribute("aAlpha", this.aAlpha); geo.setAttribute("aColor", this.aColor); geo.setAttribute("aRot", this.aRot);
     geo.setDrawRange(0, 0);
     const mat = new THREE.ShaderMaterial({
-      uniforms: { uTex: { value: texture }, uScale: { value: 600 }, fogColor: { value: HAZE }, fogDensity: { value: 0 } },
+      // uSun: the sun's direction across the screen (point-sprite coordinates, y down) and how far it is to one
+      // side; smoke puffs are lit on that side and in shade on the other. Flames (additive) are not shaded.
+      uniforms: { uTex: { value: texture }, uScale: { value: 600 }, fogColor: { value: HAZE }, fogDensity: { value: 0 },
+        uSun: { value: new THREE.Vector3(0, 0, 0) } },
       vertexShader: `attribute float aSize; attribute float aAlpha; attribute vec3 aColor; attribute float aRot;
         varying float vAlpha; varying vec3 vColor; varying float vRot; varying float vDepth; uniform float uScale;
         void main() { vec4 mv = modelViewMatrix * vec4(position, 1.0); gl_Position = projectionMatrix * mv;
           gl_PointSize = aSize * uScale / max(1.0, -mv.z); vAlpha = aAlpha; vColor = aColor; vRot = aRot; vDepth = -mv.z; }`,
-      fragmentShader: `uniform sampler2D uTex; uniform vec3 fogColor; uniform float fogDensity;
+      fragmentShader: `uniform sampler2D uTex; uniform vec3 fogColor; uniform float fogDensity; uniform vec3 uSun;
         varying float vAlpha; varying vec3 vColor; varying float vRot; varying float vDepth;
         void main() { vec2 c = gl_PointCoord - 0.5; float s = sin(vRot), k = cos(vRot);
           vec4 t = texture2D(uTex, vec2(k * c.x - s * c.y, s * c.x + k * c.y) + 0.5);
           float fog = 1.0 - exp(-fogDensity * fogDensity * vDepth * vDepth);
-          gl_FragColor = vec4(mix(vColor, fogColor, fog), t.a * vAlpha); }`,
+          float lit = 1.0 + uSun.z * (1.1 * dot(c, uSun.xy) - 0.08 * length(c) * 4.0);   // brighter towards the sun
+          gl_FragColor = vec4(mix(pow(vColor, vec3(2.2)) * lit, fogColor, fog), t.a * vAlpha);   // vColor: display values
+          #include <colorspace_fragment>
+        }`,
       transparent: true, depthWrite: false,
       blending: additive ? THREE.AdditiveBlending : THREE.NormalBlending,
     });
@@ -175,6 +329,11 @@ export class SwarmView {
     scene.background = SKY_HORIZON.clone();
     this.camera = new THREE.PerspectiveCamera(46, 1, 0.5, 9000);
     this.camera.position.set(-60, 55, 70);
+    // The film look (postfx.js): bloom, tone mapping, grade and vignette; ?fx=0 draws straight to the screen.
+    this.fx = null;
+    if (new URLSearchParams(location.search).get("fx") !== "0") {
+      try { this.fx = new FilmLook(r, scene, this.camera); } catch (err) { console.warn("film look off", err); }
+    }
     this.controls = new OrbitControls(this.camera, canvas);
     this.controls.enableDamping = true;
     this.controls.maxPolarAngle = Math.PI * 0.495;
@@ -186,14 +345,16 @@ export class SwarmView {
     this.paused = false;
     this.clock = new THREE.Clock();
     this.vt = 0;              // view time, seconds: drives rotor spin, pulsing rings and the camera
+    this.swayT = { value: 0 }; // the trees' sway clock (view time)
     this.film = false;        // film mode: the recorder calls renderFilm() once per video frame
     this.overlayDirty = false;
     this.overlayDrawnAt = -1;
     this.focus = new THREE.Vector3();
-    this.fade = { focus: { value: new THREE.Vector3(0, -1e4, 0) }, radius: { value: 0 } };
+    this.fade = { focus: { value: new THREE.Vector3(0, -1e4, 0) }, radius: { value: 0 }, cam: { value: new THREE.Vector3() }, ahead: { value: 0 } };
     this._textures();
     this._sky();
     this._lights();
+    this._environment();
     this._buildScenery(null);
     // The scout's CAD model; drones are drawn as simple shapes until it has loaded.
     this.model = null;
@@ -208,10 +369,11 @@ export class SwarmView {
       if (this.hello) this._buildDrones(this.hello);
     }).catch((err) => { this.modelState = "failed"; console.warn("drone model not loaded; drawing simple drones", err); });
     this.smoke = new Particles(5000, false, this.puffTex);
+    this.streaks = new WindStreaks();
     this.flames = new Particles(4000, true, this.flameTex);
     for (const p of [this.smoke, this.flames]) p.points.material.uniforms.fogDensity.value = scene.fog.density;
     this.smoke.points.renderOrder = 3; this.flames.points.renderOrder = 4;
-    scene.add(this.smoke.points, this.flames.points);
+    scene.add(this.smoke.points, this.flames.points, this.streaks.lines);
     this.world = new THREE.Group();
     scene.add(this.world);
     this.hello = null;
@@ -232,29 +394,64 @@ export class SwarmView {
 
   // -- sky, light, textures -----------------------------------------------------------------------
   _sky() {
+    // A sky gradient with drifting fair-weather cumulus (value-noise clouds on a plane high above, lit from
+    // the sun's side), and the sun's disc and glow.
     const geo = new THREE.SphereGeometry(7000, 32, 16);
     const mat = new THREE.ShaderMaterial({
       side: THREE.BackSide, depthWrite: false, fog: false,
-      uniforms: { uZenith: { value: SKY_ZENITH }, uHorizon: { value: SKY_HORIZON }, uHaze: { value: HAZE }, uSun: { value: SUN_DIR } },
+      uniforms: { uZenith: { value: SKY_ZENITH }, uHorizon: { value: SKY_HORIZON }, uHaze: { value: HAZE }, uSun: { value: SUN_DIR },
+        uDrift: { value: new THREE.Vector2() } },
       vertexShader: "varying vec3 vDir; void main() { vDir = normalize(position); gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }",
-      fragmentShader: `uniform vec3 uZenith; uniform vec3 uHorizon; uniform vec3 uHaze; uniform vec3 uSun; varying vec3 vDir;
+      fragmentShader: `uniform vec3 uZenith; uniform vec3 uHorizon; uniform vec3 uHaze; uniform vec3 uSun; uniform vec2 uDrift; varying vec3 vDir;
+        float h21(vec2 p) { return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
+        float vn(vec2 p) { vec2 i = floor(p), f = fract(p), u = f * f * (3.0 - 2.0 * f);
+          return mix(mix(h21(i), h21(i + vec2(1.0, 0.0)), u.x), mix(h21(i + vec2(0.0, 1.0)), h21(i + vec2(1.0, 1.0)), u.x), u.y); }
+        float fbm(vec2 p) { float a = 0.5, s = 0.0; for (int k = 0; k < 5; k++) { s += a * vn(p); p = p * 2.03 + vec2(17.1, 9.2); a *= 0.5; } return s; }
         void main() { vec3 d = normalize(vDir); float h = d.y;
           vec3 c = h > 0.0 ? mix(uHorizon, uZenith, pow(h, 0.5)) : uHaze;
           c = mix(c, uHaze, exp(-max(h, 0.0) * 18.0) * 0.8);
-          float s = max(0.0, dot(d, uSun)); c += vec3(1.0, 0.92, 0.75) * (pow(s, 900.0) * 2.0 + pow(s, 16.0) * 0.18);
+          float s = max(0.0, dot(d, uSun));
+          if (h > 0.0) {
+            vec2 p = d.xz / (h + 0.1) * 1.4 + uDrift;
+            float n = fbm(p);
+            float cover = smoothstep(0.5, 0.74, n) * smoothstep(0.02, 0.22, h);
+            float lit = 0.55 + 0.45 * smoothstep(0.35, 0.9, fbm(p * 1.9 + 4.0 + uSun.xz)) + 0.4 * pow(s, 5.0);
+            vec3 cloud = mix(vec3(0.5, 0.55, 0.63), vec3(1.0, 0.96, 0.9), clamp(lit, 0.0, 1.0)) * 1.05;
+            c = mix(c, mix(cloud, uHaze, exp(-h * 9.0) * 0.6), cover * 0.9);
+          }
+          c += vec3(1.0, 0.92, 0.75) * (pow(s, 900.0) * 2.0 + pow(s, 16.0) * 0.18);
           gl_FragColor = vec4(c, 1.0);
           #include <colorspace_fragment>
         }`,
     });
     this.sky = new THREE.Mesh(geo, mat);
     this.sky.frustumCulled = false;
-    this.sky.renderOrder = -1;
+    this.sky.renderOrder = 1;   // after the ground and trees, so only the sky they leave open is shaded
     this.scene.add(this.sky);
   }
 
+  // Image-based light for the shiny parts (the drones' CAD materials, masts, buildings): the sky above and
+  // dry ground below, blurred, as a reflection and fill.
+  _environment() {
+    const pmrem = new THREE.PMREMGenerator(this.renderer);
+    const env = new THREE.Scene();
+    env.add(new THREE.Mesh(new THREE.SphereGeometry(10, 32, 16), new THREE.ShaderMaterial({
+      side: THREE.BackSide,
+      uniforms: { uZenith: { value: SKY_ZENITH }, uHorizon: { value: SKY_HORIZON }, uGround: { value: new THREE.Color(0x7a6a50) }, uSun: { value: SUN_DIR } },
+      vertexShader: "varying vec3 vDir; void main() { vDir = normalize(position); gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }",
+      fragmentShader: `uniform vec3 uZenith, uHorizon, uGround, uSun; varying vec3 vDir;
+        void main() { vec3 d = normalize(vDir); vec3 c = d.y > 0.0 ? mix(uHorizon, uZenith, sqrt(d.y)) : mix(uHorizon, uGround, sqrt(-d.y * 4.0 > 1.0 ? 1.0 : -d.y * 4.0));
+          c += vec3(1.0, 0.9, 0.75) * pow(max(0.0, dot(d, uSun)), 64.0) * 6.0;
+          gl_FragColor = vec4(c, 1.0); }`,
+    })));
+    this.scene.environment = pmrem.fromScene(env, 0.03).texture;
+    this.scene.environmentIntensity = 0.55;
+    pmrem.dispose();
+  }
+
   _lights() {
-    this.scene.add(new THREE.HemisphereLight(0xc6dbf0, 0x6a5a46, 0.9));
-    const sun = this.sun = new THREE.DirectionalLight(0xffe2bc, 3.5);
+    this.scene.add(new THREE.HemisphereLight(0xbcd5f2, 0x665644, 0.85));   // cool skylight in the shade
+    const sun = this.sun = new THREE.DirectionalLight(0xffdcb2, 3.7);       // warm late-morning sun
     sun.castShadow = true;
     sun.shadow.mapSize.set(2048, 2048);
     const c = sun.shadow.camera;
@@ -331,6 +528,7 @@ export class SwarmView {
     }
     const group = this.scenery = new THREE.Group();
     this.scene.add(group);
+    this.sceneryPlants = [];
     // The box the run uses: path, obstacles, survey area and hotspots.
     let box = [-150, -150, 150, 150];
     if (hello) {
@@ -412,6 +610,7 @@ export class SwarmView {
     addGroundDetail(mat);
     const ground = new THREE.Mesh(geo, mat);
     ground.receiveShadow = true;
+    ground.renderOrder = 0.5;   // after the run's terrain, which hides most of it near the flight
     group.add(ground);
 
     // Clear of the run: its box plus a margin, its hotspots, its buildings' block.
@@ -421,7 +620,7 @@ export class SwarmView {
     const targets = hello ? hello.targets || [] : [];
 
     // Forests on the hills: instanced conifers, in patches, below the tree line.
-    const near = [], far = [];
+    const hill = [];
     const STEP = 15;
     for (let x = cx - 2600; x < cx + 2600; x += STEP) {
       for (let y = cy - 2600; y < cy + 2600; y += STEP) {
@@ -433,28 +632,19 @@ export class SwarmView {
         if (mask < 0.56 || hash(jx * 0.7, jy * 1.3) > 0.8) continue;
         const h = height(jx, jy);
         if (h > 400 + 60 * hash(jx, 2)) continue;
-        (d < 420 ? near : far).push([jx, jy, h]);
+        hill.push([jx, jy, h]);
       }
     }
-    // Near trees get the detailed conifer; far ones, a few pixels tall, two plain cones.
-    const crownGeo = conifer(), farGeo = mergeGeometries([
-      new THREE.ConeGeometry(1, 0.62, 7, 1, true).translate(0, 0.31, 0),
-      new THREE.ConeGeometry(0.74, 0.55, 7, 1, true).translate(0, 0.66, 0)]);
-    farGeo.computeVertexNormals();
-    const leaf = new THREE.MeshLambertMaterial({ color: 0xffffff, vertexColors: true }), farLeaf = new THREE.MeshLambertMaterial({ color: 0xffffff });
-    const m = new THREE.Object3D(), tc = new THREE.Color();
-    for (const [list, shadow] of [[near, true], [far, false]]) {
-      if (!list.length) continue;
-      const im = new THREE.InstancedMesh(shadow ? crownGeo : farGeo, shadow ? leaf : farLeaf, list.length);
-      list.forEach(([x, y, h], i) => {
-        const s = 7 + 9 * hash(x, y), w = s * (0.32 + 0.1 * hash(y, x));
-        m.position.set(x, h - 0.5, -y); m.rotation.set(0, hash(x, 7) * 6.28, 0); m.scale.set(w, s * 1.15, w); m.updateMatrix();
-        im.setMatrixAt(i, m.matrix);
-        tc.setHSL(0.22 + 0.07 * hash(x, 3), 0.3 + 0.18 * hash(y, 5), 0.17 + 0.09 * hash(x, y)); im.setColorAt(i, tc);
-      });
-      im.castShadow = shadow; im.receiveShadow = shadow;
-      group.add(im);
-    }
+    // The detailed conifer near the camera, fewer branches further out, two plain cones a few pixels tall.
+    const leaf = new THREE.MeshLambertMaterial({ color: 0xffffff, vertexColors: true });
+    addSway(leaf, this.swayT);
+    this.sceneryPlants.push(new TiledPlants(group, hill, 260, [
+      { geo: conifer(), mat: leaf, maxD: 260 }, { geo: conifer(3, 7), mat: leaf, maxD: 650 }, { geo: coniferFar(), mat: leaf, maxD: Infinity }],
+    (i, o, col) => {
+      const [x, y, h] = hill[i], s = 7 + 9 * hash(x, y), w = s * (0.32 + 0.1 * hash(y, x));
+      o.position.set(x, h - 0.5, -y); o.rotation.set(0, hash(x, 7) * 6.28, 0); o.scale.set(w, s * 1.15, w); o.updateMatrix();
+      col.setHSL(0.22 + 0.07 * hash(x, 3), 0.3 + 0.18 * hash(y, 5), 0.17 + 0.09 * hash(x, y));
+    }));
 
     // Low shrubs and grass tussocks over and around the flight area (under 1.5 m: never in a drone's way).
     const shrubs = [];
@@ -471,18 +661,15 @@ export class SwarmView {
       }
     }
     if (shrubs.length) {
-      const sg = mergeGeometries([new THREE.IcosahedronGeometry(1, 0), new THREE.IcosahedronGeometry(0.7, 0).translate(0.6, -0.1, 0.3),
-        new THREE.IcosahedronGeometry(0.6, 0).translate(-0.5, -0.15, -0.4)]);
-      sg.computeVertexNormals();
-      const im = new THREE.InstancedMesh(sg, new THREE.MeshLambertMaterial({ color: 0xffffff }), shrubs.length);
-      shrubs.forEach(([x, y], i) => {
-        const s = 0.35 + 0.6 * hash(x, y) ** 2, h = this.terrain && outside(tbox, x, y) === 0 ? this.groundAt(x, y) : height(x, y);
-        m.position.set(x, h + s * 0.3, -y); m.rotation.set(0, hash(y, 2) * 6.28, 0); m.scale.set(s, s * 0.8, s);
-        m.updateMatrix(); im.setMatrixAt(i, m.matrix);
-        tc.setHSL(0.17 + 0.09 * hash(x * 0.3, y * 0.7), 0.3 + 0.2 * hash(y, x), 0.13 + 0.08 * hash(x + 2, y)); im.setColorAt(i, tc);
-      });
-      im.castShadow = true; im.receiveShadow = true;
-      group.add(im);
+      // Shrubs a few pixels across are not drawn.
+      const mat = new THREE.MeshLambertMaterial({ color: 0xffffff, vertexColors: true });
+      this.sceneryPlants.push(new TiledPlants(group, shrubs, 120, [{ geo: shrub(), mat, maxD: 160 }, { geo: shrub(1), mat, maxD: 420 }],
+        (i, o, col) => {
+          const [x, y] = shrubs[i];
+          const s = 0.35 + 0.6 * hash(x, y) ** 2, h = this.terrain && outside(tbox, x, y) === 0 ? this.groundAt(x, y) : height(x, y);
+          o.position.set(x, h + s * 0.3, -y); o.rotation.set(0, hash(y, 2) * 6.28, 0); o.scale.set(s, s * 0.8, s); o.updateMatrix();
+          col.setHSL(0.17 + 0.09 * hash(x * 0.3, y * 0.7), 0.3 + 0.2 * hash(y, x), 0.13 + 0.08 * hash(x + 2, y));
+        }));
     }
 
     // Paved ground under a block of buildings.
@@ -546,7 +733,8 @@ export class SwarmView {
     geo.setAttribute("color", new THREE.BufferAttribute(col, 3));
     geo.computeVertexNormals();
     const mat = new THREE.MeshLambertMaterial({ vertexColors: true });
-    addGroundDetail(mat);
+    this.groundOverlay = { map: { value: null }, on: { value: 0 } };   // set by _buildOverlay
+    addGroundDetail(mat, this.groundOverlay);
     const mesh = new THREE.Mesh(geo, mat);
     mesh.receiveShadow = true;
     mesh.castShadow = true;
@@ -567,31 +755,29 @@ export class SwarmView {
         else if (lc.grid[k] === scrubK && h > 0 && hash(ix * 0.37, iy * 1.3) < 0.5) bushes.push([x, y, h]);
       }
     }
-    const m = new THREE.Object3D(), tc = new THREE.Color();
     if (trees.length) {
-      const crownGeo = conifer();
-      const im = new THREE.InstancedMesh(crownGeo, new THREE.MeshLambertMaterial({ color: 0xffffff, vertexColors: true }), trees.length);
-      trees.forEach(([x, y, h], i) => {
-        const s = h * (0.92 + 0.16 * hash(x, y)), wd = s * (0.26 + 0.08 * hash(y, x));
-        m.position.set(x, this.groundAt(x, y) - 0.3, -y); m.rotation.set(0, hash(x, 7) * 6.28, 0); m.scale.set(wd, s, wd); m.updateMatrix();
-        im.setMatrixAt(i, m.matrix);
-        tc.setHSL(0.22 + 0.07 * hash(x, 3), 0.28 + 0.18 * hash(y, 5), 0.16 + 0.08 * hash(x, y)); im.setColorAt(i, tc);
+      const leaf = new THREE.MeshLambertMaterial({ color: 0xffffff, vertexColors: true });
+      addSway(leaf, this.swayT);
+      const plants = new TiledPlants(this.world, trees, 70, [
+        { geo: conifer(), mat: leaf, maxD: 240 }, { geo: conifer(3, 7), mat: leaf, maxD: 560 }, { geo: coniferFar(), mat: leaf, maxD: Infinity }],
+      (i, o, col) => {
+        const [x, y, h] = trees[i], s = h * (0.92 + 0.16 * hash(x, y)), wd = s * (0.26 + 0.08 * hash(y, x));
+        o.position.set(x, this.groundAt(x, y) - 0.3, -y); o.rotation.set(0, hash(x, 7) * 6.28, 0); o.scale.set(wd, s, wd); o.updateMatrix();
+        col.setHSL(0.22 + 0.07 * hash(x, 3), 0.28 + 0.18 * hash(y, 5), 0.16 + 0.08 * hash(x, y));
       });
-      im.castShadow = true; im.receiveShadow = true;
-      this.world.add(im);
-      this.forestTrees = { im, xy: trees };   // the wildfire layer chars the trees the fire reaches
+      this.worldPlants.push(plants);
+      this.forestTrees = { plants, xy: trees };   // the wildfire layer chars the trees the fire reaches
     }
     if (bushes.length) {
-      const sg = new THREE.SphereGeometry(1, 7, 5);   // smooth-shaded, so it reads as a bush rather than a rock
-      const im = new THREE.InstancedMesh(sg, new THREE.MeshLambertMaterial({ color: 0xffffff }), bushes.length);
-      bushes.forEach(([x, y, h], i) => {
-        const s = Math.max(0.5, h * 0.55) * (0.7 + 0.6 * hash(x, y));
-        m.position.set(x, this.groundAt(x, y) + s * 0.35, -y); m.rotation.set(0, hash(y, 2) * 6.28, 0); m.scale.set(s, s * 0.75, s);
-        m.updateMatrix(); im.setMatrixAt(i, m.matrix);
-        tc.setHSL(0.19 + 0.07 * hash(x * 0.3, y * 0.7), 0.3 + 0.15 * hash(y, x), 0.15 + 0.06 * hash(x + 2, y)); im.setColorAt(i, tc);
-      });
-      im.receiveShadow = true;
-      this.world.add(im);
+      // Soft-shaded lumps, so it reads as a bush rather than a rock; plainer further out, and not drawn a few pixels across.
+      const mat = new THREE.MeshLambertMaterial({ color: 0xffffff, vertexColors: true });
+      this.worldPlants.push(new TiledPlants(this.world, bushes, 70, [
+        { geo: shrub(), mat, maxD: 200 }, { geo: shrub(1), mat, maxD: 430 }, { geo: null, maxD: Infinity }],
+      (i, o, col) => {
+        const [x, y, h] = bushes[i], s = Math.max(0.5, h * 0.55) * (0.7 + 0.6 * hash(x, y));
+        o.position.set(x, this.groundAt(x, y) + s * 0.35, -y); o.rotation.set(0, hash(y, 2) * 6.28, 0); o.scale.set(s, s * 0.75, s); o.updateMatrix();
+        col.setHSL(0.19 + 0.07 * hash(x * 0.3, y * 0.7), 0.3 + 0.15 * hash(y, x), 0.15 + 0.06 * hash(x + 2, y));
+      }, "receive"));
     }
   }
 
@@ -612,7 +798,8 @@ export class SwarmView {
     this.world = new THREE.Group();
     this.scene.add(this.world);
     this.smoke.clear(); this.flames.clear();
-    this.footprints = null; this.ride = null; this.forestTrees = null;
+    this.footprints = null; this.ride = null; this.forestTrees = null; this.crownBase = null;
+    this.worldPlants = [];
     // Terrain (heights[iy * nx + ix] on a grid from (x0, y0)) and land cover, when the run has them.
     const wt = hello.world.terrain;
     this.terrain = wt ? { origin: [wt.x0, wt.y0], cell_m: wt.cell_m, nx: wt.nx, ny: wt.ny, z: wt.heights } : null;
@@ -662,6 +849,7 @@ export class SwarmView {
         m.position.set(o.x, g, -o.y); m.rotation.set(0, hash(o.x, o.y) * 6.28, 0);
         m.scale.set(o.radius, o.height, o.radius); m.updateMatrix(); trunks.setMatrixAt(i, m.matrix);
         const base = Math.max(o.height * 0.42, alt + 4);
+        this.crownBase = Math.min(this.crownBase ?? Infinity, g + base);
         if (base < o.height - 3) {
           const cr = Math.max(1.8, o.radius * 5.5) * (0.85 + 0.3 * hash(o.y, o.x));
           m.position.set(o.x, g + base, -o.y); m.scale.set(cr, o.height - base + 1.2, cr); m.updateMatrix();
@@ -675,9 +863,17 @@ export class SwarmView {
       for (const im of [trunks, crowns]) { im.castShadow = true; im.receiveShadow = true; this.world.add(im); }
     }
     if (rocks.length) {
-      const stone = new THREE.MeshStandardMaterial({ color: 0x8a8378, roughness: 1, flatShading: true });
-      for (const o of rocks) {
-        const mesh = new THREE.Mesh(new THREE.DodecahedronGeometry(1, 0), stone);
+      // Boulders: a lumpy ball, smooth-shaded and mottled, a little different for each rock.
+      const stone = new THREE.MeshStandardMaterial({ color: 0x9a9286, roughness: 0.95, vertexColors: true });
+      for (const [i, o] of rocks.entries()) {
+        const geo = mergeVertices(new THREE.IcosahedronGeometry(1, 2).deleteAttribute("normal").deleteAttribute("uv"));
+        const p = geo.attributes.position;
+        for (let k = 0; k < p.count; k++) {
+          const x = p.getX(k), y = p.getY(k), z = p.getZ(k), f = 0.82 + 0.3 * fbm(x * 1.3 + i * 7.1, z * 1.3 + y * 0.9 + i);
+          p.setXYZ(k, x * f, Math.max(-0.6, y * f), z * f);
+        }
+        geo.computeVertexNormals();
+        const mesh = new THREE.Mesh(stoneColors(geo, i), stone);
         mesh.position.set(o.x, this.groundAt(o.x, o.y) + o.height / 2, -o.y);
         mesh.scale.set(o.radius, o.height / 2, o.radius);
         mesh.castShadow = mesh.receiveShadow = true;
@@ -828,25 +1024,24 @@ export class SwarmView {
     const w = x1 - x0, h = y1 - y0, px = Math.min(4, 2048 / Math.max(w, h));   // pixels per metre
     const cv = document.createElement("canvas");
     cv.width = Math.ceil(w * px); cv.height = Math.ceil(h * px);
-    const cover = document.createElement("canvas");
-    cover.width = cv.width; cover.height = cv.height;
+    const cover = document.createElement("canvas"), wash = document.createElement("canvas");
+    cover.width = wash.width = cv.width; cover.height = wash.height = cv.height;
     const tex = new THREE.CanvasTexture(cv);
     tex.colorSpace = THREE.SRGBColorSpace;
     tex.anisotropy = 4;
-    // On terrain, one overlay vertex per terrain node, so it lies exactly 0.25 m above every terrain triangle.
-    const seg = this.terrain ? [this.terrain.nx - 1, this.terrain.ny - 1] : [1, 1];
-    const geo = new THREE.PlaneGeometry(w, h, seg[0], seg[1]);
-    geo.rotateX(-Math.PI / 2);
-    const pos = geo.attributes.position;
-    for (let k = 0; k < pos.count; k++) {
-      const x = pos.getX(k) + x0 + w / 2, y = -pos.getZ(k) + y0 + h / 2;
-      pos.setXYZ(k, x, this.groundAt(x, y) + 0.25, -y);
+    if (this.terrain) {
+      // On terrain the ground's own shader lays the overlay over it (its UVs span the same box).
+      this.groundOverlay.map.value = tex; this.groundOverlay.on.value = 1;
+    } else {
+      const geo = new THREE.PlaneGeometry(w, h, 1, 1);
+      geo.rotateX(-Math.PI / 2);
+      const mesh = new THREE.Mesh(geo, new THREE.MeshBasicMaterial({ map: tex, transparent: true, depthWrite: false,
+        polygonOffset: true, polygonOffsetFactor: -1 }));
+      mesh.position.set(x0 + w / 2, 0.25, -(y0 + h / 2));
+      mesh.renderOrder = 1;
+      this.world.add(mesh);
     }
-    const mesh = new THREE.Mesh(geo, new THREE.MeshBasicMaterial({ map: tex, transparent: true, depthWrite: false,
-      polygonOffset: true, polygonOffsetFactor: -1 }));
-    mesh.renderOrder = 1;
-    this.world.add(mesh);
-    this.overlay = { cv, cover, tex, x0, y0, w, h, px, area: hello.sensor && hello.sensor.area };
+    this.overlay = { cv, cover, wash, coverDirty: null, tex, x0, y0, w, h, px, area: hello.sensor && hello.sensor.area };
     this._drawOverlay();
   }
 
@@ -858,8 +1053,26 @@ export class SwarmView {
     const g = o.cv.getContext("2d");
     g.clearRect(0, 0, o.cv.width, o.cv.height);
     if (this.wildfire) this.wildfire.drawUnder(g);
-    // Ground the cameras have seen: a light teal wash.
-    g.globalAlpha = 0.2; g.drawImage(o.cover, 0, 0); g.globalAlpha = 1;
+    // Ground the cameras have seen: a faint cool tint, with a brighter thin edge where the searched ground
+    // ends. Kept on its own canvas and redrawn only around the ground newly seen since the last frame.
+    const b = o.coverDirty;
+    if (b) {
+      const e = o.wash.getContext("2d"), d = Math.max(1, 0.5 * o.px);
+      const [x0, y0] = [Math.max(0, Math.floor(b[0])), Math.max(0, Math.floor(b[1]))];
+      const [w, h] = [Math.min(o.cv.width, Math.ceil(b[2])) - x0, Math.min(o.cv.height, Math.ceil(b[3])) - y0];
+      if (w > 0 && h > 0) {
+        const part = (dx, dy) => e.drawImage(o.cover, x0, y0, w, h, x0 + dx, y0 + dy, w, h);
+        e.save(); e.beginPath(); e.rect(x0, y0, w, h); e.clip();
+        e.clearRect(x0, y0, w, h);
+        for (const [dx, dy] of [[d, 0], [-d, 0], [0, d], [0, -d]]) part(dx, dy);                    // the seen ground, a little larger
+        e.globalCompositeOperation = "destination-out"; part(0, 0);                                  // less the seen ground: its edge
+        e.globalCompositeOperation = "destination-in"; e.fillStyle = "rgba(0,0,0,.5)"; e.fillRect(x0, y0, w, h);
+        e.globalCompositeOperation = "source-over"; e.globalAlpha = 0.09; part(0, 0);
+        e.restore();
+      }
+      o.coverDirty = null;
+    }
+    g.drawImage(o.wash, 0, 0);
     if (this.terrain && this.hello.sensor && this.footprints) {
       // Where each thermal camera is looking now: a faint fill and a thin ring, draped over the slopes.
       g.lineWidth = Math.max(1.2, 0.35 * o.px);
@@ -937,7 +1150,8 @@ export class SwarmView {
           new THREE.MeshStandardMaterial({ color: 0xd8dde2, roughness: 0.3, metalness: 0.1 }), n)];
     }
     // A status light on top of each drone, in the status colour (flying, failed, left for battery).
-    const leds = inst(new THREE.SphereGeometry(0.12 * R, 8, 6), new THREE.MeshBasicMaterial({ color: 0xffffff, toneMapped: false }), n);
+    const leds = inst(new THREE.SphereGeometry((model ? 0.045 : 0.1) * R, 8, 6),
+      new THREE.MeshBasicMaterial({ color: this.fx ? new THREE.Color(5, 5, 5) : 0xffffff, toneMapped: false }), n);   // small, and bright enough to glow
     // Spinning rotors are drawn as blurred discs; blades show only when a rotor has stopped.
     const rotorGeo = new THREE.CircleGeometry(rotorR, 24); rotorGeo.rotateX(-Math.PI / 2);
     const rotors = inst(rotorGeo, new THREE.MeshBasicMaterial({ map: this.rotorTex, transparent: true, depthWrite: false, side: THREE.DoubleSide }), n * 4);
@@ -966,7 +1180,9 @@ export class SwarmView {
       vertexShader: `attribute vec3 aColor; attribute float aAlpha; varying vec3 vColor; varying float vAlpha; uniform float uSize;
         void main() { gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); gl_PointSize = uSize; vColor = aColor; vAlpha = aAlpha; }`,
       fragmentShader: `uniform sampler2D uTex; varying vec3 vColor; varying float vAlpha;
-        void main() { vec4 t = texture2D(uTex, gl_PointCoord); gl_FragColor = vec4(t.rgb * vColor, t.a * vAlpha); }`,
+        void main() { vec4 t = texture2D(uTex, gl_PointCoord); gl_FragColor = vec4(pow(t.rgb, vec3(2.2)) * vColor, t.a * vAlpha);
+          #include <colorspace_fragment>
+        }`,
       transparent: true, depthWrite: false, depthTest: false,
     }));
     markers.frustumCulled = false;
@@ -1012,12 +1228,13 @@ export class SwarmView {
     const o = this.overlay;
     if (!o || !this.camFootR || !f.s) return;
     const g = o.cover.getContext("2d");
-    g.fillStyle = "#7fe8e0";
+    g.fillStyle = "#9cf0f4";
     f.p.forEach((q, i) => {
       if (f.s[i] !== 0) return;
       const r = Math.max(0, q[2] - this.groundAt(q[0], q[1])) * this.camFootR;
-      const [u, v] = this._toPx(q[0], q[1]);
-      g.beginPath(); g.arc(u, v, r * o.px, 0, Math.PI * 2); g.fill();
+      const [u, v] = this._toPx(q[0], q[1]), rp = r * o.px, m = rp + 2 + 0.5 * o.px, b = o.coverDirty;
+      g.beginPath(); g.arc(u, v, rp, 0, Math.PI * 2); g.fill();
+      o.coverDirty = b ? [Math.min(b[0], u - m), Math.min(b[1], v - m), Math.max(b[2], u + m), Math.max(b[3], v + m)] : [u - m, v - m, u + m, v + m];
     });
     this.overlayDirty = true;
   }
@@ -1025,8 +1242,17 @@ export class SwarmView {
   setSpeed(s) { this.speed = s; }
   setPaused(p) { this.paused = p; }
 
-  setMode(mode) {
+  // cut: jump straight to the new view instead of gliding there (the recorder's camera program cuts between views).
+  setMode(mode, cut = false) {
     this.mode = mode;
+    if (cut) {
+      this.cut = true;
+      if (this.ride) this.ride.offset = this.ride.target = null;
+      if (this.swarmCentre) this.focus.copy(this.swarmCentre);
+    }
+    // A longer lens close up, so the drone fills the frame without the camera sitting on it.
+    this.camera.fov = mode === "close" ? 34 : 46;
+    this.camera.updateProjectionMatrix();
     this.userMoved = false;
     this.orbitAngle = Math.atan2(this.camera.position.z - this.focus.z, this.camera.position.x - this.focus.x);
     if (mode === "top") this.camera.position.set(this.focus.x, this.focus.y + Math.max(140, (this.extent || 40) * 3.2) * this.zoom, this.focus.z + 1);
@@ -1043,6 +1269,7 @@ export class SwarmView {
   resize() {
     const r = this.canvas.getBoundingClientRect();
     this.renderer.setSize(r.width, r.height, false);
+    if (this.fx) this.fx.setSize(r.width, r.height);
     this.camera.aspect = r.width / Math.max(1, r.height);
     this.camera.updateProjectionMatrix();
     const pr = this.renderer.getPixelRatio();
@@ -1059,6 +1286,7 @@ export class SwarmView {
     if (this.wildfire) this.wildfire.step(dtSim);
     this.smoke.update(dtSim, this.wind);
     this.flames.update(dtSim, this.wind);
+    this.streaks.update(dtSim, this.wind, this.focus);
     if (this.overlayDirty && (this.film || this.vt - this.overlayDrawnAt > 0.25)) {
       this._drawOverlay(); this.overlayDirty = false; this.overlayDrawnAt = this.vt;
     }
@@ -1068,7 +1296,13 @@ export class SwarmView {
     this.sun.target.position.copy(this.focus);
     this._drawWind();
     this.sky.position.copy(this.camera.position);
-    this.renderer.render(this.scene, this.camera);
+    this.fade.cam.value.copy(this.camera.position);
+    this.sky.material.uniforms.uDrift.value.set(this.vt * 0.0035, this.vt * 0.0012);
+    this.swayT.value = this.vt;
+    const sv = SUN_DIR.clone().transformDirection(this.camera.matrixWorldInverse), side = Math.hypot(sv.x, sv.y);
+    this.smoke.points.material.uniforms.uSun.value.set(sv.x / Math.max(1e-3, side), -sv.y / Math.max(1e-3, side), 0.9 * Math.min(1, side));
+    for (const p of [...(this.sceneryPlants || []), ...(this.worldPlants || [])]) p.update(this.camera.position);
+    if (this.fx) this.fx.render(); else this.renderer.render(this.scene, this.camera);
   }
 
   // Film mode: draw the scene at simulated time simNow, one video frame of dtView seconds after the last.
@@ -1103,7 +1337,8 @@ export class SwarmView {
       m.position.set(x, z, -y);
       m.rotation.set(0, this.yaw[i], 0, "YXZ");
       m.rotateZ(-lean);
-      m.scale.setScalar(1);
+      const dist = this.camera.position.distanceTo(m.position), size = droneSize(dist);
+      m.scale.setScalar(size);
       m.updateMatrix();
       for (const im of bodies) im.setMatrixAt(i, m.matrix);
       part.position.set(0, top, 0); part.rotation.set(0, 0, 0); part.scale.setScalar(1); part.updateMatrix();
@@ -1120,11 +1355,10 @@ export class SwarmView {
         part.position.copy(b.hub); part.rotation.set(0, b.spin * (0.7 * i), 0); part.scale.setScalar(turning ? 1e-4 : 1); part.updateMatrix();
         b.im.setMatrixAt(i, m.matrix.clone().multiply(part.matrix));
       }
-      mPos.setXYZ(i, x, z + 0.3 * R, -y);
+      mPos.setXYZ(i, x, z + 0.3 * R * size, -y);
       mCol.setXYZ(i, col.r, col.g, col.b);
-      const dist = this.camera.position.distanceTo(m.position);
-      mAlpha.setX(i, 1 - smooth(16, 30, (2.6 * R * pxPerM) / Math.max(1, dist)));
-      const slot = this.mode === "ride" ? null : f.slots[i];   // riding along, the slot rings would fill the frame
+      mAlpha.setX(i, 1 - smooth(16, 30, (2.6 * R * size * pxPerM) / Math.max(1, dist)));
+      const slot = this.mode === "ride" || this.mode === "close" ? null : f.slots[i];   // close in, the slot rings would fill the frame
       if (slot) {
         m.position.copy(toV(slot)); m.rotation.set(Math.PI / 2, 0, 0); m.scale.setScalar(1); m.updateMatrix();
         slots.setMatrixAt(i, m.matrix);
@@ -1148,7 +1382,16 @@ export class SwarmView {
       this.extent = extent;
       this.swarmCentre = c;
       this.fade.focus.value.copy(this.focus);
-      this.fade.radius.value = Math.max(30, extent + 18);
+      // How far the drones spread across the line of sight, and along it past the centre.
+      const cam = this.camera.position, dx = c.x - cam.x, dz = c.z - cam.z, dl = Math.hypot(dx, dz) || 1;
+      let side = 0, ahead = 0;
+      for (const p of pts) {
+        const ox = p[0] - c.x, oz = p[2] - c.z;
+        side = Math.max(side, Math.abs((ox * dz - oz * dx) / dl)); ahead = Math.max(ahead, (ox * dx + oz * dz) / dl);
+      }
+      // Under the canopy (the ride-along camera in a forest) nothing is cut away.
+      this.fade.radius.value = this.crownBase && cam.y < this.crownBase - 0.5 ? 0 : side + 18;
+      this.fade.ahead.value = ahead + 8;
     }
   }
 
@@ -1195,9 +1438,20 @@ export class SwarmView {
   }
 
   _camera(dt) {
-    if (!this.hello) return;
-    const k = 1 - Math.exp(-dt * 3);
+    if (!this.hello) {
+      if (this.idleDrift && !this.userMoved) {   // no flight yet (the cinema layout): a slow pan over the empty meadow
+        this.idleAngle = (this.idleAngle ?? 2.3) + dt * 0.035;
+        const a = this.idleAngle;
+        this.camera.position.set(Math.cos(a) * 250, 72, Math.sin(a) * 250);
+        this.controls.target.set(0, 38, 0);
+      }
+      return;
+    }
+    const snap = this.cut;
+    this.cut = false;
+    const k = snap ? 1 : 1 - Math.exp(-dt * 3);
     if (this.mode === "ride" && !this.userMoved && this._rideCamera(dt)) return;
+    if (this.mode === "close" && !this.userMoved && this._closeCamera(dt)) return;
     if (this.swarmCentre) {
       const delta = this.swarmCentre.clone().sub(this.focus).multiplyScalar(k);
       this.focus.add(delta);
@@ -1228,36 +1482,71 @@ export class SwarmView {
     } else if (this.mode === "top" && !this.userMoved) {
       want = new THREE.Vector3(f.x, f.y + Math.max(150, e * 2.6 + 70) * z, f.z + 1);
     }
-    if (want) this.camera.position.lerp(want, this.film ? Math.min(1, dt * 2.5) : k);
+    if (want) this.camera.position.lerp(want, snap ? 1 : this.film ? Math.min(1, dt * 2.5) : k);
     // Never under the ground (on a run with hills the camera can swing behind a slope).
     const cp = this.camera.position, floor = (this.sceneryHeight ? this.sceneryHeight(cp.x, -cp.z) : 0) + 12;
     if (cp.y < floor) cp.y = floor;
     this.aim = this.aim == null ? aim : this.aim + (aim - this.aim) * k;
     this.controls.target.set(f.x, f.y + this.aim, f.z);
   }
-  // Ride along: close behind one drone near the middle of the swarm, looking ahead and down at the ground its
-  // camera sweeps. The drone is kept until it stops flying; the view turns with it, smoothly, at each pass's end.
-  _rideCamera(dt) {
+  // The drone to stay with in the ride-along and close-up views: kept until it stops flying, else the one nearest
+  // the swarm's centre (or rideDrone, set by the recorder).
+  _pickDrone() {
     const f = this.lastFrame, at = this.dronePos;
-    if (!f || !at || !at.length || !this.swarmCentre) return false;
+    if (!f || !at || !at.length || !this.swarmCentre) return null;
     let r = this.ride;
     if (!r || f.s[r.i] !== 0) {
-      // The drone nearest the swarm's centre, unless one was chosen (rideDrone, set by the recorder).
       let best = -1, bd = Infinity;
       at.forEach((p, i) => {
         const d = i === this.rideDrone ? -1 : Math.hypot(p[0] - this.swarmCentre.x, p[2] - this.swarmCentre.z);
         if (f.s[i] === 0 && d < bd) { bd = d; best = i; }
       });
-      if (best < 0) return false;
+      if (best < 0) return null;
       r = this.ride = { i: best, yaw: r ? r.yaw : this.yaw[best], target: null };
     }
+    return r;
+  }
+
+  // Close-up: a few metres from one drone, drawn at its real size, swinging slowly round it from behind and
+  // to the side, the valley beyond. zoom scales the distance.
+  _closeCamera(dt) {
+    const r = this._pickDrone();
+    if (!r) return false;
+    const p = new THREE.Vector3(...this.dronePos[r.i]);
+    let dy = this.yaw[r.i] - r.yaw;
+    dy = Math.atan2(Math.sin(dy), Math.cos(dy));
+    r.yaw += dy * (1 - Math.exp(-dt * 1.5));
+    this.closeT = (this.closeT || 0) + dt;
+    const ang = r.yaw + Math.PI * 0.78 + 0.5 * Math.sin(this.closeT * 0.18), dist = 1.6 * this.zoom;
+    const want = p.clone().add(new THREE.Vector3(Math.cos(ang) * dist, 0.42 * this.zoom, -Math.sin(ang) * dist));
+    const look = p.clone().add(new THREE.Vector3(Math.cos(r.yaw) * 0.35, -0.12, -Math.sin(r.yaw) * 0.35));
+    // Keep the drone where it is in the frame as it flies: the camera's offset is smoothed, not its position.
+    if (!r.offset) r.offset = want.clone().sub(p);
+    r.offset.lerp(want.clone().sub(p), this.film ? Math.min(1, dt * 2) : 1 - Math.exp(-dt * 2));
+    this.camera.position.copy(p).add(r.offset);
+    if (!r.target) r.target = look.clone();
+    r.target.lerp(look, this.film ? Math.min(1, dt * 5) : 1 - Math.exp(-dt * 5));
+    const cp = this.camera.position, floor = (this.sceneryHeight ? this.sceneryHeight(cp.x, -cp.z) : 0) + 1.5;
+    if (cp.y < floor) cp.y = floor;
+    this.focus.copy(p);
+    this.controls.target.copy(r.target);
+    return true;
+  }
+
+  // Ride along: close behind one drone near the middle of the swarm, looking ahead and down at the ground its
+  // camera sweeps. The drone is kept until it stops flying; the view turns with it, smoothly, at each pass's end.
+  _rideCamera(dt) {
+    const r = this._pickDrone(), at = this.dronePos;
+    if (!r) return false;
     const p = new THREE.Vector3(...at[r.i]);
     let dy = this.yaw[r.i] - r.yaw;
     dy = Math.atan2(Math.sin(dy), Math.cos(dy));
     r.yaw += dy * (1 - Math.exp(-dt * 1.2));
     const fwd = new THREE.Vector3(Math.cos(r.yaw), 0, -Math.sin(r.yaw));
-    const want = p.clone().addScaledVector(fwd, -11).add(new THREE.Vector3(0, 4, 0));
-    const look = p.clone().addScaledVector(fwd, 32).add(new THREE.Vector3(0, -11, 0));
+    // In a forest, below the crowns and looking along the trail; elsewhere a little above, looking down ahead.
+    const under = this.crownBase != null && p.y + 4 > this.crownBase - 1.5;
+    const want = p.clone().addScaledVector(fwd, under ? -9 : -11).add(new THREE.Vector3(0, under ? Math.max(0.8, this.crownBase - 1.8 - p.y) : 4, 0));
+    const look = p.clone().addScaledVector(fwd, under ? 40 : 32).add(new THREE.Vector3(0, under ? -2.5 : -11, 0));
     const k = this.film ? Math.min(1, dt * 4) : 1 - Math.exp(-dt * 4);
     if (!r.target) { r.target = look.clone(); this.camera.position.copy(want); }
     this.camera.position.lerp(want, k);

@@ -8,13 +8,21 @@
 // Options: --n (drones, blank = the scenario's own), --url (default http://127.0.0.1:8765, where halo serve listens), --tab fly|mission|results|about,
 // --inject gust@6,motor_failure@12 (kinds gust, motor_failure or blackout; seconds after the start),
 // --mission "text" (Mission tab: compile, then fly it; --no-fly stops after compiling; --type [ms] types the
-// request key by key, 45 ms apart unless given, when screen-recording),
+// request key by key, 45 ms apart unless given; with --film the typing, a moment of compiling and --hold S
+// seconds (default 3) of the compiled plan are filmed before the flight, or end the video with --no-fly, and
+// the wait for the compiler is cut),
 // --speed 1|2|5 (the page's speed buttons; any other value has no button, so the click times out),
 // --view follow|chase|orbit|ride|top (the page's view buttons; --ride-drone N rides with drone N, not the one
 // nearest the swarm's centre), --seconds (default 15), --out (default video/shot.webm),
 // --scroll (scroll the side panel while recording).
 // --zoom Z (with --film) pulls the camera back Z times its usual distance in the follow, chase, orbit and top views;
 // --panel alerts|brief|log (with --film) keeps that section of the side panel at its top in every frame.
+// --cinema (with --film) films the cinema layout: the 3D view fills the frame, with the flight's title, clock,
+// counts, the fire crew brief and alerts on cards over it, and notices of what just happened (with a typed
+// --mission, the request and the compiler's answer are shown on a card of their own before the flight).
+// --camera "orbit@0,close:1.2@6,chase@12" (with --film) cuts between views during the shot: each entry is a
+// view (and optionally its zoom) and the video second it starts at, counted from the flight's first frame;
+// the first entry's view is the opening one.
 // The video starts when the page opens, so it also holds the page load and set-up before the shot.
 //
 // --film [--fps 25] renders the shot frame by frame instead of screen-recording it, for a smooth video on a
@@ -48,7 +56,7 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 (async () => {
   mkdirSync(dirname(out), { recursive: true });
   if (args.film) return film();
-  for (const k of ["approve", "cancel", "allclear", "from", "ride-drone", "zoom", "panel"]) if (args[k]) console.warn(`--${k} needs --film; ignored`);
+  for (const k of ["approve", "cancel", "allclear", "from", "ride-drone", "zoom", "panel", "cinema", "camera", "hold"]) if (args[k]) console.warn(`--${k} needs --film; ignored`);
   const browser = await chromium.launch({ args: ["--use-angle=swiftshader", "--enable-unsafe-swiftshader", "--ignore-gpu-blocklist"] });
   const context = await browser.newContext({ viewport: { width: 1920, height: 1080 },
     recordVideo: { dir: dirname(out), size: { width: 1920, height: 1080 } } });
@@ -115,27 +123,69 @@ async function film() {
   const browser = await chromium.launch({ args: ["--use-angle=swiftshader", "--enable-unsafe-swiftshader", "--ignore-gpu-blocklist"] });
   const page = await browser.newPage({ viewport: { width: 1920, height: 1080 } });
   page.on("pageerror", (e) => console.error("page error:", e.message));
-  await page.goto(`${url}/?film=1${args.approval ? `&approval=${encodeURIComponent(args.approval)}` : ""}`);
+  const typed = Boolean(args.mission && args.type);
+  await page.goto(`${url}/?film=1${args.cinema ? "&cinema=1" : ""}${args.approval ? `&approval=${encodeURIComponent(args.approval)}` : ""}`);
   await page.waitForFunction(() => document.querySelectorAll("#scenario option").length > 0);
   await page.waitForFunction(() => !/checking/.test(document.querySelector("#ai-pill").textContent));
+  // The page's controls are worked by script, since the cinema layout hides the side panel they sit in.
+  const click = (sel) => page.evaluate((q) => document.querySelector(q).click(), sel);
+  const set = (sel, v) => page.evaluate(([q, v]) => { const el = document.querySelector(q); el.value = v; el.dispatchEvent(new Event("change")); }, [sel, v]);
+  // Frames are numbered across the whole video: a typed mission's frames come before the flight's.
+  const dir = `${out}.frames`;
+  rmSync(dir, { recursive: true, force: true });
+  mkdirSync(dir, { recursive: true });
+  let shot = 0;
+  const shoot = () => page.screenshot({ path: join(dir, `f${String(shot++).padStart(5, "0")}.jpg`), type: "jpeg", quality: 94, timeout: 300000 });
+  // Video seconds of the page with no flight playing (the scenery still moves).
+  const hold = async (s) => {
+    for (let k = 0; k < Math.round(s * fps); k++) { await page.evaluate((dv) => window.haloFilm.idle(dv), 1 / fps); await shoot(); }
+  };
   if (args.mission) {
-    await page.click('nav.tabs button[data-tab="mission"]');
-    await page.fill("#mission-text", args.mission);
-    await page.click("#compile");
+    await click('nav.tabs button[data-tab="mission"]');
+    if (typed) {
+      // Type the request one video frame at a time, key by key at --type ms apart.
+      const text = args.mission, ms = Number(args.type) > 1 ? Number(args.type) : 45;
+      const box = (t) => page.evaluate((t) => { const el = document.querySelector("#mission-text"); el.value = t; el.focus(); el.setSelectionRange(t.length, t.length);
+        el.scrollTop = el.scrollHeight; el.dispatchEvent(new Event("input")); }, t);
+      await box("");
+      await hold(0.8);
+      const keys = Math.ceil(text.length * ms / 1000 * fps);
+      for (let k = 1; k <= keys; k++) {
+        await box(text.slice(0, Math.min(text.length, Math.floor(k * 1000 / fps / ms))));
+        await page.evaluate((dv) => window.haloFilm.idle(dv), 1 / fps);
+        await shoot();
+      }
+      await hold(0.6);
+    } else await set("#mission-text", args.mission);
+    await click("#compile");
+    if (typed) await hold(0.6);   // a moment of "Compiling…"; the rest of the wait is not filmed
     await page.waitForFunction(() => { const t = document.querySelector("#compile-out").textContent.trim(); return t && !/^Compiling/.test(t); }, null, { timeout: 120000 });
-    if (!(await page.isEnabled("#fly-mission"))) throw new Error(`mission not flyable: ${await page.textContent("#compile-out")}`);
-    await page.click("#fly-mission");
+    if (typed) await hold(Number(args.hold || 3));
+    if (args["no-fly"]) {
+      if (!typed) throw new Error("--no-fly with --film needs --type: there is no flight to film");
+      console.log(await page.textContent("#compile-out"));
+      return encode(browser, dir, fps);
+    }
+    if (await page.evaluate(() => document.querySelector("#fly-mission").disabled)) throw new Error(`mission not flyable: ${await page.textContent("#compile-out")}`);
+    await click("#fly-mission");
   } else {
-    await page.selectOption("#scenario", args.scenario);
-    if (args.config) await page.selectOption("#config", args.config);
-    if (args.seed) await page.fill("#seed", String(args.seed));
-    if (args.n) await page.fill("#drones", String(args.n));
-    await page.click("#start");
+    await set("#scenario", args.scenario);
+    if (args.config) await set("#config", args.config);
+    if (args.seed) await set("#seed", String(args.seed));
+    if (args.n) await set("#drones", String(args.n));
+    await click("#start");
   }
   // The run exists, and the drone model has loaded (or failed, and simple drones are drawn).
   await page.waitForFunction(() => { const s = window.haloFilm.status(); return s !== null && s.model !== "loading"; }, null, { timeout: 120000 });
-  await page.click('#speed button[data-speed="5"]');   // buffer as fast as the server's pacing allows
-  if (args.view) await page.click(`#view-${args.view === "follow" ? "reset" : args.view}`);
+  await click('#speed button[data-speed="5"]');   // buffer as fast as the server's pacing allows
+  // The camera program: [{ mode, zoom, at }] in video seconds; without --camera, --view and --zoom for the whole shot.
+  const program = (args.camera || "").split(",").filter(Boolean).map((s) => {
+    const [view, at] = s.split("@"), [mode, z] = view.split(":");
+    if (!["follow", "chase", "orbit", "ride", "close", "top"].includes(mode)) throw new Error(`--camera: no view ${mode}`);
+    return { mode, zoom: z ? Number(z) : Number(args.zoom || 1), at: Number(at || 0) };
+  }).sort((a, b) => a.at - b.at);
+  if (program.length) { args.view = program[0].mode; args.zoom = String(program[0].zoom); }
+  if (args.view) await click(`#view-${args.view === "follow" ? "reset" : args.view}`);
   if (args["ride-drone"]) await page.evaluate((i) => { window.haloView.rideDrone = i; window.haloView.ride = null; }, Number(args["ride-drone"]));
   if (args.zoom) await page.evaluate((z) => window.haloView.setZoom(z), Number(args.zoom));
   const panel = { alerts: "#zones", brief: "#brief", log: "#log" }[args.panel];
@@ -168,7 +218,7 @@ async function film() {
     if (commander[inj.kind]) {
       const r = await page.evaluate(([fn, id]) => window[fn](id), [commander[inj.kind], inj.id]);
       if (!r || !r.ok) console.warn(`${inj.kind} ${inj.id} at ${inj.at} s failed: ${r && r.reason}`);
-    } else await page.click(`button[data-inject="${inj.kind}"]`);
+    } else await click(`button[data-inject="${inj.kind}"]`);
   }
   // Playback starts at the first frame the page received (or at --from), so the shot is `seconds` long from there.
   await page.waitForFunction(([t, abs]) => { const s = window.haloFilm.status(); return s.ended || (s.first_s !== null && s.buffered_s >= (abs ? 0 : s.first_s) + t + 0.5); },
@@ -176,9 +226,6 @@ async function film() {
   const st = await buffered();
   console.log("buffered", JSON.stringify(st));
   if (from > 0 && st.ended && st.buffered_s < from) throw new Error(`the flight ended at ${st.buffered_s.toFixed(1)} s, before --from ${from}`);
-  const dir = `${out}.frames`;
-  rmSync(dir, { recursive: true, force: true });
-  mkdirSync(dir, { recursive: true });
   const frames = Math.round(seconds * fps);
   if (from > 0) {
     // Jump to just before --from (simulated seconds into the flight, like --inject), growing the smoke
@@ -189,13 +236,23 @@ async function film() {
     await page.evaluate((ds) => window.haloFilm.seek(ds), Math.max(0, end - preSim - st.played_s));
     for (let k = 0; k < pre; k++) await page.evaluate(([dv, ds]) => window.haloFilm.step(dv, ds), [1 / fps, preSim / pre]);
   }
+  let cue = 1;
   for (let k = 0; k < frames; k++) {
+    if (cue < program.length && k / fps >= program[cue].at) {
+      const c = program[cue++];
+      await page.evaluate(([m, z]) => { window.haloView.setZoom(z); window.haloView.setMode(m, true);
+        document.querySelectorAll("#viewbtns button").forEach((b) => b.classList.toggle("active", b.id === `view-${m === "follow" ? "reset" : m}`)); }, [c.mode, c.zoom]);
+    }
     await page.evaluate(([dv, ds]) => window.haloFilm.step(dv, ds), [1 / fps, k || from > 0 ? playback / fps : 0]);
     await pinPanel();
     // The first frame also compiles every shader, which takes a while without a GPU.
-    await page.screenshot({ path: join(dir, `f${String(k).padStart(5, "0")}.jpg`), type: "jpeg", quality: 94, timeout: 300000 });
+    await shoot();
     if (k % fps === 0) process.stdout.write(`\r${k}/${frames} frames`);
   }
+  return encode(browser, dir, fps);
+}
+
+async function encode(browser, dir, fps) {
   await browser.close();
   execFileSync("ffmpeg", ["-v", "error", "-y", "-framerate", String(fps), "-i", join(dir, "f%05d.jpg"),
     "-c:v", "libx264", "-pix_fmt", "yuv420p", "-crf", "18", "-preset", "slow", out]);
