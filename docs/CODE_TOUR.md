@@ -57,3 +57,5 @@ halo run forest_trail --config improved+rule --seed 1000
 | `tests/test_mission_dashboard.py` | The mission compiler and its guard, statistics, and the dashboard server (key-less replay, refusals, request checks) |
 | `tests/test_report.py` | The report generator: labels, sweeps, Nemotron usage, failed runs, the scouting table |
 | `tests/test_settings.py` | The `HALO_` settings and the older `SWARMLAB_` names |
+| `tests/test_wildfire.py` | The wildfire valley: terrain and cover, fire spread, smoke fixes, forecasts, the alert check, today's methods and short valley flights |
+| `tests/test_cli.py` | The command line's one-line errors (unknown scenario or supervisor, no model id) and `HALO_DEBUG=1` for the traceback |

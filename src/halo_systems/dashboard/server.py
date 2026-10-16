@@ -328,7 +328,7 @@ def make_handler(state: State, host: str = "127.0.0.1"):
     GET  /api/scenarios                name, title, description, n, use case and looped route of each scenario
     GET  /api/results                  benchmark summary, chart names, REPORT.md, mission-compiler scores,
                                        and the wildfire valley's report and charts
-    GET  /api/evidence                 the last ``halo doctor`` check
+    GET  /api/evidence                 the ``halo doctor`` check in the evidence folder (the committed one by default)
     GET  /api/runs/<id>/stream         Server-Sent Events: hello, frame, event, directive, ai, end
     GET  /api/runs/<id>/export         the run's result with its time series
     POST /api/runs                     {scenario, n} or {mission, mission_text}, with config, seed, speed;

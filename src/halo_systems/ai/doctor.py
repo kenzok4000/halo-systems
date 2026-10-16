@@ -111,7 +111,8 @@ def run(evidence_dir: str = "evidence", model: str | None = None, flight: bool =
         print_fn(f"This run: {usage['run_prompt_tokens']} prompt + {usage['run_completion_tokens']} completion tokens "
                  f"over {usage['calls'] + flight_usage['calls']} calls ({flight_usage['calls']} in the flight), about "
                  f"${usage['run_cost_usd']:.4f}. Ledger total ${b['spent_usd']:.4f} of the ${b['cap_usd']:.2f} cap ({b['ledger']}).")
-        print_fn(f"Evidence written to {ev / 'nebius_e2e.json'} and {log_path}")
+        written = [ev / "nebius_e2e.json"] + ([log_path] if usage["calls"] + flight_usage["calls"] else [])   # this run's calls only
+        print_fn("Evidence written to " + " and ".join(str(p) for p in written))
         return code
 
     if not step("NEBIUS_API_KEY is set", client.configured,

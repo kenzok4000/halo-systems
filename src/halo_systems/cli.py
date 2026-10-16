@@ -356,7 +356,20 @@ def main(argv=None) -> int:
     s.set_defaults(fn=cmd_compile)
 
     args = p.parse_args(argv)
-    return args.fn(args)
+    from .ai.client import NebiusError
+    from .settings import env
+    try:
+        return args.fn(args)
+    except (KeyError, ValueError, NebiusError) as exc:
+        # An unknown scenario or configuration, a missing key or model id, or a replay-cache miss: say what
+        # is wrong without a traceback. HALO_DEBUG=1 shows the traceback.
+        if env("DEBUG"):
+            raise
+        msg = exc.args[0] if isinstance(exc, KeyError) and exc.args else str(exc)
+        if isinstance(exc, KeyError) and " " not in str(msg):   # a bare missing key, not one of the messages above
+            msg = f"KeyError {msg!r}"
+        print(f"halo: error: {msg} (HALO_DEBUG=1 shows the traceback)", file=sys.stderr)
+        return 2
 
 
 if __name__ == "__main__":

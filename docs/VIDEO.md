@@ -130,14 +130,13 @@ Not used:
   * Only the Mission takes (row 14) are labelled "LIVE CALL"; the mission flight in E2 also carries "simulation".
 * **Why rows 8 and 12 are not called live.** The all-clear and the injections are applied to the running simulation and then filmed frame by frame, so they are not called live. On a machine with a GPU, D can also be screen-recorded in real time with the buttons pressed by hand, and only that take is labelled "LIVE INPUT".
 * **Editing.** Record each shot separately and cut in an editor. Edits are limited to cuts, crops, slow pushes, masks and overlaid labels; no frame of a flight is otherwise changed. The one mask is the header's Nemotron pill on every rule-supervised shot: it shows the server's mode, not the flight's supervisor.
-* **Keeping the raw recordings with their commit.** `video/` is in `.gitignore`, so keep the raw takes there with a `video/TAKES.md` listing each file's name, command, server (A or B), `git rev-parse --short HEAD` and date. Take C was filmed before the valley's last panel changes; those changes touch only the valley, and the forest run gives the same numbers. Keep `video/live_cache.jsonl` and `evidence/dashboard_calls.jsonl` (also ignored) with the Mission takes as the record of the live calls. Archive the folder with the uploaded video, so every shot can be traced to a run.
+* **Keeping the raw recordings with their commit.** `video/` is in `.gitignore`, so keep the raw takes there with a `video/TAKES.md` listing each file's name, command, server (A or B), `git rev-parse --short HEAD` and date. Every take in the cut was filmed at the same commit. Keep `video/live_cache.jsonl` and `evidence/dashboard_calls.jsonl` (also ignored) with the Mission takes as the record of the live calls. Archive the folder with the uploaded video, so every shot can be traced to a run.
 
-## Before filming and before upload
+## Checks before upload
 
-1. **Publish the repository.** The entry goes public as its own repository under Apache 2.0. Before upload, check that `results/wildfire_valley/` shows there, and film row 16 from that repository's README.
-2. **Check the valley is in the documents.** `README.md`, `docs/RESULTS.md`, `results/README.md` and `docs/DEVPOST.md` must carry the valley numbers used in the video, so that a judge arriving from the video can find every one.
-3. **Check the README quick start before filming row 16.** Its clone line must name the public repository (the export fills in the address), or crop it.
-4. **Keep things off screen.** Show only the parts of `README.md` named in row 16.
-5. **Point the end card at the public repository's root.**
-6. **Check the final takes.** Takes C and D and the valley takes are checked against their notes in the shot list. Check that the mission flight runs with the rule supervisor.
-7. **Upload as a public YouTube video under 3:00.** The description must say that every flight is a simulation and every evacuation alert went to simulated phones only.
+1. **The repository is public** under Apache 2.0, `results/wildfire_valley/` is in it, and row 16 is filmed from its README, whose clone line names it.
+2. **Every number in the video is in a repository file.** `docs/RESULTS.md` and `results/wildfire_valley/REPORT.md` carry the valley numbers used (the seed-4012 times and area are in that flight's row of `results/wildfire_valley/runs.jsonl`), and `README.md` and `docs/DEVPOST.md` the headline ones, so a judge arriving from the video can find each one.
+3. **Only the parts of `README.md` named in row 16 are on screen.**
+4. **The end card points at the public repository's root.**
+5. **The takes match their notes in the shot list**, and the mission flight runs with the rule supervisor.
+6. **The upload is a public YouTube video under 3:00.** Its description says that every flight is a simulation and every evacuation alert went to simulated phones only.

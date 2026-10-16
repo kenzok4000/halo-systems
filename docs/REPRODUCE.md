@@ -12,7 +12,7 @@ Each seed fixes the wind, sensor noise, radio losses, obstacle layout and initia
 
 These are the commands that produced every file in `results/`, in the order they ran. `bench` is resumable: it skips rows already in its output file, so an interrupted run can be restarted with the same command. `report` writes `REPORT.md`, `summary.json` and the charts from a rows file.
 
-The committed rows files already hold every flight, so rerunning a command into them does nothing. To check a result, give `--out` a new file and compare its rows with the committed ones: apart from compute-time fields they come out identical.
+The committed rows files already hold every flight, so rerunning a command into them does nothing. To check a result, give `--out` a new file and compare its rows with the committed ones: apart from compute-time fields they come out identical. A report drawn from the new file has the same means, counts and paired comparisons, but its other bootstrap intervals can move slightly, because the resampling follows the order of the rows and `bench` writes them in the order the flights finish; `halo report` on the committed rows reproduces the committed `REPORT.md` files exactly.
 
 ## Conventional benchmark (no key needed)
 
@@ -148,4 +148,4 @@ python3 -m unittest discover -s tests -v                    # after pip install 
 PYTHONPATH=src python3 -m unittest discover -s tests -v     # or without installing
 ```
 
-The tests need no key and no internet connection: model calls go to a fake transport, and two tests start a local server on 127.0.0.1. The suite takes about a minute on a laptop, and CI runs it on Python 3.10 to 3.13 ([tests.yml](../.github/workflows/tests.yml)).
+The tests need no key and no internet connection: model calls go to a fake transport, and two tests start a local server on 127.0.0.1. The suite takes one to two minutes on a laptop, and CI runs it on Python 3.10 to 3.13 ([tests.yml](../.github/workflows/tests.yml)).

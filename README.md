@@ -81,7 +81,7 @@ Every flight result below comes from held-out seeds 1000-1019, each flown once a
 git clone <repo-url> halo-systems && cd halo-systems
 python3 -m venv .venv && . .venv/bin/activate
 python3 -m pip install -e '.[report]'   # numpy, plus matplotlib for charts
-python3 -m unittest discover -s tests   # offline, no key, about a minute
+python3 -m unittest discover -s tests   # offline, no key, one to two minutes
 halo list                               # the eleven scenarios
 halo run wildfire_scout --config improved+rule --seed 1000 --n 16   # one sweep: all_found_s 33.6, as in results/wildfire
 halo run wildfire_valley --config improved+rule --seed 4000 --n 16  # one valley flight: fires_located 5, all_located_s 76.1, as in results/wildfire_valley
@@ -97,7 +97,7 @@ To check one recorded Nemotron flight from the command line, exactly and with no
 ```bash
 halo run forest_trail --config improved+nemotron:nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B --seed 1000 \
   --cache results/nemotron_cache.jsonl --cache-mode replay
-# about 16 s; prints time_formed_pct 85.7, completion_time_s 86.16, energy_wh_per_km 7.607,
+# about 25 s; prints time_formed_pct 85.7, completion_time_s 86.16, energy_wh_per_km 7.607,
 # the same as that flight's row in results/runs.jsonl (18 calls, no fallbacks)
 ```
 

@@ -16,8 +16,8 @@ Physical AI
 
 ## Links
 
-* Repository: `<repo-url>` (public, Apache-2.0; created at export, so check the address before submitting).
-* Video: the public YouTube address, filled in after upload.
+* Repository: `<repo-url>` (Apache-2.0).
+* Video: the demo video on this page, public on YouTube and under 3 minutes.
 * Everything a judge needs runs from the repository without a key: the README quick start replays the recorded Nemotron flights, and the wildfire valley calls no language model at all.
 
 ## Inspiration
@@ -126,7 +126,7 @@ Answers to the five questions the organisers ask, with the numbers behind them i
 
 ## Gallery
 
-Eight images for the Devpost gallery, in this order. Dashboard screenshots are taken at 1920 × 1080 once the Halo Systems name is in the dashboard header; the charts are used as saved.
+Eight images for the Devpost gallery, in this order. Dashboard screenshots are taken at 1920 × 1080; the charts are used as saved.
 
 1. The wildfire sweep from above with the hotspots lit orange (a frame from `docs/wildfire.gif`).
 2. `results/wildfire_valley/map.png`: one held-out valley flight (seed 4012, 16 drones, all five fires found), with the true spread against the forecast, the fires located by thermal camera and by smoke, the twelve evacuation zones and the simulated phones coloured by the alert level they received.
