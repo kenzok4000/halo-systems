@@ -191,9 +191,9 @@ The 20 ft (6.1 m) wind is taken as 0.87 of the 10 m wind (open terrain)."""
 def wind_slope_factors(fm: FuelModel, moist: Moisture, wind10_mps: float, slope_tan: float) -> tuple[float, float]:
     """Rothermel's wind and slope factors (phi_w, phi_s) for one fuel model, as ``SpreadGrid._rates`` forms them.
 
-    Each is the factor by which wind or slope alone multiplies the no-wind, flat-ground rate of spread, so their
-    ratio says which of the two drives the head: phi_w from the 10 m wind brought down to midflame height, phi_s
-    from the slope's tangent.
+    Each is the fractional increase that wind or slope alone adds to the no-wind, flat-ground rate of spread (the
+    rate becomes r0 (1 + phi)), so their ratio says which of the two drives the head: phi_w from the 10 m wind
+    brought down to midflame height, phi_s from the slope's tangent.
     """
     base = rothermel(fm, moist)
     if base["r0_ft_min"] <= 0:

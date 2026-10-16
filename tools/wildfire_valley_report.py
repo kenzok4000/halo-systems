@@ -175,31 +175,39 @@ def direction_section(by, sizes, w, summary):
     if not sizes:
         return
     w("## Which way the head runs\n")
-    w("Each brief tells the fire crews which way a fire's head will run in the next hour, with a cone (the "
-      "forecast ensemble's spread, widened for errors it does not vary, set on development seeds to hold the "
-      "true head about 80% of the time), and why (the wind the swarm measured, the slope, the fuel ahead). "
-      "The head is where the front advances furthest from the ground burning now, in the next hour; its bearing "
-      "runs from the nearest of that ground (or from the fire's location, if none burns yet). Scored for every "
-      "fire in a flight's last forecast whose true head advances at least 20 m in the hour: the brief's bearing, "
-      "and two simple rules, "
-      "straight downwind of the measured wind and straight upslope under the fire (where the slope is 2% or more), "
-      "each against the true bearing (0 is exact, 180 the opposite way). Closer: the brief's error is smaller than "
-      "the wind-only rule's for that fire. Not spreading: the brief said the fire would not spread but its head "
-      "moved. Crew updates: briefs relayed to the crews' simulated devices, when a fire is first located and when "
-      "its head turns beyond the cone they were given, its speed changes by half or more, or it will reach a "
-      "place sooner.\n")
-    w("| Drones | Fires scored | Brief error, median (deg) | Within 22.5 deg (%) | Wind-only error, median (deg) | Slope-only error, median (deg) | Brief closer than wind-only (%) | Truth in the 80% cone (%) | Called not spreading | Head speed error, median abs (m/min) | Crew updates per flight |")
-    w("|---|---|---|---|---|---|---|---|---|---|---|")
+    w("Each brief tells the fire crews which way a fire's head will run in the next hour, with a cone (a half-width "
+      "either side of the bearing: the forecast ensemble's spread, widened for errors it does not represent, set on "
+      "development seeds to hold the true head about 80% of the time), and why (the wind the swarm measured, the "
+      "slope, the fuel ahead). The head is where the front advances furthest beyond the ground burning now, in the "
+      "next hour; its bearing runs from the nearest of that ground. The true head is found the same way on the "
+      "fire's true spread over the ground it reaches first, from its ignition point if it has not taken off yet. "
+      "Scored: every brief in a flight's last forecast, matched to the true fire nearest it (within 60 m), whose "
+      "true head advances at least 20 m in the hour (two briefs of one fire are both scored); the brief's bearing and two simple rules, straight downwind of the measured wind and straight "
+      "upslope under the fire (where the slope is 2% or more), each against the true bearing (0 is exact, 180 the "
+      "opposite way). A brief that said the head would not advance, though it did, counts as 180 degrees off, "
+      "not within 22.5, not closer than wind-only, with a speed of 0; the cone column counts only briefs that gave "
+      "a cone. Closer: the brief's error is smaller than the wind-only rule's for that fire. Not located: moving "
+      "fires with no located fire within 60 m. Crew updates: briefs relayed to the crews' simulated devices when a fire is first "
+      "located; again when it starts or stops spreading or advancing, its direction becomes clear or uncertain, "
+      "its head turns (while its direction is clear) by 30 degrees or more and beyond the cone the crews were given, its head speed rises by half "
+      "or falls by a third (and by at least 0.5 m/min), or it will reach a named place it was not going to, or "
+      "reach one 15 minutes sooner by the clock; and a withdrawal when a fire is merged into another.\n")
+    w("| Drones | Briefs scored | Brief error, median (deg) | Within 22.5 deg (%) | Wind-only error, median (deg) | Slope-only error, median (deg) | Brief closer than wind-only (%) | Truth in the cone, briefs with a cone (%) | Called not advancing | Moving fires not located | Head speed error, median abs (m/min) | Crew updates per flight |")
+    w("|---|---|---|---|---|---|---|---|---|---|---|---|")
     for n in sizes:
         g = by[(n, "forecast")]
         tabs = [r.get("direction_table", []) for r in g]
-        err = [[x["err_deg"] for x in t if x["err_deg"] is not None] for t in tabs]
+
+        def strict(x):
+            return 180.0 if x["err_deg"] is None else x["err_deg"]
+
+        err = [[strict(x) for x in t] for t in tabs]
         wind = [[x["wind_only_err_deg"] for x in t if x["wind_only_err_deg"] is not None] for t in tabs]
         slope = [[x["slope_only_err_deg"] for x in t if x["slope_only_err_deg"] is not None] for t in tabs]
-        both = [[(x["err_deg"], x["wind_only_err_deg"]) for x in t
-                 if x["err_deg"] is not None and x["wind_only_err_deg"] is not None] for t in tabs]
+        both = [[(strict(x), x["wind_only_err_deg"]) for x in t if x["wind_only_err_deg"] is not None] for t in tabs]
         cone = [[x["in_cone"] for x in t if x["in_cone"] is not None] for t in tabs]
-        speed = [[abs(x["brief_m_per_min"] - x["truth_m_per_min"]) for x in t if x["err_deg"] is not None] for t in tabs]
+        speed = [[abs((x["brief_m_per_min"] if x["err_deg"] is not None else 0.0) - x["truth_m_per_min"]) for x in t]
+                 for t in tabs]
         cols = {"brief_err_deg": pool_boot(err, np.median),
                 "within_22_5_pct": pool_boot(err, lambda v: float(np.mean(np.asarray(v) <= 22.5))),
                 "wind_only_err_deg": pool_boot(wind, np.median),
@@ -209,13 +217,15 @@ def direction_section(by, sizes, w, summary):
                 "speed_abs_err_m_min": pool_boot(speed, np.median)}
         scored = sum(len(t) for t in tabs)
         missed = sum(1 for t in tabs for x in t if x["err_deg"] is None)
+        unlocated = sum(r.get("direction_unlocated", 0) for r in g)
         crew = np.mean([r.get("crew_updates", 0) for r in g])
         w(f"| {n} | {scored} | {fmt(cols['brief_err_deg'], 0)} | {fmt(cols['within_22_5_pct'], 0, pct=True)} | "
           f"{fmt(cols['wind_only_err_deg'], 0)} | {fmt(cols['slope_only_err_deg'], 0)} | "
           f"{fmt(cols['closer_than_wind_pct'], 0, pct=True)} | {fmt(cols['in_cone_pct'], 0, pct=True)} | {missed} | "
-          f"{fmt(cols['speed_abs_err_m_min'], 2)} | {crew:.1f} |")
-        summary["groups"][f"{n}_forecast"].update(direction=dict(cols, fires_scored=scored, called_not_spreading=missed,
-                                                                 crew_updates_per_flight=float(crew)))
+          f"{unlocated} | {fmt(cols['speed_abs_err_m_min'], 2)} | {crew:.1f} |")
+        summary["groups"][f"{n}_forecast"].update(direction=dict(
+            cols, briefs_scored=scored, called_not_advancing=missed, moving_not_located=int(unlocated),
+            crew_updates_per_flight=float(crew)))
     w("")
 
 

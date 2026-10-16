@@ -250,8 +250,9 @@ def direction_chart() -> None:
              ("wind_only_err_deg", "Straight downwind of the measured wind", "#3b6fb6", "--"),
              ("slope_only_err_deg", "Straight upslope (slope 2% or more)", "#2f8f5b", ":"))
     for key, label, colour, style in lines:
-        errs = np.sort([d[key] if d[key] is not None else 180.0 for d in table
-                        if key != "slope_only_err_deg" or d[key] is not None])
+        # A brief that called a moving head not advancing is 180 off; a rule with no bearing is left out.
+        errs = np.sort([180.0 if d[key] is None else d[key] for d in table
+                        if key == "err_deg" or d[key] is not None])
         if not len(errs):
             continue
         ax.step(np.concatenate([[0.0], errs]), np.arange(len(errs) + 1) / len(errs) * 100.0, where="post", color=colour,
@@ -264,8 +265,8 @@ def direction_chart() -> None:
     ax.set_xlabel("error in the head's direction (degrees)")
     ax.set_ylabel("fires within that error (%)")
     seeds = sorted({r["seed"] for r in rows})
-    ax.set_title(f"Which way the fire's head runs in the next hour: {len(table)} fires, seeds {seeds[0]}-{seeds[-1]}\n"
-                 "each flight's last forecast; a fire the brief called not spreading counts as 180°", fontsize=10.5)
+    ax.set_title(f"Which way the fire's head runs in the next hour: {len(table)} briefs, seeds {seeds[0]}-{seeds[-1]}\n"
+                 "each flight's last forecast; a brief that called it not advancing counts as 180°", fontsize=10.5)
     ax.grid(True, alpha=0.25)
     ax.legend(loc="lower right", fontsize=9, frameon=False)
     fig.tight_layout()
