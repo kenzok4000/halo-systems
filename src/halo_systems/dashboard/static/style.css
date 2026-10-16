@@ -210,3 +210,5 @@ body.cinema #wind svg { width: 22px; height: 22px; fill: #7fb6ff; }
 .cine-request .plan-grid div { display: flex; flex-direction: column; } .cine-request .plan-grid b { font-size: 24px; }
 .cine-request .plan-grid span { font-size: 12px; color: #b6c0cc; text-transform: uppercase; letter-spacing: .06em; }
 .cine-request .why { color: #b6c0cc; margin: 10px 0 0; font-size: 15px; }
+.cine-note { margin-top: 3px; font-size: 13px; color: #9aa6b2; }
+.cine-request .dflt { font-style: normal; font-weight: 500; color: #8f9aa6; }

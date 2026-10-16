@@ -215,15 +215,16 @@ class WindStreaks {
     const speed = Math.hypot(wind.x, wind.z), a = 0.62 * smooth(3.5, 9, speed);
     this.lines.visible = a > 0.01;
     if (!this.lines.visible || !dt) return;
+    // Each streak drifts with the air over the ground (x, z in the world), and one that leaves the box around
+    // the focus comes back in on its far side; heights are kept relative to the focus.
     const H = 90, LO = -14, HI = 26, n = this.n, p = this.p || (this.p = Float32Array.from({ length: n * 3 }, (_, k) =>
-      (k % 3 === 1 ? LO + (HI - LO) * hash(k, 3) : (hash(k, 1) - 0.5) * 2 * H)));   // offsets from the focus
+      (k % 3 === 1 ? LO + (HI - LO) * hash(k, 3) : (hash(k, 1) - 0.5) * 2 * H + (k % 3 ? focus.z : focus.x))));
+    const wrap = (r) => ((((r + H) % (2 * H)) + 2 * H) % (2 * H)) - H;
     const tail = 3 + 0.8 * speed, ux = wind.x / speed, uz = wind.z / speed, P = this.pos.array, A = this.alpha.array;
     for (let i = 0; i < n; i++) {
       const v = 0.85 + 0.3 * hash(i, 7);
-      let x = p[i * 3] + wind.x * dt * v, z = p[i * 3 + 2] + wind.z * dt * v;
-      if (x > H) x -= 2 * H; else if (x < -H) x += 2 * H;
-      if (z > H) z -= 2 * H; else if (z < -H) z += 2 * H;
-      p[i * 3] = x; p[i * 3 + 2] = z;
+      const x = wrap(p[i * 3] + wind.x * dt * v - focus.x), z = wrap(p[i * 3 + 2] + wind.z * dt * v - focus.z);
+      p[i * 3] = focus.x + x; p[i * 3 + 2] = focus.z + z;
       const y = p[i * 3 + 1], X = focus.x + x, Y = focus.y + y, Z = focus.z + z;
       const edge = (1 - smooth(0.7 * H, H, Math.max(Math.abs(x), Math.abs(z)))) * (0.4 + 0.6 * hash(i, 9));
       P.set([X, Y, Z, X - ux * tail, Y, Z - uz * tail], i * 6);
@@ -848,10 +849,14 @@ export class SwarmView {
         const g = this.groundAt(o.x, o.y);
         m.position.set(o.x, g, -o.y); m.rotation.set(0, hash(o.x, o.y) * 6.28, 0);
         m.scale.set(o.radius, o.height, o.radius); m.updateMatrix(); trunks.setMatrixAt(i, m.matrix);
-        const base = Math.max(o.height * 0.42, alt + 4);
+        let base = Math.max(o.height * 0.42, alt + 4);
         this.crownBase = Math.min(this.crownBase ?? Infinity, g + base);
+        // A tree too short for a crown above the flight level gets a slim one, close round its trunk, rather
+        // than standing as a bare pole.
+        const slim = base >= o.height - 3;
+        if (slim) base = o.height * 0.42;
         if (base < o.height - 3) {
-          const cr = Math.max(1.8, o.radius * 5.5) * (0.85 + 0.3 * hash(o.y, o.x));
+          const cr = slim ? o.radius + 0.9 : Math.max(1.8, o.radius * 5.5) * (0.85 + 0.3 * hash(o.y, o.x));
           m.position.set(o.x, g + base, -o.y); m.scale.set(cr, o.height - base + 1.2, cr); m.updateMatrix();
           crowns.setMatrixAt(k, m.matrix);
           c.setHSL(0.24 + 0.06 * hash(o.x, 3), 0.32 + 0.16 * hash(o.y, 5), 0.17 + 0.08 * hash(o.x, o.y));
@@ -1281,6 +1286,7 @@ export class SwarmView {
   // (particles), simNow the simulated time to draw drones at (null: interpolate on the wall clock).
   _step(dtView, dtSim, simNow) {
     this.vt += dtView;
+    if (this.cut && this.hello && this.cur) this._camera(0);   // a cut: move the camera first, so the drones' drawn size and the cutaway use it
     if (this.hello && this.cur) this._drawDrones(simNow);
     this._drawFire(dtSim, this.vt);
     if (this.wildfire) this.wildfire.step(dtSim);
@@ -1389,8 +1395,9 @@ export class SwarmView {
         const ox = p[0] - c.x, oz = p[2] - c.z;
         side = Math.max(side, Math.abs((ox * dz - oz * dx) / dl)); ahead = Math.max(ahead, (ox * dx + oz * dz) / dl);
       }
-      // Under the canopy (the ride-along camera in a forest) nothing is cut away.
-      this.fade.radius.value = this.crownBase && cam.y < this.crownBase - 0.5 ? 0 : side + 18;
+      // Under the canopy (the ride-along camera in a forest) nothing is cut away, nor from straight above,
+      // where cut crowns leave trunks that read as fallen logs.
+      this.fade.radius.value = this.mode === "top" || (this.crownBase && cam.y < this.crownBase - 0.5) ? 0 : side + 18;
       this.fade.ahead.value = ahead + 8;
     }
   }
@@ -1442,8 +1449,8 @@ export class SwarmView {
       if (this.idleDrift && !this.userMoved) {   // no flight yet (the cinema layout): a slow pan over the empty meadow
         this.idleAngle = (this.idleAngle ?? 2.3) + dt * 0.035;
         const a = this.idleAngle;
-        this.camera.position.set(Math.cos(a) * 250, 72, Math.sin(a) * 250);
-        this.controls.target.set(0, 38, 0);
+        this.camera.position.set(Math.cos(a) * 230, 58, Math.sin(a) * 230);
+        this.controls.target.set(0, 6, 0);
       }
       return;
     }

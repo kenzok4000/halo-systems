@@ -40,7 +40,7 @@
 // Needs Playwright (`npm install playwright && npx playwright install chromium`, or a global install
 // with NODE_PATH set).
 const { chromium } = require("playwright");
-const { mkdirSync, renameSync, rmSync } = require("node:fs");
+const { copyFileSync, mkdirSync, renameSync, rmSync } = require("node:fs");
 const { dirname, join } = require("node:path");
 const { execFileSync } = require("node:child_process");
 
@@ -124,6 +124,24 @@ async function film() {
   const page = await browser.newPage({ viewport: { width: 1920, height: 1080 } });
   page.on("pageerror", (e) => console.error("page error:", e.message));
   const typed = Boolean(args.mission && args.type);
+  // Every option is checked before anything is filmed, so a typo does not cost minutes of rendering.
+  // The camera program: [{ mode, zoom, at }] in video seconds; without --camera, --view and --zoom for the whole shot.
+  const program = (args.camera || "").split(",").filter(Boolean).map((s) => {
+    const [view, at] = s.split("@"), [mode, z] = view.split(":");
+    if (!["follow", "chase", "orbit", "ride", "close", "top"].includes(mode)) throw new Error(`--camera: no view ${mode}`);
+    return { mode, zoom: z ? Number(z) : Number(args.zoom || 1), at: Number(at || 0) };
+  }).sort((a, b) => a.at - b.at);
+  if (program.length) { args.view = program[0].mode; args.zoom = String(program[0].zoom); }
+  const panel = { alerts: "#zones", brief: "#brief", log: "#log" }[args.panel];
+  if (args.panel && !panel) throw new Error("--panel takes alerts, brief or log");
+  const actions = (kind, num) => (args[kind] || "").split(",").filter(Boolean).map((s) => s.split("@"))
+    .map(([id, at]) => ({ kind, id: num ? Number(id) : id, at: Number(at || 0) }));
+  const injects = [
+    ...(args.inject || "").split(",").filter(Boolean).map((s) => s.split("@")).map(([kind, at]) => ({ kind, at: Number(at || 0) })),
+    ...actions("approve", true), ...actions("cancel", true), ...actions("allclear", false),
+  ].sort((a, b) => a.at - b.at);
+  const bad = injects.find((i) => (i.kind === "approve" || i.kind === "cancel") && !Number.isInteger(i.id));
+  if (bad) throw new Error(`--${bad.kind} takes alert numbers, as in 0@40,1@44`);
   await page.goto(`${url}/?film=1${args.cinema ? "&cinema=1" : ""}${args.approval ? `&approval=${encodeURIComponent(args.approval)}` : ""}`);
   await page.waitForFunction(() => document.querySelectorAll("#scenario option").length > 0);
   await page.waitForFunction(() => !/checking/.test(document.querySelector("#ai-pill").textContent));
@@ -135,7 +153,8 @@ async function film() {
   rmSync(dir, { recursive: true, force: true });
   mkdirSync(dir, { recursive: true });
   let shot = 0;
-  const shoot = () => page.screenshot({ path: join(dir, `f${String(shot++).padStart(5, "0")}.jpg`), type: "jpeg", quality: 94, timeout: 300000 });
+  const frame = (k) => join(dir, `f${String(k).padStart(5, "0")}.jpg`);
+  const shoot = () => page.screenshot({ path: frame(shot++), type: "jpeg", quality: 94, timeout: 300000 });
   // Video seconds of the page with no flight playing (the scenery still moves).
   const hold = async (s) => {
     for (let k = 0; k < Math.round(s * fps); k++) { await page.evaluate((dv) => window.haloFilm.idle(dv), 1 / fps); await shoot(); }
@@ -158,7 +177,12 @@ async function film() {
       await hold(0.6);
     } else await set("#mission-text", args.mission);
     await click("#compile");
-    if (typed) await hold(0.6);   // a moment of "Compiling…"; the rest of the wait is not filmed
+    if (typed) {
+      // One frame taken at once, while the compiler is still working, held for half a second; the rest of the
+      // wait is not filmed (with Nemotron the call takes a second or two, and a frame here takes longer).
+      await shoot();
+      for (let k = 1; k < Math.round(0.5 * fps); k++) copyFileSync(frame(shot - 1), frame(shot++));
+    }
     await page.waitForFunction(() => { const t = document.querySelector("#compile-out").textContent.trim(); return t && !/^Compiling/.test(t); }, null, { timeout: 120000 });
     if (typed) await hold(Number(args.hold || 3));
     if (args["no-fly"]) {
@@ -178,18 +202,9 @@ async function film() {
   // The run exists, and the drone model has loaded (or failed, and simple drones are drawn).
   await page.waitForFunction(() => { const s = window.haloFilm.status(); return s !== null && s.model !== "loading"; }, null, { timeout: 120000 });
   await click('#speed button[data-speed="5"]');   // buffer as fast as the server's pacing allows
-  // The camera program: [{ mode, zoom, at }] in video seconds; without --camera, --view and --zoom for the whole shot.
-  const program = (args.camera || "").split(",").filter(Boolean).map((s) => {
-    const [view, at] = s.split("@"), [mode, z] = view.split(":");
-    if (!["follow", "chase", "orbit", "ride", "close", "top"].includes(mode)) throw new Error(`--camera: no view ${mode}`);
-    return { mode, zoom: z ? Number(z) : Number(args.zoom || 1), at: Number(at || 0) };
-  }).sort((a, b) => a.at - b.at);
-  if (program.length) { args.view = program[0].mode; args.zoom = String(program[0].zoom); }
   if (args.view) await click(`#view-${args.view === "follow" ? "reset" : args.view}`);
   if (args["ride-drone"]) await page.evaluate((i) => { window.haloView.rideDrone = i; window.haloView.ride = null; }, Number(args["ride-drone"]));
   if (args.zoom) await page.evaluate((z) => window.haloView.setZoom(z), Number(args.zoom));
-  const panel = { alerts: "#zones", brief: "#brief", log: "#log" }[args.panel];
-  if (args.panel && !panel) throw new Error("--panel takes alerts, brief or log");
   // Scroll the side panel so the section's heading sits at its top (the sections above it grow during a flight).
   const pinPanel = () => panel && page.evaluate((sel) => {
     const aside = document.querySelector("aside");
@@ -198,18 +213,12 @@ async function film() {
     const top = document.querySelector("nav.tabs").getBoundingClientRect().bottom;   // the tab bar stays stuck over the panel's top
     if (h) aside.scrollTop += h.getBoundingClientRect().top - top - 8;
   }, panel);
-  // The page buffers at 5x, but the video plays at --speed: show that speed on the buttons (display only).
-  await page.evaluate((sp) => document.querySelectorAll("#speed button").forEach((b) => b.classList.toggle("active", Number(b.dataset.speed) === sp)), playback);
+  // The page buffers at 5x, but the video plays at --speed: show that speed on the buttons and the cinema clock
+  // (display only; a speed with no button lights none).
+  await page.evaluate((sp) => { const bar = document.querySelector("#speed"); bar.dataset.playback = sp;
+    bar.querySelectorAll("button").forEach((b) => b.classList.toggle("active", Number(b.dataset.speed) === sp)); }, playback);
   const from = Number(args.from || 0);
   const need = from + seconds * playback;
-  const actions = (kind, num) => (args[kind] || "").split(",").filter(Boolean).map((s) => s.split("@"))
-    .map(([id, at]) => ({ kind, id: num ? Number(id) : id, at: Number(at || 0) }));
-  const injects = [
-    ...(args.inject || "").split(",").filter(Boolean).map((s) => s.split("@")).map(([kind, at]) => ({ kind, at: Number(at || 0) })),
-    ...actions("approve", true), ...actions("cancel", true), ...actions("allclear", false),
-  ].sort((a, b) => a.at - b.at);
-  const bad = injects.find((i) => (i.kind === "approve" || i.kind === "cancel") && !Number.isInteger(i.id));
-  if (bad) throw new Error(`--${bad.kind} takes alert numbers, as in 0@40,1@44`);
   const commander = { approve: "haloApprove", cancel: "haloCancel", allclear: "haloAllClear" };
   const buffered = () => page.evaluate(() => window.haloFilm.status());
   for (const inj of injects) {

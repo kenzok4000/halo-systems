@@ -40,7 +40,7 @@ export class Cinema {
     this.el.id = "cine";
     this.el.innerHTML = `
       <div class="cine-title glass"><div class="cine-brand"><span class="logo">◆</span> HALO SYSTEMS <span class="badge">SIMULATION</span></div>
-        <div class="cine-scn"></div><div class="cine-sub"></div></div>
+        <div class="cine-scn"></div><div class="cine-sub"></div><div class="cine-note"></div></div>
       <div class="cine-clock glass"><span class="t">00:00</span><span class="k">flight time</span><span class="speed"></span></div>
       <div class="cine-cards"></div>
       <div class="cine-notices"></div>
@@ -60,27 +60,39 @@ export class Cinema {
     if (card.hidden) {
       card.hidden = false;
       this.$(".cine-scn").textContent = "Operator mission";
-      this.$(".cine-sub").textContent = "Compiled and checked before take-off";
+      this.$(".cine-sub").textContent = "A request in plain words, compiled before take-off";
     }
     this.$(".cine-request .text").innerHTML = `${esc(text)}<span class="caret"></span>`;
   }
-  compiling(live) {
+  compiling() {
     this.$(".cine-request .caret")?.remove();
-    this.$(".cine-request .out").innerHTML = `<div class="state busy">${live ? "Nemotron on Nebius Token Factory is compiling the request" : "Compiling the request"}<span class="dots"></span></div>`;
+    this.$(".cine-request .out").innerHTML = '<div class="state busy">Compiling the request<span class="dots"></span></div>';
   }
-  compiled(c) {
+  // flyable: the page's own verdict (a typed request the regex baseline parsed has had no civilian check).
+  compiled(c, flyable) {
     const out = this.$(".cine-request .out");
     if (c.error) { out.innerHTML = `<div class="state bad"><b>Not compiled</b><span>${esc(c.error)}</span></div>`; return; }
     const s = c.spec, by = c.source === "nemotron" ? `Nemotron (${esc(String(c.model || "").split("/").pop())})` : c.source === "guard" ? "the safety guard" : "the regex baseline";
-    if (s.refused) { out.innerHTML = `<div class="state bad"><b>Refused</b><span>by ${by}: ${esc(s.refusal_reason)}</span></div>`; return; }
-    const d = s.directive, r = s.route, cell = (v, k) => `<div><b>${v}</b><span>${k}</span></div>`;
-    out.innerHTML = `<div class="state ok"><b>Checked mission plan</b><span>by ${by}${c.call ? ` · ${fmt(c.call.latency_s, 2)} s · ${c.call.total_tokens} tokens` : ""}</span></div>` +
-      `<div class="plan-grid">${cell(s.drones ?? "–", "drones")}${cell(esc(d.formation), "formation")}${cell(`${fmt(d.spacing_m)} m`, "spacing")}` +
-      `${cell(`${fmt(d.altitude_m, 0)} m`, "altitude")}${r && r.width_m ? cell(`${fmt(r.width_m, 0)} × ${fmt(r.height_m, 0)} m`, `${esc(r.type)} area`) : cell(esc(r ? r.type : "–"), "route")}</div>` +
-      '<p class="why">Every field sanitised and clamped to the flight envelope before the swarm may fly it</p>';
+    if (s.refused) {
+      out.innerHTML = `<div class="state bad"><b>Refused</b><span>by ${by}: ${esc(s.refusal_reason)}</span></div>`;
+      this.$(".cine-sub").textContent = "Refused before take-off";
+      return;
+    }
+    const d = s.directive, r = s.route, problems = c.problems || [];
+    if (!flyable) this.$(".cine-sub").textContent = "Parsed, not flown";
+    const cell = (v, unit, k) => `<div><b>${v === null || v === undefined ? '<i class="dflt">default</i>' : `${esc(v)}${unit}`}</b><span>${k}</span></div>`;
+    const area = r && r.width_m ? `${fmt(r.width_m, 0)} × ${fmt(r.height_m, 0)}` : null;
+    out.innerHTML = (flyable && !problems.length ? '<div class="state ok"><b>Checked mission plan</b>' : flyable ? '<div class="state"><b>Mission plan, with problems</b>' : '<div class="state"><b>Parsed, not flown</b>') +
+      `<span>by ${by}${c.call ? ` · ${fmt(c.call.latency_s, 2)} s · ${c.call.total_tokens} tokens` : ""}</span></div>` +
+      `<div class="plan-grid">${cell(s.drones, "", "drones")}${cell(d.formation, "", "formation")}${cell(d.spacing_m, " m", "spacing")}` +
+      `${cell(d.altitude_m, " m", "altitude")}${area ? cell(area, " m", `${esc(r.type)} area`) : cell(r && r.type, "", "route")}</div>` +
+      (problems.length ? `<p class="why">${esc(problems.join("; "))}</p>` : "") +
+      (flyable ? '<p class="why">Before take-off every field is clamped to the flight envelope, and a blank one takes its default</p>'
+        : "<p class=\"why\">Flying a typed request needs Nemotron's civilian check, which did not run here; the default request and the examples can be flown</p>");
   }
 
-  setRun(run, supervisor) {
+  // note: the disclosures the side panel would show (replayed calls, the drones' drawn size).
+  setRun(run, supervisor, note = "") {
     this.run = run;
     this.el.classList.remove("idle");
     document.body.classList.remove("cine-idle");
@@ -91,6 +103,7 @@ export class Cinema {
     this.$(".cine-cards").innerHTML = "";
     this.$(".cine-scn").textContent = run.scenario.title;
     this.$(".cine-sub").textContent = `${run.n} drones · ${supervisor}${run.wildfire ? " · alerts to simulated phones only" : ""}`;
+    this.$(".cine-note").textContent = note;
   }
 
   // Each frame: the clock and the counts along the bottom.
@@ -100,7 +113,7 @@ export class Cinema {
     this.$(".cine-clock .speed").textContent = speed && speed !== 1 ? `×${speed}` : "";
     const stat = (v, k, cls = "") => `<div class="s ${cls}"><b>${v}</b><span>${k}</span></div>`;
     const html = valley
-      ? stat(valley.located, "fires located", valley.located ? "hot" : "") + stat(`${fmt(m.coverage_pct, 0)}%`, "valley searched") +
+      ? stat(valley.located, "fires located", valley.located ? "hot" : "") + stat(`${fmt(m.coverage_pct, 0)}%`, "survey block searched") +
         stat(`${valley.warned}<small> of ${(this.run.scenario.wildfire?.phones || []).length}</small>`, "phones alerted", valley.warned ? "warn" : "") +
         stat(`${m.flying}<small> / ${this.run.n}</small>`, "drones flying")
       : stat(`${fmt(m.formation_error_m, 2)}<small> m</small>`, "formation error") + stat(`${fmt(m.min_sep_m, 1)}<small> m</small>`, "closest pair") +
@@ -129,7 +142,9 @@ export class Cinema {
       const deg = compass ? 90 - b.head_bearing_deg : k >= 0 ? k * 22.5 : null;
       const dir = compass ? word(b.head_bearing_deg) : k >= 0 ? SHORT[k] : esc(b.direction);
       const within = b.cone_deg != null && b.cone_deg < 90 ? ` <span class="cone">±${Math.round(b.cone_deg)}°</span>` : b.cone_deg != null ? ' <span class="cone">direction uncertain</span>' : "";
-      const where = (b.places || []).slice(0, 1).map((p) => `reaches ${esc(p.name)} ${p.eta_min < 1 ? "now" : `in about ${p.eta_min} min`}`);
+      // A smouldering fire's numbers are the station's what-if forecast, as its own brief text says.
+      const ifs = b.state === "smouldering";
+      const where = (b.places || []).slice(0, 1).map((p) => `${ifs ? "could reach" : "reaches"} ${esc(p.name)} ${p.eta_min < 1 ? "now" : `in about ${p.eta_min} min`}`);
       // Why it runs that way: Rothermel's split of the head's rate between fuel, wind and slope, and the fuel ahead.
       const d = b.drivers, sh = d && d.shares;
       const why = sh ? `<div class="drivers">${[["wind", sh.wind, d.wind_mps != null ? `${fmt(d.wind_mps)} m/s from ${word(d.wind_from_deg)}` : ""],
@@ -138,7 +153,7 @@ export class Cinema {
         (d.fuel_ahead && d.fuel_ahead.length ? `<div class="line">burning into ${esc(d.fuel_ahead[0].fuel)}${d.fuel_ahead[0].share != null ? ` (${Math.round(100 * d.fuel_ahead[0].share)}%)` : ""}</div>` : "") : "";
       return `<li>${deg != null ? rose(deg, b.cone_deg) : '<span class="rose-none">·</span>'}<div>` +
         `<b>Fire ${b.fire + 1}</b> <span class="st ${esc(b.state)}">${esc(b.state)}</span>` +
-        `<div class="line">${b.head_m_per_min > 0 ? `head runs <b>${dir}</b>${within} at ${fmt(b.head_m_per_min)} m/min` : "not spreading"}${b.area_1h_ha != null ? ` · ${fmt(b.area_1h_ha)} ha in 1 h` : ""}</div>` +
+        `<div class="line">${b.head_m_per_min > 0 ? `${ifs ? "if it takes off: head" : "head runs"} <b>${dir}</b>${within} at ${fmt(b.head_m_per_min)} m/min` : "not spreading"}${b.area_1h_ha != null ? ` · ${fmt(b.area_1h_ha)} ha in 1 h` : ""}</div>` +
         why + (where.length ? `<div class="line">${where[0]}</div>` : "") + "</div></li>";
     });
     const more = fires.length > 3 ? `<li class="more">and ${fires.length - 3} more</li>` : "";
@@ -153,6 +168,8 @@ export class Cinema {
     const html = brief + zones;
     if (html !== this.cards.html) this.$(".cine-cards").innerHTML = this.cards.html = html;
   }
+
+  clearNotices() { this.notices.forEach((n) => n.el.remove()); this.notices = []; }
 
   // A short notice of something that just happened: kind picks its colour (station, alert, crew, plan, event).
   notice(kind, title, sub = "") {

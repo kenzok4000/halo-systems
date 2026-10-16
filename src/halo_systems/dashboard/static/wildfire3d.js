@@ -309,21 +309,24 @@ export class WildfireLayer {
     cv.width = W; cv.height = H;
     const g = cv.getContext("2d"), img = g.createImageData(W, H), band = new Int8Array(W * H).fill(-1);
     const LAST = BANDS[BANDS.length - 1][0] * 60;
-    // The median arrival per cell (beyond the last band where it is never reached), softened over neighbouring
-    // cells so the contours follow the forecast's shape rather than its cells' edges.
-    let A = Float32Array.from(a, (s) => (s === null ? 2 * LAST : Math.min(s, 2 * LAST)));
+    // The median arrival per cell, softened over the neighbouring cells the forecast reaches, so the contours
+    // follow the forecast's shape rather than its cells' edges; a cell it never reaches (rock, or beyond the
+    // horizon) stays out of every band and does not pull its neighbours later.
     const { nx, ny } = gr;
+    let A = Float32Array.from(a, (s) => (s === null ? 0 : Math.min(s, 2 * LAST))), M = Float32Array.from(a, (s) => (s === null ? 0 : 1));
+    const blur = (F, step, len) => {   // one [1, 2, 1] pass along rows (step 1) or columns (step nx)
+      const B = new Float32Array(F.length);
+      for (let k = 0; k < F.length; k++) {
+        const c = step === 1 ? k % nx : Math.floor(k / nx);
+        B[k] = (c > 0 ? F[k - step] : F[k]) + 2 * F[k] + (c < len - 1 ? F[k + step] : F[k]);
+      }
+      return B;
+    };
     for (let pass = 0; pass < 2; pass++) {
-      const B = new Float32Array(A.length);
-      for (let j = 0; j < ny; j++) for (let i = 0; i < nx; i++) {
-        const l = A[j * nx + Math.max(0, i - 1)], r = A[j * nx + Math.min(nx - 1, i + 1)];
-        B[j * nx + i] = (l + 2 * A[j * nx + i] + r) / 4;
-      }
-      for (let j = 0; j < ny; j++) for (let i = 0; i < nx; i++) {
-        const d = B[Math.max(0, j - 1) * nx + i], u = B[Math.min(ny - 1, j + 1) * nx + i];
-        A[j * nx + i] = (d + 2 * B[j * nx + i] + u) / 4;
-      }
+      const S = blur(blur(A.map((v, k) => v * M[k]), 1, nx), nx, ny), N = blur(blur(M, 1, nx), nx, ny);
+      A = S.map((v, k) => (N[k] > 0 ? v / N[k] : 0));
     }
+    a.forEach((s, k) => { if (s === null) A[k] = 2 * LAST; });
     // Keep the cells already burning (arrival now) inside the first band however the softening moved them.
     a.forEach((s, k) => { if (s !== null && s <= 0) A[k] = Math.min(A[k], 0); });
     const at = (i, j) => A[j * nx + i];
@@ -460,7 +463,7 @@ export class WildfireLayer {
   // -- the fires' heads -----------------------------------------------------------------------------
   // For each fire the forecast says is moving: an arrow above the trees along the path its head is forecast
   // to take (the brief's head track, from today's front through 15, 30, 60 and 120 minutes; on runs without
-  // one, an hour's run in the brief's direction from the located fire), with chevrons running along it
+  // one, a line in the brief's direction from the located fire, labelled with no time), with chevrons running along it
   // towards the head. A smouldering fire's arrow, where it would run if it took off, is fainter. Redrawn with
   // each new forecast; the overlay draws each head's uncertainty wedge under it (drawOver).
   _heads() {
@@ -468,7 +471,7 @@ export class WildfireLayer {
     this.heads = [];
     for (const b of (this.forecast && this.forecast.brief) || []) {
       if (!(b.head_m_per_min > 0)) continue;
-      let pts, mins = HEAD_MIN;
+      let pts, mins = HEAD_MIN, timed = true;
       if (b.head_from_xy && Array.isArray(b.head_track) && b.head_track.length) {
         pts = [b.head_from_xy, ...b.head_track.map(([, x, y]) => [x, y])];
         mins = b.head_track[b.head_track.length - 1][0];
@@ -478,13 +481,14 @@ export class WildfireLayer {
         if (!l || k < 0) continue;
         const a = (k * 22.5 * Math.PI) / 180, L = Math.max(40, Math.min(700, b.head_m_per_min * HEAD_MIN));
         pts = [[l.x, l.y], [l.x + Math.cos(a) * L, l.y + Math.sin(a) * L]];
+        timed = false;   // a direction only: the tip is not where the forecast puts the head at any time
       }
       const arrow = this._ribbon(pts, b.state === "spreading" ? 0.95 : 0.5);
       if (!arrow) continue;
       this.heads.push(arrow.mesh);
       this.group.add(arrow.mesh);
       if (b.state !== "spreading") continue;   // only a spreading fire's arrow is labelled
-      const tag = this.view._label(`Fire ${b.fire + 1} head in ${mins >= 60 ? `${+(mins / 60).toFixed(1)} h` : `${mins} min`}`, "#ff9a4a");
+      const tag = this.view._label(timed ? `Fire ${b.fire + 1} head in ${mins >= 60 ? `${+(mins / 60).toFixed(1)} h` : `${mins} min`}` : `Fire ${b.fire + 1} heading ${b.direction}`, "#ff9a4a");
       tag.position.copy(arrow.tip).add(new THREE.Vector3(0, 6, 0));
       tag.scale.multiplyScalar(0.8);
       this.heads.push(tag);

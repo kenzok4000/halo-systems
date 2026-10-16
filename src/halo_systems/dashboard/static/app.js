@@ -15,8 +15,8 @@ const api = async (path, body) => {
 // ---------------------------------------------------------------- scene
 const view = new SwarmView($("#scene"));
 window.haloView = view;   // for the recorder and for poking at the scene from the browser console
-// Cinema layout (?cinema=1): the view fills the window, with glass cards over it (cinema.js). ?cinema=fly keeps
-// the usual layout until the first flight starts (the recorder's typed-mission take: the Mission tab, then the flight).
+// Cinema layout (?cinema=1): the view fills the window, with glass cards over it (cinema.js). Its controls are
+// hidden, so a flight is started by script (the recorder) or by a link that starts one.
 const CINEMA = new URLSearchParams(location.search).get("cinema");
 let cine = null;
 if (CINEMA !== null) { cine = new Cinema($("#view"), view); view.resize(); }
@@ -51,6 +51,7 @@ window.haloFilm = {
   seek(dtSim) {
     const t = this.step(0, dtSim);
     if (view.wildfire) view.wildfire.warm();
+    if (cine) cine.clearNotices();   // what happened in the skipped stretch is not news when the shot starts
     return t;
   },
 };
@@ -176,11 +177,12 @@ function onValleyEvent(e) {
       valley.briefT = e.t;
       // A notice only when the brief says something new: a fire added, or one changing state or direction.
       // (Runs whose briefs carry headlines send crew updates for that instead, below.)
-      const key = valley.brief.map((b) => `${b.fire}:${b.state}:${b.direction}`).join("|");
+      const keys = valley.brief.map((b) => `${b.fire}:${b.state}:${b.direction}`), key = keys.join("|");
       if (cine && valley.brief.length && key !== valley.briefKey && !valley.brief.some((b) => b.headline)) {
-        const b = valley.brief.find((q) => !(valley.briefKey || "").includes(`${q.fire}:${q.state}:${q.direction}`)) || valley.brief[0];
-        cine.notice("station", "New spread forecast sent to the fire crews", b.head_m_per_min > 0
-          ? `Fire ${b.fire + 1}: head runs about ${fmt(b.head_m_per_min)} m/min ${b.direction}` : `Fire ${b.fire + 1}: not spreading`);
+        const old = new Set((valley.briefKey || "").split("|")), b = valley.brief[Math.max(0, keys.findIndex((k) => !old.has(k)))];
+        const ifs = b.state === "smouldering" ? " (smouldering): if it takes off, head" : ": head";
+        cine.notice("station", "New spread forecast", b.head_m_per_min > 0
+          ? `Fire ${b.fire + 1}${ifs} runs about ${fmt(b.head_m_per_min)} m/min ${b.direction}` : `Fire ${b.fire + 1}: not spreading`);
       }
       valley.briefKey = key;
       drawValley();
@@ -208,6 +210,7 @@ function onValleyEvent(e) {
       return true;
     }
     case "alert_approved":
+      if (valley.alerts.get(e.alert)) valley.alerts.get(e.alert).by = e.by || "";
       logItem("station", `<span class="chip station">station</span> ${t} alert ${e.alert + 1} ${/^automatic/.test(e.by || "") ? "sent at once by the station's fixed rules" : `approved by ${esc(e.by)}`}`);
       return true;
     case "alert_delivered": {
@@ -217,7 +220,7 @@ function onValleyEvent(e) {
       if (cine && a) {
         const z = a.zone ? valley.zones.find((q) => q.code === a.zone) : null, lv = valley.levels && valley.levels[String(a.level)];
         cine.notice("alert", `${typeof a.level === "number" ? `Level ${a.level}` : levelName(a.level)} alert${a.zone ? `: zone ${a.zone}${z && z.name ? ` ${z.name}` : ""}` : ""}`,
-          `${lv && lv.head ? `${lv.head.charAt(0)}${lv.head.slice(1).toLowerCase()} · ` : ""}sent automatically to ${e.phones} of ${plural(e.of, "simulated phone")}`);
+          `${lv && lv.head ? `${lv.head.charAt(0)}${lv.head.slice(1).toLowerCase()} · ` : ""}${/^automatic/.test(a.by || "") ? "sent automatically" : `approved by ${a.by || "the incident commander"}, sent`} to ${e.phones} of ${plural(e.of, "simulated phone")}`);
       }
       drawValley();
       return true;
@@ -339,7 +342,7 @@ function onFrame(f) {
     drawValley();
   }
   setHud(`${run.scenario.title}, t = ${fmt(f.t)} s${scout}`, f.directive);
-  if (cine) cine.frame(f, valley, Number($("#speed .active").dataset.speed));
+  if (cine) cine.frame(f, valley, Number($("#speed").dataset.playback || $("#speed .active")?.dataset.speed || 1));
   $("#ai-wait").textContent = f.ai_pending ? "Nemotron is thinking…" : "";
   spark.push([f.t, m.formation_error_m]);
   if (spark.length > 600) spark.shift();
@@ -359,7 +362,11 @@ async function start(extra = {}) {
       approval: APPROVAL, ...extra });
   } catch (err) { alert(err.message); return; }
   view.build(run);
-  if (cine) cine.setRun(run, $("#config").selectedOptions[0].textContent);
+  if (cine) {
+    // The side panel's disclosures, which the cinema layout hides: replayed calls and the drones' drawn size.
+    const replay = /nemotron/.test($("#config").value) && status && status.mode === "replay" ? "Nemotron replayed from its recorded calls · " : "";
+    cine.setRun(run, $("#config").selectedOptions[0].textContent, `${replay}${$("#scale-note").textContent}`);
+  }
   $$(".scout-only").forEach((el) => { el.style.display = run.sensor ? "" : "none"; });
   $$(".hotspot-only").forEach((el) => { el.style.display = run.sensor && !run.wildfire ? "" : "none"; });
   $$(".valley-only").forEach((el) => { el.hidden = !run.wildfire; });
@@ -467,16 +474,16 @@ $("#compile").addEventListener("click", async () => {
   $("#compile-out").innerHTML = '<p class="muted">Compiling…</p>';
   $("#fly-mission").disabled = true;
   const text = $("#mission-text").value;
-  if (cine) { cine.request(text); cine.compiling(Boolean(status && status.ai_available && status.mode !== "replay")); }
+  if (cine) { cine.request(text); cine.compiling(); }
   try {
     compiled = await api("/api/compile", { text });
   } catch (err) { compiled = null; $("#compile-out").innerHTML = `<p>${esc(err.message)}</p>`; if (cine) cine.compiled({ error: err.message }); return; }
   compiled.text = text;
-  if (cine) cine.compiled(compiled);
   const s = compiled.spec;
   const by = compiled.source === "nemotron" ? `Nemotron (${esc(compiled.model)})` : compiled.source === "guard" ? "the safety guard" : "the regex baseline";
   if (s.refused) {
     $("#compile-out").innerHTML = `<p><b>Refused</b> by ${by}: ${esc(s.refusal_reason)}</p>`;
+    if (cine) cine.compiled(compiled, false);
     return;
   }
   const rows = [["Drones", s.drones], ["Formation", s.directive.formation], ["Spacing (m)", s.directive.spacing_m],
@@ -490,6 +497,7 @@ $("#compile").addEventListener("click", async () => {
   const flyable = compiled.source !== "regex-baseline" || KNOWN_MISSIONS.has(text.trim());
   if (!flyable) $("#compile-out").innerHTML += "<p>Flying a typed request needs Nemotron's civilian check, which did not run here (see the note above). The default request and the examples can be flown.</p>";
   $("#fly-mission").disabled = !flyable;
+  if (cine) cine.compiled(compiled, flyable);
 });
 $("#fly-mission").addEventListener("click", () => {
   if (!compiled) return;
