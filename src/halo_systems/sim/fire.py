@@ -188,6 +188,22 @@ MIDFLAME_FACTOR = {1: 0.36, 2: 0.36, 3: 0.44, 4: 0.55, 5: 0.36, 6: 0.44, 8: 0.28
 """Albini and Baughman (1979) wind adjustment factors from 20 ft wind to midflame, by fuel model.
 The 20 ft (6.1 m) wind is taken as 0.87 of the 10 m wind (open terrain)."""
 
+def wind_slope_factors(fm: FuelModel, moist: Moisture, wind10_mps: float, slope_tan: float) -> tuple[float, float]:
+    """Rothermel's wind and slope factors (phi_w, phi_s) for one fuel model, as ``SpreadGrid._rates`` forms them.
+
+    Each is the fractional increase that wind or slope alone adds to the no-wind, flat-ground rate of spread (the
+    rate becomes r0 (1 + phi)), so their ratio says which of the two drives the head: phi_w from the 10 m wind
+    brought down to midflame height, phi_s from the slope's tangent.
+    """
+    base = rothermel(fm, moist)
+    if base["r0_ft_min"] <= 0:
+        return 0.0, 0.0
+    u_mid = wind10_mps * 0.87 * MIDFLAME_FACTOR[fm.number] / 0.44704 * MPH_TO_FT_PER_MIN    # ft/min
+    u_mid = min(u_mid, base["wind_limit_ft_min"])
+    phi_w = base["c"] * u_mid ** base["b"] * base["ratio"] ** -base["e"] if u_mid > 0 else 0.0
+    return float(phi_w), float(base["phi_s_per_tan2"] * slope_tan * slope_tan)
+
+
 STEPS = [(dx, dy) for dx in (-2, -1, 0, 1, 2) for dy in (-2, -1, 0, 1, 2)
          if (dx, dy) != (0, 0) and max(abs(dx), abs(dy)) == 1 or {abs(dx), abs(dy)} == {1, 2}]
 

@@ -3,14 +3,16 @@
 The morning after dry lightning, a few fires smoulder in a mountain valley. Some are in the open, one is under
 tree crowns, one is under a rock overhang where no camera looking down can see it, and one is across the valley.
 A swarm of scout drones sweeps the valley floor. The ground station finds the fires from the drones' thermal
-images and smoke sightings, forecasts how far each will spread and how soon, briefs the fire crews, and drafts
-evacuation alerts for the zones in the fire's path. Alerts go out automatically by fixed rules, at levels
+images and smoke sightings, forecasts which way and how far each will spread and how soon, tells the fire crews
+which way each fire's head is running and why, and drafts evacuation alerts for the zones in the fire's path. Alerts go out automatically by fixed rules, at levels
 modelled on Japan's evacuation scale, once each passes a check; an operator can cancel them or give the
 all-clear. They go to simulated phones only.
 
 This page describes the scenario (`wildfire_valley` in `src/halo_systems/eval/scenarios.py`), what the
 simulation treats as true, what the station is allowed to know, how each result is scored, and every assumption
-with its source. Results are in [results/wildfire_valley/REPORT.md](../results/wildfire_valley/REPORT.md).
+with its source. Results are in [results/wildfire_valley/REPORT.md](../results/wildfire_valley/REPORT.md); the
+fire-direction results, on a second held-out set, in
+[results/wildfire_valley_7000/REPORT.md](../results/wildfire_valley_7000/REPORT.md).
 Nothing in this scenario calls a language model, so it costs nothing to run.
 
 ![One flight: the true spread against the forecast, the fires found and the phones alerted](../results/wildfire_valley/map.png)
@@ -37,6 +39,11 @@ bootstrap intervals over seeds. Full tables: [REPORT.md](../results/wildfire_val
   126 minutes ahead; 32 of the 34 missed were phones without signal. Against alerts by distance alone, the
   forecast rule told 24 [18, 30] fewer phones per flight to evacuate that the fire did not reach, with the
   same share warned in time.
+- **Which way the fire runs.** Each brief tells the fire crews which way a fire's head will run in the next
+  hour, how sure the station is, how fast and why; the crews hear again only when that changes enough to act
+  on. On a second held-out set (seeds 7000 to 7019, flown once), sixteen drones' briefs were a median 14
+  degrees [9, 20] off the true head, against 22 [16, 28] for running straight downwind of the measured wind
+  (see "Which way the fire runs" below).
 
 ![When each fire was reported and how big it was, by the drones and by today's methods](../results/wildfire_valley/detection.png)
 
@@ -105,8 +112,11 @@ degrees, hour-to-hour errors and a fuel moisture error).
    error). The first period uses the drones' wind estimate, later periods the
    weather forecast. It runs twice: for the fires believed to be spreading, and for every located fire as if the
    smouldering ones took off now. It reruns every 2 minutes, and 30 seconds after news (a new fire, one taking off).
-4. **Brief.** For each fire: how it was found, whether it is spreading, how fast its head runs and which way, its
-   size in one and two hours, and which named places it reaches and when.
+4. **Brief the crews.** For each fire: how it was found, whether it is spreading, which way its head runs (a
+   compass bearing with a cone for its uncertainty) and how fast, what drives it (the wind the swarm measured, the
+   slope, the fuel ahead and how dry it is), its size in one and two hours, and which named places it reaches
+   and when. The brief goes to the fire crews' devices (simulated) when the fire is first located, and again only
+   when it changes enough to act on. See "Which way the fire runs" below.
 5. **Alert.** The valley is divided into twelve fixed evacuation zones (south slopes, valley floor and north
    slopes, four across), as US counties divide theirs and Japanese towns issue evacuation information by district.
    After every forecast, fixed rules give each zone a level in the spirit of Japan's five-level evacuation scale:
@@ -146,6 +156,8 @@ All scores compare the station's picture with the truth, which the station never
 | Warned in time | An alert at Level 3 or above was delivered before the fire arrived |
 | Lead time | True arrival minus first delivery |
 | Evacuated, not reached | Phones told to leave (Level 4 or 5) that the fire did not reach within 3 hours |
+| Head direction error | Angle between the brief's head bearing and the true head's bearing over the next hour (see "Which way the fire runs"); a brief that says the head will not advance, though it does, counts as 180 degrees off |
+| Truth in the cone | The true head's bearing lies inside the brief's cone (among briefs that give a cone) |
 
 The last forecast of each flight is scored. A smaller swarm finishes its sweep later, so its last forecast is made
 later, with more of the fire mapped; the report gives the time. Intervals are 95% bootstrap intervals over seeds.
@@ -199,6 +211,114 @@ decide Levels 3 to 5. Japan's earthquake early warning, by contrast, is fully au
 the network (ETSI TS 122 268). Halo issues its fire levels the way the earthquake warning is issued, by fixed
 rules with no one in the loop, and keeps a person able to cancel or clear.
 
+## Which way the fire runs
+
+A crew deciding where to work needs to know which way a fire's head will run, how fast, and why. The US
+wildland fire services' pocket guide asks crews to "validate forecast with current on-site weather conditions,
+especially windspeed and direction" and to "identify hazardous fuels and significant terrain ahead of the fire",
+and, under communications, to "provide updates on any situation change" (NWCG Incident Response Pocket Guide,
+PMS 461, January 2025, pages 33 and 5). The station does this from what the swarm measured and sends it to the
+crews' devices (simulated: nothing is sent anywhere). No language model takes part.
+
+**Finding the head.** Each of the forecast's 16 members is a full spread run (Rothermel over the valley's fuels
+and slopes, with the wind the swarm measured, perturbed). In each member, ground burning now belongs to the
+located fire nearest it, and each cell reached later belongs to the fire whose burning ground is nearest that
+cell, so one fire's spread is not credited to a neighbour merely because its centre is nearer. Distances to a
+located fire are measured from its estimated edge (its position plus the radius of its estimated area), and a
+patch of burning ground more than 60 m from every located fire's edge belongs to none. A fire's head is its
+ground furthest beyond its burning front within the next hour, and its bearing runs from the nearest burning
+ground to that point. Cells within half a cell of the furthest that head the same way (within 60 degrees) are
+averaged, so grid ties do not pull the bearing to one side, and a fire with two heads of about the same length
+gets one of them, not a direction between them (`front_owner`, `_furthest` and `head_of` in
+`sim/wildfire.py`). The brief gives:
+
+- **which way**: the most common direction among the members' heads (the bearing with the most members within
+  22.5 degrees of it, averaged with the members within 45 degrees), as a compass direction;
+- **how sure**: a cone, given as degrees either side of that bearing, holding 80% of the members' bearings and
+  widened in quadrature by 10 degrees for errors the members do not represent, chiefly the patchy spread rate
+  the station never sees. A cone of 90 degrees or more either side is reported as an uncertain direction;
+- **how fast**: the median advance in the hour among the members whose head advances, and where the median
+  forecast puts the head at 15, 30, 60 and 120 minutes;
+- **why**: the measured wind, the slope ahead (the average slope of the ground the members burn in the hour),
+  and Rothermel's wind and slope factors for the commonest fuel there. The brief names what pushes the head the
+  way it runs: the wind or the slope when its push along the head is at least twice the other's, both
+  otherwise, and says when the other works against it (a run down the slope, say). Where neither pushes that
+  way, the head runs where there is fuel to burn, and the brief says so ("where the fuel leads, with the wind
+  ... against it"). It also lists the fuels the members burn in the hour, by share, and the fine-fuel moisture;
+- its size in one and two hours, and the named places it reaches and when.
+
+A brief reads, for example (seed 4012, sixteen drones, one minute into the flight, sent to the crews because the
+fire had started to spread): "Fire 1 (thermal find, spreading): head runs north-northeast (within 41°) at about
+3.5 m/min, driven by the wind (2.6 m/s from the southwest); burning into dormant brush 59%, timber litter and
+understory 22%, short grass 18%; fine fuels at 7% moisture; about 3.8 ha in 1 h and 26.0 ha in 2 h; reaches
+Valley road bridge in about 86 min, Cedar Flat homes in about 101 min." Two minutes later the crews were told
+again, "head turned east; head slower", with the new brief.
+
+**Telling the crews.** A fire's brief goes out when the fire is first located. After that it goes out again only
+when it changes enough to act on, compared with what the crews were last told: the fire starts or stops
+spreading; its head starts or stops advancing; its direction becomes clear or uncertain; while its direction
+is clear, its head turns by 30 degrees or more and beyond the cone the crews were given; its head speed rises by
+half or falls by a third (and by at least 0.5 m/min); or it will now reach a named place, or reach one 15
+minutes or more sooner by the clock. A fire merged into another is withdrawn ("Fire 3 is merged into Fire 1;
+disregard its earlier brief"). Each update says why it was sent ("head turned southeast", "reaches Cedar Flat
+homes sooner"); for a smouldering fire, it says what the head would do if the fire took off now ("would run
+east if it takes off"). An update carries the whole brief, including the head's expected track.
+
+**Scoring.** The true head is found the same way, on each true fire's own arrival times over the ground it
+reaches before any other fire, from its burning ground at the time of the flight's last forecast (or from its
+ignition point if it has not yet taken off and no other fire has burnt it). Every brief in that forecast, sent to
+the crews or not, is matched to the true fire whose burning ground is nearest the located fire, within 60 m, and
+scored if that fire's head advances at least 20 m in the next hour; two located fires on one true fire are both
+scored. A moving fire with no located fire within 60 m of its ground is counted as not located. A brief that says
+the head will not advance, though it does, counts as 180 degrees off. Two simple rules give a baseline: straight
+downwind of the wind the swarm measured, and straight upslope under the fire (where the slope is 2% or more).
+
+**Results.** On a second held-out set, seeds 7000 to 7019 (20 valleys), each flown once with the final method
+(commit 0c46d42; the later change to how the reasons are worded, below, leaves every score unchanged, checked
+on development flights), the briefs in each flight's last forecast against the true head over the next hour.
+Brackets are 95% bootstrap intervals over seeds; full table in
+[results/wildfire_valley_7000/REPORT.md](../results/wildfire_valley_7000/REPORT.md).
+
+| Drones | Briefs scored | Brief error, median | Within 22.5 degrees | Wind-only rule | Slope-only rule | Brief closer than wind-only | Truth in the cone | Crew updates per flight |
+|---|---|---|---|---|---|---|---|---|
+| 1 | 33 | 11° [6, 14] | 70% | 13° [8, 16] | 79° | 58% [45, 71] | 73% | 7.2 |
+| 4 | 44 | 15° [10, 22] | 66% | 18° [14, 27] | 59° | 59% [45, 72] | 64% | 12.6 |
+| 16 | 48 | 14° [9, 20] | 62% | 22° [16, 28] | 61° | 62% [49, 77] | 75% [64, 86] | 12.3 |
+
+With sixteen drones, the brief's direction was a median 14 degrees off the true head, against 22 for the rule
+of running straight downwind of the measured wind, and closer than that rule for 62% of the fires. The gain is
+modest and the intervals overlap: in this valley the wind sets most heads, and the brief adds the slope and the
+fuel. Straight upslope alone is a poor guide (about 60 degrees off). With one or four drones the brief and the
+wind rule are close (11 against 13, 15 against 18). No brief called a moving head not advancing. The cone held
+the true head for 75% of briefs with sixteen drones, a little under the 80% it was set to on development seeds,
+and for 64% with four. The head's speed was off by a median 0.5 m/min. Ten moving fires across the twenty
+sixteen-drone flights had no located fire near them: fires the swarm did not find. The other results on this
+second held-out set match the first (sixteen drones: 86% of fires found; 62 of 100 reported before the earliest
+of today's methods, by a median of 62 minutes; Sorensen 0.72 at 1 hour and 0.83 at 3 hours; 95.0% of reached
+phones warned, a median 129 minutes ahead; 24 fewer needless evacuations per flight than alerts by distance).
+
+![Which way the head runs: the brief against two simple rules, held-out seeds 7000 to 7019](../results/wildfire_valley_7000/direction.png)
+
+**How the method was settled.** The first version measured each member's head from the fire's located
+position and split the ground between fires by their nearest centre. On development seeds 3000 to 3019 (sixteen
+drones) its median error was 16 degrees, and its cone held the true head for only about half of the fires; the
+worst misses came from one fire's spread being credited to a neighbour. Measuring from the burning front,
+sharing ground by the nearest burning ground and widening the cone by 10 degrees brought it to 12 degrees (the
+wind-only rule: 29), with the cone holding 83%. A first held-out attempt on seeds 5000 to 5019 was stopped after
+eight one-drone flights, when the brief was found to give no area for some fires located by smoke; its rows were
+set aside unread. Seeds 6000 to 6019 were then flown once (commit 46f60bc): a median error of 12 degrees against
+24 for the wind-only rule. Two independent reviews of that code then found faults: grid ties pulling bearings to
+one side, a plain mean naming a direction between two groups of members, a two-headed fire given a direction
+between its heads, a fire overrun by another still scored as moving, and missed heads left out of some columns;
+and, in the crew updates, time passing read as a fire coming sooner, and merged fires never withdrawn. After the
+fixes, on the same development seeds, the median error was 10 degrees (wind-only 26) and the cone held 77%; the
+10-degree widening was kept. Because the method changed after seeds 6000 to 6019 had been seen, the results
+above come from fresh seeds 7000 to 7019, flown once; the 6000 rows are not in the repository. Last, the
+reasons were found to name a driver pushing more than 90 degrees away from the head in about one brief in eight
+(the slope under the fire at the foot of a rock face, say, or a wind the head runs across where the fuel runs
+out). They now use the average slope of the ground the head burns into, name only what pushes along the head,
+and say when the head simply follows the fuel; this changes the wording of the brief and no score.
+
 ## Assumptions and sources
 
 | Assumption | Value | Source or status |
@@ -215,6 +335,8 @@ rules with no one in the loop, and keeps a person able to cancel or clear.
 | Smouldering phase | 3 to 6 m2 until each fire starts to spread, at a seeded time (uniform): under crowns 20 to 150 min after take-off, under the overhang 10 to 90, in the open 30 to 240, across the valley from 20 min before take-off to 30 after. The fire already spreading started 10 to 35 min before take-off | Stated assumption, chosen by the authors; the drones' lead over today's methods comes mostly from this phase. Observed lightning holdover (strike to detection) has medians of 1.4 to 53.6 h across 42 datasets (Moris et al. 2023) |
 | Alert levels | Five levels, 3 to 5 sent to phones | Japan's evacuation alert levels as revised on 20 May 2021 (Cabinet Office and Fire and Disaster Management Agency); the probability and time thresholds are stated assumptions |
 | Today's detection methods | See "Drones against today's methods" | Sources in that section |
+| Head direction cone | Degrees either side of the bearing: the ensemble's 80% spread of head bearings, widened in quadrature by 10 degrees | The 10 degrees was set on development seeds 3000 to 3019 so that the true head fell inside about 80% of the time (among briefs that give a cone) |
+| When the crews are told again | The fire starts or stops spreading; its head starts or stops advancing; its direction becomes clear or uncertain; while the direction is clear, the head turns by 30 degrees or more and beyond the cone last sent; its speed rises by half or falls by a third (and by at least 0.5 m/min); a place is now reached, or reached 15 minutes sooner by the clock; a merged fire is withdrawn | Stated assumption. The NWCG pocket guide asks crews, under communications, to "provide updates on any situation change" |
 | Weather forecast errors, patchiness of spread, delivery delay, phones without signal | As above | Stated assumptions |
 
 ## What is not modelled
@@ -229,3 +351,5 @@ rules with no one in the loop, and keeps a person able to cancel or clear.
 - Flying over flames. The scouts sweep 20 m above the canopy straight over a spreading fire, through its heat
   and smoke; a real crew would climb or route around it.
 - How people respond. An alert counts as delivered, not as acted on; there is no traffic on the valley road.
+- Reports from the crews. Briefs go to the crews; what crews see on the ground does not come back into the
+  forecast.

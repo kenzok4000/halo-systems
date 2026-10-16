@@ -50,6 +50,18 @@ def fmt(t, digits=1, pct=False):
     return f"{v * k:.{digits}f} [{lo * k:.{digits}f}, {hi * k:.{digits}f}]"
 
 
+def pool_boot(groups, stat, n=10000):
+    """A statistic of the pooled items of all seeds, with a bootstrap that resamples seeds (each with its items)."""
+    groups = [list(g) for g in groups]
+    pooled = [x for g in groups for x in g]
+    if not pooled:
+        return None, None, None
+    rng = np.random.default_rng(RNG_SEED)
+    idx = rng.integers(0, len(groups), size=(n, len(groups)))
+    s = [stat(x) for x in ([v for i in row for v in groups[i]] for row in idx) if x]
+    return float(stat(pooled)), float(np.percentile(s, 2.5)), float(np.percentile(s, 97.5))
+
+
 def med(values):
     x = [v for v in values if v is not None]
     return float(np.median(x)) if x else None
@@ -157,6 +169,66 @@ def today_section(by, sizes, w, summary):
     w("")
 
 
+def direction_section(by, sizes, w, summary):
+    """Which way each fire's head runs: the brief against the truth and two simple rules (rows that carry it)."""
+    sizes = [n for n in sizes if any("direction_table" in r for r in by[(n, "forecast")])]
+    if not sizes:
+        return
+    w("## Which way the head runs\n")
+    w("Each brief tells the fire crews which way a fire's head will run in the next hour, with a cone (a half-width "
+      "either side of the bearing: the forecast ensemble's spread, widened for errors it does not represent, set on "
+      "development seeds to hold the true head about 80% of the time), and why (the wind the swarm measured, the "
+      "slope, the fuel ahead). The head is where the front advances furthest beyond the ground burning now, in the "
+      "next hour; its bearing runs from the nearest of that ground. The true head is found the same way on the "
+      "fire's true spread over the ground it reaches first, from its ignition point if it has not taken off yet. "
+      "Scored: every brief in a flight's last forecast, matched to the true fire nearest it (within 60 m), whose "
+      "true head advances at least 20 m in the hour (two briefs of one fire are both scored); the brief's bearing and two simple rules, straight downwind of the measured wind and straight "
+      "upslope under the fire (where the slope is 2% or more), each against the true bearing (0 is exact, 180 the "
+      "opposite way). A brief that said the head would not advance, though it did, counts as 180 degrees off, "
+      "not within 22.5, not closer than wind-only, with a speed of 0; the cone column counts only briefs that gave "
+      "a cone. Closer: the brief's error is smaller than the wind-only rule's for that fire. Not located: moving "
+      "fires with no located fire within 60 m. Crew updates: briefs relayed to the crews' simulated devices when a fire is first "
+      "located; again when it starts or stops spreading or advancing, its direction becomes clear or uncertain, "
+      "its head turns (while its direction is clear) by 30 degrees or more and beyond the cone the crews were given, its head speed rises by half "
+      "or falls by a third (and by at least 0.5 m/min), or it will reach a named place it was not going to, or "
+      "reach one 15 minutes sooner by the clock; and a withdrawal when a fire is merged into another.\n")
+    w("| Drones | Briefs scored | Brief error, median (deg) | Within 22.5 deg (%) | Wind-only error, median (deg) | Slope-only error, median (deg) | Brief closer than wind-only (%) | Truth in the cone, briefs with a cone (%) | Called not advancing | Moving fires not located | Head speed error, median abs (m/min) | Crew updates per flight |")
+    w("|---|---|---|---|---|---|---|---|---|---|---|---|")
+    for n in sizes:
+        g = by[(n, "forecast")]
+        tabs = [r.get("direction_table", []) for r in g]
+
+        def strict(x):
+            return 180.0 if x["err_deg"] is None else x["err_deg"]
+
+        err = [[strict(x) for x in t] for t in tabs]
+        wind = [[x["wind_only_err_deg"] for x in t if x["wind_only_err_deg"] is not None] for t in tabs]
+        slope = [[x["slope_only_err_deg"] for x in t if x["slope_only_err_deg"] is not None] for t in tabs]
+        both = [[(strict(x), x["wind_only_err_deg"]) for x in t if x["wind_only_err_deg"] is not None] for t in tabs]
+        cone = [[x["in_cone"] for x in t if x["in_cone"] is not None] for t in tabs]
+        speed = [[abs((x["brief_m_per_min"] if x["err_deg"] is not None else 0.0) - x["truth_m_per_min"]) for x in t]
+                 for t in tabs]
+        cols = {"brief_err_deg": pool_boot(err, np.median),
+                "within_22_5_pct": pool_boot(err, lambda v: float(np.mean(np.asarray(v) <= 22.5))),
+                "wind_only_err_deg": pool_boot(wind, np.median),
+                "slope_only_err_deg": pool_boot(slope, np.median),
+                "closer_than_wind_pct": pool_boot(both, lambda v: float(np.mean([a < b for a, b in v]))),
+                "in_cone_pct": pool_boot(cone, lambda v: float(np.mean(v))),
+                "speed_abs_err_m_min": pool_boot(speed, np.median)}
+        scored = sum(len(t) for t in tabs)
+        missed = sum(1 for t in tabs for x in t if x["err_deg"] is None)
+        unlocated = sum(r.get("direction_unlocated", 0) for r in g)
+        crew = np.mean([r.get("crew_updates", 0) for r in g])
+        w(f"| {n} | {scored} | {fmt(cols['brief_err_deg'], 0)} | {fmt(cols['within_22_5_pct'], 0, pct=True)} | "
+          f"{fmt(cols['wind_only_err_deg'], 0)} | {fmt(cols['slope_only_err_deg'], 0)} | "
+          f"{fmt(cols['closer_than_wind_pct'], 0, pct=True)} | {fmt(cols['in_cone_pct'], 0, pct=True)} | {missed} | "
+          f"{unlocated} | {fmt(cols['speed_abs_err_m_min'], 2)} | {crew:.1f} |")
+        summary["groups"][f"{n}_forecast"].update(direction=dict(
+            cols, briefs_scored=scored, called_not_advancing=missed, moving_not_located=int(unlocated),
+            crew_updates_per_flight=float(crew)))
+    w("")
+
+
 def main(path: str) -> int:
     rows = [json.loads(l) for l in Path(path).read_text().splitlines() if l.strip()]
     errors = [r for r in rows if "error" in r]
@@ -237,6 +309,8 @@ def main(path: str) -> int:
           f"{fmt(cols['phone_arrival_mae_min'], 1)} | {fmt(cols['phone_arrival_bias_min'], 1)} | {fmt(cols['brier_60min'], 3)} |")
         summary["groups"][f"{n}_forecast"].update(cols)
     w("")
+
+    direction_section(by, sizes, w, summary)
 
     # -- warnings ---------------------------------------------------------------------------------------------
     w("## Warnings to phones\n")

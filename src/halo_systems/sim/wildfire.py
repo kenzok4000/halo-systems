@@ -27,8 +27,11 @@ What the ground station knows, and does with it:
    are spreading, and for every located fire as if the smouldering ones took off now. The weather inputs
    are the drones' own wind estimate for now and a weather forecast for later, which is not the true
    weather, and the station never sees the patchy spread-rate multiplier the truth burns with.
-3. **Brief.** Per fire: how it was found, how fast its head runs, how big it will be in one and two
-   hours, which way it is going, and which places it reaches and when.
+3. **Brief and tell the crews.** Per fire: how it was found, which way its head runs (a compass bearing
+   from the ensemble, with a cone for its uncertainty) and why (the measured wind, the slope, the fuel
+   ahead and its dryness, with Rothermel's wind and slope factors naming the main driver), how fast, how big
+   it will be in one and two hours, and which places it reaches and when. A fire's brief is relayed to the
+   fire crews (simulated devices) when it is first located, and again when it changes enough to act on.
 4. **Alert.** The valley is divided into fixed evacuation zones. After every forecast, fixed rules give each
    zone a level in the spirit of Japan's five-level evacuation scale: Level 3 (prepare; those who need longer
    should leave) when the forecast gives at least ``prob_threshold`` of fire reaching a phone in the zone
@@ -51,7 +54,7 @@ from dataclasses import dataclass, field
 import numpy as np
 
 from .detection import today_methods
-from .fire import Moisture, Period, SpreadGrid
+from .fire import FUEL_MODELS, Moisture, Period, SpreadGrid, wind_slope_factors
 from .smoke import (SmokeConfig, bearing_fix, cluster, fix_is_sound, plume_points, plume_top, pm_concentration,
                     triangulate)
 from .terrain import FOREST, Terrain, smooth_noise
@@ -104,6 +107,22 @@ class ForecastConfig:
     elevation_sigma_deg: float = 1.0      # error on the angle up to a plume's top, used to size the fire
     size_top_sigma_max_m: float = 12.0    # a plume top known worse than this (seen from too far) does not size a fire
     size_top_cap: float = 0.9             # tops above this share of the highest plume give only a lower bound on area
+    cone_share: float = 0.8               # a brief's direction cone holds this share of the members' head bearings ...
+    cone_extra_deg: float = 10.0          # ... widened, in quadrature, for errors the members do not represent (set on dev seeds)
+
+
+@dataclass
+class CrewConfig:
+    """When the station relays a fire's brief to the fire crews (simulated devices: nothing is sent anywhere).
+
+    A fire's brief goes out when the fire is first located, and again when it changes enough to act on, against
+    what the crews were last told.
+    """
+    turn_deg: float = 30.0                # the head's bearing moved at least this much, and out of the cone last sent
+    speed_ratio: float = 1.5              # the head's speed rose or fell by at least this factor ...
+    speed_min_m_min: float = 0.5          # ... and by at least this much
+    eta_earlier_min: float = 15.0         # a place on the list is now reached at least this much sooner, by the clock
+    channel: str = "crew tablets and radio (simulated)"
 
 
 @dataclass
@@ -160,6 +179,7 @@ class WildfireConfig:
     forecast: ForecastConfig = field(default_factory=ForecastConfig)
     alerts: AlertPolicy = field(default_factory=AlertPolicy)
     mapping: MappingConfig = field(default_factory=MappingConfig)
+    crew: CrewConfig = field(default_factory=CrewConfig)
     truth_cell_m: float = 5.0
     horizon_s: float = 4 * 3600.0     # truth is computed this far; forecasts made during the flight look 3 h ahead
     heterogeneity_sigma: float = 0.3
@@ -197,6 +217,166 @@ def compass(dx: float, dy: float) -> str:
              "southeast", "east-southeast"]
     ang = math.degrees(math.atan2(dy, dx)) % 360.0
     return names[int(round(ang / 22.5)) % 16]
+
+
+def bearing_deg(dx: float, dy: float) -> float:
+    """Compass bearing of a vector, in degrees clockwise from north (x east, y north), in [0, 360)."""
+    b = math.degrees(math.atan2(dx, dy)) % 360.0
+    return b if b < 360.0 else 0.0
+
+
+def compass_of(bearing: float) -> str:
+    """A compass bearing in degrees as a 16-point compass word."""
+    return compass(math.sin(math.radians(bearing)), math.cos(math.radians(bearing)))
+
+
+def angle_diff(a, b):
+    """Smallest absolute difference between bearings, in degrees (0 to 180); works on arrays too."""
+    return np.abs((np.asarray(a) - np.asarray(b) + 180.0) % 360.0 - 180.0)
+
+
+def _components(mask: np.ndarray) -> np.ndarray:
+    """Labels of the 8-connected patches of ``mask`` (-1 outside it), by repeated neighbour minima."""
+    lab = np.full(mask.shape, -1, dtype=int)
+    if not mask.any():
+        return lab
+    rows, cols = np.flatnonzero(mask.any(axis=1)), np.flatnonzero(mask.any(axis=0))
+    r0, r1, c0, c1 = rows[0], rows[-1] + 1, cols[0], cols[-1] + 1
+    m = mask[r0:r1, c0:c1]
+    big = m.size
+    cur = np.where(m, np.arange(big).reshape(m.shape), big)
+    while True:
+        pad = np.pad(cur, 1, constant_values=big)
+        nxt = cur
+        for dy in (0, 1, 2):
+            for dx in (0, 1, 2):
+                nxt = np.minimum(nxt, pad[dy:dy + m.shape[0], dx:dx + m.shape[1]])
+        nxt = np.where(m, nxt, big)
+        if np.array_equal(nxt, cur):
+            break
+        cur = nxt
+    lab[r0:r1, c0:c1] = np.where(m, cur, -1)
+    return lab
+
+
+def front_owner(X: np.ndarray, Y: np.ndarray, arrival: np.ndarray, t0: float,
+                fires: list[tuple[float, float, float] | None],
+                cells: np.ndarray, join_m: float = 60.0) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
+    """Which fire each cell's ground is reached from, on one arrival-time grid, and how far beyond its front.
+
+    Ground burning within a minute of ``t0`` is the fires' ground now; each cell of it belongs to the fire
+    (x, y, radius) nearest it (distance less the radius), among those burning on this grid (None: a fire not
+    burning on it). A patch of burning ground no fire comes within ``join_m`` of (a hot spot no located fire
+    explains) belongs to none. Each other cell in ``cells`` belongs to whoever owns the nearest ground burning now,
+    at that distance: the front reaches a cell from the ground nearest it, so a fire's spread is not handed to a
+    neighbour merely because the neighbour's centre is nearer. Returns the owner (an index into ``fires``; -1
+    where none), the distance in metres, and the (x, y) of that nearest burning cell.
+    """
+    owner = np.full(X.shape, -1, dtype=int)
+    dist = np.zeros(X.shape)
+    ox = np.full(X.shape, np.nan)
+    oy = np.full(X.shape, np.nan)
+    now = arrival <= t0 + 60.0
+    idx = np.array([i for i, f in enumerate(fires) if f is not None], dtype=int)
+    if not now.any() or not len(idx):
+        return owner, dist, ox, oy
+    fx, fy, fr = (np.array([fires[i][k] for i in idx], dtype=float) for k in range(3))
+    gap = np.hypot(X[now][:, None] - fx, Y[now][:, None] - fy) - fr
+    near = np.argmin(gap, axis=1)
+    lab = np.where(gap[np.arange(len(near)), near] <= join_m, idx[near], -1)
+    # A patch is kept when any of its cells is within join_m of a fire; its cells keep their nearest fire.
+    comp = _components(now)[now]
+    held = np.zeros(comp.max() + 1, dtype=bool)
+    held[comp[lab >= 0]] = True
+    owner[now] = np.where(held[comp], idx[near], -1)
+    ox[now], oy[now] = X[now], Y[now]
+    # The nearest burning cell to any cell outside lies on the burning ground's edge.
+    pad = np.pad(now, 1)
+    edge = now & ~(pad[:-2, 1:-1] & pad[2:, 1:-1] & pad[1:-1, :-2] & pad[1:-1, 2:])
+    ex, ey, el = X[edge], Y[edge], owner[edge]
+    out = cells & ~now
+    cx, cy = X[out], Y[out]
+    k = np.empty(len(cx), dtype=int)
+    for a in range(0, len(cx), 2048):
+        d2 = (cx[a:a + 2048, None] - ex) ** 2 + (cy[a:a + 2048, None] - ey) ** 2
+        k[a:a + 2048] = np.argmin(d2, axis=1)
+    owner[out], ox[out], oy[out] = el[k], ex[k], ey[k]
+    dist[out] = np.hypot(cx - ex[k], cy - ey[k])
+    return owner, dist, ox, oy
+
+
+HEAD_GROUP_DEG = 60.0                     # near-furthest cells this close in direction are one head (see _furthest)
+
+
+def _furthest(X: np.ndarray, Y: np.ndarray, owned: tuple, mask: np.ndarray):
+    """The cells of ``mask`` within half a cell of the greatest distance beyond the front, as one point.
+
+    On a grid, the cell furthest from the front is often one of a mirror pair either side of the true head;
+    averaging the near-furthest cells, and their offsets from the front, takes out that lean. Only the cells
+    heading the same way as most of them are averaged (within ``HEAD_GROUP_DEG`` of the direction with the most
+    cells within half that), so a fire with two heads of about the same length gets one of them, not a direction
+    between them that no ground runs. Returns (x, y) of the front they start from, (x, y) where they lie, the
+    greatest distance, and the bearing of the summed offsets.
+    """
+    _, dist, ox, oy = owned
+    d = dist[mask]
+    cell = float(abs(X[0, 1] - X[0, 0])) if X.shape[1] > 1 else 1.0
+    top = d >= d.max() - 0.5 * cell
+    x, y, x0, y0, d = X[mask][top], Y[mask][top], ox[mask][top], oy[mask][top], d[top]
+    b = np.degrees(np.arctan2(x - x0, y - y0)) % 360.0
+    agree = (angle_diff(b[:, None], b[None, :]) <= 0.5 * HEAD_GROUP_DEG).sum(axis=1)
+    one = angle_diff(b, b[int(np.argmax(agree))]) <= HEAD_GROUP_DEG
+    x, y, x0, y0, d = x[one], y[one], x0[one], y0[one], d[one]
+    vx, vy = float(np.sum(x - x0)), float(np.sum(y - y0))
+    return (float(x0.mean()), float(y0.mean()), float(x.mean()), float(y.mean()), float(d.max()),
+            bearing_deg(vx, vy))
+
+
+def head_of(X: np.ndarray, Y: np.ndarray, arrival: np.ndarray, t0: float, owned: tuple, i: int,
+            ) -> tuple[float, float, float, float] | None:
+    """Fire ``i``'s head in the next hour, from ``front_owner``'s result: of the ground it reaches after the next
+    minute and within the hour, the cells furthest beyond its front now (``_furthest``). Returns (x, y) of the
+    ground burning now they run from, the distance the front advances and its compass bearing; None if it
+    reaches no new ground.
+    """
+    new = (owned[0] == i) & (arrival > t0 + 60.0) & (arrival <= t0 + 3600.0)
+    if not new.any():
+        return None
+    x0, y0, _, _, run, bearing = _furthest(X, Y, owned, new)
+    return x0, y0, run, bearing
+
+
+def mean_bearing(bearings) -> float:
+    """Circular mean of compass bearings in degrees."""
+    r = np.radians(np.asarray(bearings, dtype=float))
+    return bearing_deg(float(np.sin(r).sum()), float(np.cos(r).sum()))
+
+
+def modal_bearing(bearings, width: float = 22.5) -> float:
+    """The direction most bearings agree on: the circular mean of those within 2 x ``width`` of the bearing
+    with the most others within ``width`` of it. Unlike a plain mean, it does not name a direction between two
+    groups that no bearing gives."""
+    b = np.asarray(bearings, dtype=float)
+    agree = (angle_diff(b[:, None], b[None, :]) <= width).sum(axis=1)
+    mode = b[int(np.argmax(agree))]
+    return mean_bearing(b[angle_diff(b, mode) <= 2.0 * width])
+
+
+def _if_it_takes_off(reason: str, direction: str) -> str:
+    """A crew-update reason about a smouldering fire's head, worded as what it would do if it took off now."""
+    fixed = {"head now advancing": "would now spread if it takes off",
+             "head no longer advancing": "would no longer spread if it takes off",
+             "direction now uncertain": "direction uncertain if it takes off",
+             "head faster": "would spread faster if it takes off", "head slower": "would spread slower if it takes off"}
+    if reason in fixed:
+        return fixed[reason]
+    if reason.startswith(("direction now clear", "head turned")):
+        return f"would run {direction} if it takes off"
+    if reason.startswith("now reaches "):
+        return "would reach " + reason[len("now reaches "):] + " if it takes off"
+    if reason.startswith("reaches ") and reason.endswith(" sooner"):
+        return "would reach " + reason[len("reaches "):] + " if it takes off"
+    return reason
 
 
 def convex_hull(points: np.ndarray) -> np.ndarray:
@@ -397,6 +577,9 @@ class Wildfire:
         self._fix_src: list | None = None         # scoring only: the true fires behind a smoke fix's bearings
         self._wind_now = np.zeros(2)
         self.forecasts: list[dict] = []
+        self._measured_wind = (0.0, 0.0)          # the wind the swarm measured for the latest forecast
+        self.crew_log: list[dict] = []            # briefs relayed to the fire crews
+        self._crew_last: dict = {}                # fire id -> (time, the brief the crews were last sent)
         self.alerts: list[dict] = []
         self.notices: list[dict] = []                                # cancellations and all-clears
         self.phone_delivered: dict[int, list] = {}                   # phone -> [(level, t, t_without_approval)]
@@ -847,6 +1030,7 @@ class Wildfire:
         sp = float(np.hypot(*tw)) + fc.measured_wind_sigma_mps * float(self.rng.normal())
         dr = math.atan2(tw[1], tw[0]) + math.radians(fc.measured_dir_sigma_deg) * float(self.rng.normal())
         measured = (max(sp, 0.0) * math.cos(dr), max(sp, 0.0) * math.sin(dr))
+        self._measured_wind = measured
         later = [p for p in self.cfg.weather_forecast if p.start_s > t0]
         now = [p for p in self.cfg.weather_forecast if p.start_s <= t0]
         base = [Period(t0, measured, now[-1].moisture if now else Moisture())] + later
@@ -903,7 +1087,7 @@ class Wildfire:
             pot.append(a if all(spreading) else self.grid.arrival(seeds_all, weather, horizon, scale=scale, cache=False))
         return {"t": t0, "active": self._stats(np.array(act), t0), "potential": self._stats(np.array(pot), t0),
                 "located": [{k: v for k, v in l.items() if k != "tops"} for l in located],
-                "mapped_cells": [int(c) for c in mapped]}
+                "mapped_cells": [int(c) for c in mapped], "measured_wind": [float(v) for v in self._measured_wind]}
 
     def _stats(self, stack: np.ndarray, t0: float) -> dict:
         finite = np.where(np.isfinite(stack), stack, 1e12)
@@ -912,7 +1096,7 @@ class Wildfire:
         probs = {m: (stack <= t0 + 60 * m).mean(axis=0) for m in (30, 60, 120, 180)}
         phone_arr = np.array([[float(a[c].min()) if len(c[0]) else math.inf for c in self._phone_cells] for a in stack]) \
             if len(self.phones) else np.zeros((len(stack), 0))
-        return {"p50": p50, "probs": probs, "phone_arrivals": phone_arr}
+        return {"p50": p50, "probs": probs, "phone_arrivals": phone_arr, "members": stack}
 
     def _forecast(self, sim) -> None:
         t0 = sim.t
@@ -921,6 +1105,8 @@ class Wildfire:
         self.forecasts.append(fc)
         brief = self._brief(fc)
         fc["brief"] = brief
+        for key in ("active", "potential"):
+            fc[key].pop("members", None)          # each member's grid is needed only for the brief's direction
         g = self.grid
         act, pot = fc["active"], fc["potential"]
         sim.event("forecast", None, forecast=fc["id"],
@@ -929,52 +1115,288 @@ class Wildfire:
                   prob_reach_60min=[round(float(v), 2) for v in act["probs"][60].ravel()],
                   potential_prob_180min=[round(float(v), 2) for v in pot["probs"][180].ravel()],
                   isochrones_min=[30, 60, 120, 180], mapped_cells=fc["mapped_cells"], brief=brief)
+        self._relay_to_crews(sim, fc)
         self._draft_alerts(sim, fc)
 
     def _brief(self, fc: dict) -> list[dict]:
-        """Per located fire: speed, size in one and two hours, direction, places reached and when."""
+        """Per located fire: which way its head runs and why, how fast, its size in 1 and 2 h, places reached.
+
+        The direction is the ensemble's. In each member, ground belongs to the fire whose burning ground is
+        nearest it (``front_owner``), and a fire's head is its ground furthest beyond its front in the next hour
+        (``head_of``). The brief gives the direction most members agree on (``modal_bearing``); a cone either side
+        of it that holds ``cone_share`` of the members, widened in quadrature by ``cone_extra_deg`` for errors the
+        members do not represent, chiefly the patchy spread rate the station never sees (set on development seeds
+        so the true head falls in the cone about 80% of the time); their median advance as the head's speed; and
+        it calls the fire not advancing unless at least half the members advance a cell or more. The reasons are
+        what the forecast ran on: the wind the swarm measured, the slope under the fire (``_drivers``), the fuel
+        the members burn in the hour, and how dry the fine fuels are.
+        """
         t0 = fc["t"]
         g = self.grid
         locs = fc["located"]
         if not locs:
             return []
-        lx = np.array([l["x"] for l in locs])
-        ly = np.array([l["y"] for l in locs])
-        owner = np.argmin((g.X[..., None] - lx) ** 2 + (g.Y[..., None] - ly) ** 2, axis=2)
+        fires = [(l["x"], l["y"], math.sqrt(max(l["area_m2"], 0.0) / math.pi)) for l in locs]
+        wx, wy = fc["measured_wind"]
+        now_wx = [p for p in self.cfg.weather_forecast if p.start_s <= t0]
+        moist = now_wx[-1].moisture if now_wx else Moisture()
+        place_cells = np.zeros(g.X.shape, dtype=bool)
+        for pl in self.cfg.places:
+            place_cells[g.cell_of(pl["x"], pl["y"])] = True
+        smouldering = [l["area_m2"] < SMOULDER_AREA_M2 for l in locs]
+        owned, heads, ahead = {}, {}, {}
+        for key, used in (("active", not all(smouldering)), ("potential", any(smouldering))):
+            if not used:
+                continue
+            src = fc[key]
+            p50 = src["p50"]
+            # The fires burning on this run: the ones believed spreading, or (potential) every located fire.
+            lit = [f if key == "potential" or not smouldering[i] else None for i, f in enumerate(fires)]
+            # Members start each fire at a jittered spot, so the median may show none of a fire's ground burning
+            # now; its located position anchors its spread in the median.
+            anchored = p50.copy()
+            for f in lit:
+                if f is not None:
+                    iy, ix = g.cell_of(f[0], f[1])
+                    anchored[iy, ix] = min(anchored[iy, ix], t0)
+            owned[key] = front_owner(g.X, g.Y, anchored, t0, lit, (p50 <= t0 + 7200.0) | place_cells, MAP_JOIN_M)
+            heads[key] = []
+            ahead[key] = np.zeros((len(locs),) + g.X.shape)
+            for a in src["members"]:
+                own = front_owner(g.X, g.Y, a, t0, lit, a <= t0 + 3600.0, MAP_JOIN_M)
+                heads[key].append([head_of(g.X, g.Y, a, t0, own, i) for i in range(len(locs))])
+                hour = (a > t0 + 60.0) & (a <= t0 + 3600.0)
+                for i in range(len(locs)):
+                    ahead[key][i] += hour & (own[0] == i)
         out = []
         for i, l in enumerate(locs):
-            state = "smouldering" if l["area_m2"] < SMOULDER_AREA_M2 else "spreading"
-            p50 = (fc["potential"] if state == "smouldering" else fc["active"])["p50"]
-            mine = owner == i
+            state = "smouldering" if smouldering[i] else "spreading"
+            key = "potential" if smouldering[i] else "active"
+            p50 = fc[key]["p50"]
+            mine = owned[key][0] == i
             grow = {h: float(np.count_nonzero(mine & (p50 <= t0 + 60 * h))) * g.cell_m ** 2 / 1e4 for h in (60, 120)}
-            reach = mine & (p50 <= t0 + 3600)
-            if reach.any():
-                # Head speed: how much further out the front is in an hour than now (mapped ground burns now).
-                far = np.hypot(g.X[reach] - l["x"], g.Y[reach] - l["y"])
-                now = mine & (p50 <= t0 + 60.0)
-                far0 = float(np.max(np.hypot(g.X[now] - l["x"], g.Y[now] - l["y"]))) if now.any() else 0.0
-                k = int(np.argmax(far))
-                head_m_min = max(float(far[k]) - far0, 0.0) / 60.0
-                direction = compass(float(g.X[reach][k] - l["x"]), float(g.Y[reach][k] - l["y"]))
+            # Each member's head in the next hour, if it advances a cell or more.
+            hs = [m[i] for m in heads[key] if m[i] is not None and m[i][2] >= g.cell_m]
+            spread_share = len(hs) / max(len(heads[key]), 1)
+            if spread_share >= 0.5:
+                bearings = np.array([h[3] for h in hs])
+                bearing = modal_bearing(bearings)
+                spread = float(np.quantile(angle_diff(bearings, bearing), self.cfg.forecast.cone_share))
+                # In whole degrees, so the text, the 90-degree test and the crew relay all read the same number.
+                cone = float(round(min(math.hypot(spread, self.cfg.forecast.cone_extra_deg), 180.0)))
+                advance = float(np.median([h[2] for h in hs]))
+                head_m_min = advance / 60.0
+                direction = compass_of(bearing)
+                # For a map: an arrow from the median forecast's front now, as far as the front goes in the hour.
+                mid = head_of(g.X, g.Y, p50, t0, owned[key], i)
+                ox, oy = (mid[0], mid[1]) if mid is not None else (l["x"], l["y"])
+                head_from = [round(ox, 1), round(oy, 1)]
+                head_xy = [round(ox + advance * math.sin(math.radians(bearing)), 1),
+                           round(oy + advance * math.cos(math.radians(bearing)), 1)]
+                # For a map that follows the ground: the median forecast's head (its ground furthest beyond the
+                # front now) at 15, 30, 60 and 120 minutes.
+                track = []
+                for m in (15, 30, 60, 120):
+                    reach = mine & (p50 > t0 + 60.0) & (p50 <= t0 + 60.0 * m)
+                    if reach.any():
+                        _, _, hx, hy, _, _ = _furthest(g.X, g.Y, owned[key], reach)
+                        track.append([m, round(hx, 1), round(hy, 1)])
             else:
-                head_m_min, direction = 0.0, "not spreading"
+                head_m_min, bearing, cone, head_from, head_xy = 0.0, None, None, None, None
+                direction = "not spreading" if state == "smouldering" else "not advancing"
+                track = []
+            drivers = self._drivers(l, ahead[key][i], (wx, wy), moist, bearing)
             places = []
             for pl in self.cfg.places:
                 iy, ix = g.cell_of(pl["x"], pl["y"])
-                if owner[iy, ix] == i and p50[iy, ix] <= t0 + self.cfg.forecast.horizon_s:
+                if mine[iy, ix] and p50[iy, ix] <= t0 + self.cfg.forecast.horizon_s:
                     places.append({"name": pl["name"], "eta_min": max(0, int(round((float(p50[iy, ix]) - t0) / 60.0)))})
             places.sort(key=lambda p: p["eta_min"])
-            text = (f"Fire {l['id'] + 1} ({l['method']} find, {state}): "
-                    + ("if it takes off, " if state == "smouldering" else "")
-                    + f"head runs about {head_m_min:.1f} m/min {direction}"
+            name = f"Fire {l['id'] + 1}"
+            if bearing is None:
+                headline = f"{name}: " + ("not spreading" if state == "smouldering" else "burning, not advancing")
+                run = "not expected to " + ("spread" if state == "smouldering" else "advance") + " in the next hour"
+            else:
+                sure = cone < 90.0
+                headline = (f"{name}: " + ("smouldering, would run " if state == "smouldering" else "head runs ")
+                            + (direction if sure else "(direction uncertain)") + f" at {head_m_min:.1f} m/min")
+                way = f"head runs {direction} (within {cone:.0f}°)" if sure else \
+                    f"head most likely runs {direction} (direction uncertain)"
+                run = (("if it takes off, " if state == "smouldering" else "")
+                       + f"{way} at about {head_m_min:.1f} m/min, driven by {drivers['why']}")
+            fuel = ", ".join(f"{f['fuel']} {f['share']:.0%}" for f in drivers["fuel_ahead"] if f["share"] >= 0.02)
+            text = (f"{name} ({l['method']} find, {state}): {run}"
+                    + (f"; burning into {fuel}" if fuel and bearing is not None else "")
+                    + f"; fine fuels at {drivers['fine_fuel_moisture_pct']:.0f}% moisture"
                     + f"; about {grow[60]:.1f} ha in 1 h and {grow[120]:.1f} ha in 2 h"
                     + ("; reaches " + ", ".join(f"{p['name']} " + ("now" if p["eta_min"] < 1 else f"in about {p['eta_min']} min")
                                                  for p in places) if places else "")
                     + ".")
             out.append({"fire": l["id"], "method": l["method"], "state": state, "head_m_per_min": round(head_m_min, 2),
-                        "direction": direction, "area_1h_ha": round(grow[60], 2), "area_2h_ha": round(grow[120], 2),
-                        "places": places, "text": text})
+                        "direction": direction, "head_bearing_deg": None if bearing is None else round(bearing, 1) % 360.0,
+                        "cone_deg": cone, "spread_share": round(spread_share, 2),
+                        "head_from_xy": head_from, "head_xy": head_xy, "head_track": track, "drivers": {k: v for k, v in drivers.items() if k != "why"},
+                        "area_1h_ha": round(grow[60], 2), "area_2h_ha": round(grow[120], 2),
+                        "places": places, "headline": headline, "text": text})
         return out
+
+    def _drivers(self, loc: dict, ahead: np.ndarray, wind: tuple[float, float], moist: Moisture,
+                 bearing: float | None = None) -> dict:
+        """What pushes a fire's head: the measured wind, the slope ahead, the fuel ahead and its dryness.
+
+        ``ahead``: per cell, how many ensemble members burn it as this fire's ground in the next hour. The slope
+        and the fuel are those of that ground (the members' average slope, the commonest fuel), the terrain and
+        fuel the head runs into, so the reasons explain the head the brief gives; a single point under the fire
+        can tilt another way, at the foot of a rock face, say. With no ground ahead, the slope and fuel under the
+        fire.
+
+        The driver named is the one pushing the head the way the brief says it runs (``bearing``): each factor's
+        push along that bearing. Where neither pushes that way (the head runs where the fuel lets it, across or
+        against both), the brief says so. Without a bearing, the pushes are taken along the model's own head
+        direction at that slope and fuel.
+        """
+        g = self.grid
+        wx, wy = wind
+        w10 = math.hypot(wx, wy)
+        iy, ix = g.cell_of(loc["x"], loc["y"])
+        weight = float(ahead.sum())
+        if weight > 0:
+            sx, sy = float((g.slope_x * ahead).sum()) / weight, float((g.slope_y * ahead).sum()) / weight
+        else:
+            sx, sy = float(g.slope_x[iy, ix]), float(g.slope_y[iy, ix])
+        where = "ahead" if weight > 0 else "under the fire"
+        tan = math.hypot(sx, sy)
+        counts = np.bincount(g.fuel.ravel().astype(int), weights=ahead.ravel())
+        fuels = np.flatnonzero(counts)
+        counts = counts[fuels]
+        order = np.argsort(-counts, kind="stable")
+        total = max(float(counts.sum()), 1.0)
+        fuel_ahead = [{"fuel": FUEL_MODELS[int(fuels[k])].name if fuels[k] else "rock or bare ground",
+                  "share": round(float(counts[k]) / total, 2)} for k in order]
+        # Rothermel's factors for the commonest fuel ahead (or the fuel under the fire, with none ahead).
+        here = next((int(fuels[k]) for k in order if fuels[k]), 0) or int(g.fuel[iy, ix])
+        phi_w, phi_s = wind_slope_factors(FUEL_MODELS[here], moist, w10, tan) if here else (0.0, 0.0)
+        wind_from = (bearing_deg(wx, wy) + 180.0) % 360.0 if w10 > 0 else None
+        upslope = bearing_deg(sx, sy) if tan > 0 else None
+        wind_txt = f"the wind ({w10:.1f} m/s from the {compass_of(wind_from)})" if wind_from is not None else "no wind"
+        slope_txt = f"the slope {where} ({100 * tan:.0f}% rising to the {compass_of(upslope)})" if upslope is not None \
+            else "flat ground"
+        # The model combines them as vectors, as SpreadGrid does: phi_e = |phi_w u + phi_s s| along the wind (u)
+        # and up the slope (s), and the head runs at R0 (1 + phi_e). Each factor's part is its push along phi_e;
+        # a downslope wind's or slope's part is negative: it works against the head.
+        vx = (phi_w * wx / w10 if w10 > 0 else 0.0) + (phi_s * sx / tan if tan > 0 else 0.0)
+        vy = (phi_w * wy / w10 if w10 > 0 else 0.0) + (phi_s * sy / tan if tan > 0 else 0.0)
+        phi_e = math.hypot(vx, vy)
+        wind_part = (phi_w * (wx * vx + wy * vy) / (w10 * phi_e)) if w10 > 0 and phi_e > 0 else 0.0
+        slope_part = (phi_s * (sx * vx + sy * vy) / (tan * phi_e)) if tan > 0 and phi_e > 0 else 0.0
+        # Each factor's push along the head the brief gives (or, with none, along phi_e).
+        if bearing is not None:
+            hx, hy = math.sin(math.radians(bearing)), math.cos(math.radians(bearing))
+            wind_push = phi_w * (wx * hx + wy * hy) / w10 if w10 > 0 else 0.0
+            slope_push = phi_s * (sx * hx + sy * hy) / tan if tan > 0 else 0.0
+        else:
+            wind_push, slope_push = wind_part, slope_part
+        small = 0.1 * max(phi_w, phi_s)
+        against = None
+        if phi_e <= 0:
+            main, why = "neither", "neither wind nor slope"
+        elif wind_push <= small and slope_push <= small:
+            # Neither pushes the head this way: it runs where there is fuel to burn.
+            main = "fuel"
+            rel = [f"{txt} {'against' if push < -small else 'across'} it" for txt, push, phi in
+                   ((wind_txt, wind_push, phi_w), (slope_txt, slope_push, phi_s)) if phi > 0]
+            why = "where the fuel leads" + (", with " + " and ".join(rel) if rel else "")
+        elif wind_push >= 2.0 * slope_push:
+            main, why = "wind", wind_txt
+        elif slope_push >= 2.0 * wind_push:
+            main, why = "slope", slope_txt
+        else:
+            main, why = "wind and slope", f"{wind_txt} and {slope_txt}"
+        if main in ("wind", "slope"):
+            push, txt = (slope_push, slope_txt) if main == "wind" else (wind_push, wind_txt)
+            if push < -small:
+                against = "slope" if main == "wind" else "wind"
+                why += f", with {txt} working against it"
+        return {"main": main, "against": against, "why": why, "wind_mps": round(w10, 1),
+                "wind_from_deg": None if wind_from is None else round(wind_from, 1) % 360.0,
+                "slope_pct": round(100 * tan, 1), "upslope_deg": None if upslope is None else round(upslope, 1) % 360.0,
+                "slope_where": where,
+                "phi_wind": round(phi_w, 2), "phi_slope": round(phi_s, 2),
+                # Shares of the head's rate R0 (1 + phi_e): the fuel alone on flat calm ground, and the wind's and
+                # the slope's parts (negative when working against the head). They sum to 1.
+                "shares": {"fuel": round(1.0 / (1.0 + phi_e), 2), "wind": round(wind_part / (1.0 + phi_e), 2),
+                           "slope": round(slope_part / (1.0 + phi_e), 2)},
+                "fuel_ahead": fuel_ahead,
+                "fine_fuel_moisture_pct": round(100 * moist.d1, 1)}
+
+    def _relay_to_crews(self, sim, fc: dict) -> None:
+        """Relay a fire's brief to the crews when it is new or has changed enough to act on (``CrewConfig``).
+
+        Against what the crews were last told about a fire, a brief goes out again when: the fire grows into a
+        spreading one (or is found smaller); its head starts or stops advancing; its direction becomes clear or
+        uncertain (a cone under 90 degrees either side, or not); while its direction is clear, its head turns by
+        ``turn_deg`` or more and beyond the cone the crews were given; its speed rises or falls by a factor of
+        ``speed_ratio`` (and by at least ``speed_min_m_min``); or it will reach a named place it was not going
+        to, or reach one ``eta_earlier_min`` sooner by the clock. A fire folded into another is withdrawn. For a
+        smouldering fire the head is what it would do if it took off now, and the reasons say so.
+        """
+        cc = self.cfg.crew
+        briefed = {b["fire"] for b in fc["brief"]}
+        for fire in [f for f in self._crew_last if f not in briefed]:
+            del self._crew_last[fire]
+            into = next((l["merged_into"] for l in self.merged if l["id"] == fire and "merged_into" in l), None)
+            reason = f"merged into Fire {into + 1}" if into is not None else "no longer tracked"
+            self._send_crews(sim, fc, {"fire": fire, "headline": f"Fire {fire + 1}: {reason}",
+                                       "text": f"Fire {fire + 1} is {reason}; disregard its earlier brief.",
+                                       "head_bearing_deg": None, "cone_deg": None, "head_m_per_min": 0.0,
+                                       "head_from_xy": None, "head_xy": None, "head_track": [], "places": []}, [reason])
+        for b in fc["brief"]:
+            entry = self._crew_last.get(b["fire"])
+            why = []
+            if entry is None:
+                why.append("new fire")
+            else:
+                t_last, last = entry
+                if b["state"] != last["state"]:
+                    why.append(f"now {b['state']}")
+                moving, was_moving = b["head_bearing_deg"] is not None, last["head_bearing_deg"] is not None
+                if moving != was_moving:
+                    why.append("head now advancing" if moving else "head no longer advancing")
+                elif moving:
+                    sure, was_sure = b["cone_deg"] < 90.0, last["cone_deg"] < 90.0
+                    if sure != was_sure:
+                        why.append(f"direction now clear: {b['direction']}" if sure else "direction now uncertain")
+                    elif sure and float(angle_diff(b["head_bearing_deg"], last["head_bearing_deg"])) \
+                            >= max(cc.turn_deg, last["cone_deg"]):
+                        # A turn inside the cone the crews were given is within the uncertainty they already have.
+                        why.append(f"head turned {b['direction']}")
+                v0, v1 = last["head_m_per_min"], b["head_m_per_min"]
+                if abs(v1 - v0) >= cc.speed_min_m_min and max(v0, v1) >= cc.speed_ratio * max(min(v0, v1), 1e-9):
+                    why.append("head faster" if v1 > v0 else "head slower")
+                # Arrival times count from each brief's own time; compare them by the clock.
+                gone = (sim.t - t_last) / 60.0
+                before = {p["name"]: p["eta_min"] for p in last["places"]}
+                new = [p["name"] for p in b["places"] if p["name"] not in before]
+                sooner = [p["name"] for p in b["places"]
+                          if p["name"] in before and before[p["name"]] - gone - p["eta_min"] >= cc.eta_earlier_min]
+                if new:
+                    why.append("now reaches " + ", ".join(new))
+                if sooner:
+                    why.append("reaches " + ", ".join(sooner) + " sooner")
+            if why and b["state"] == "smouldering":
+                why = [_if_it_takes_off(r, b["direction"]) for r in why]
+            if why:
+                self._crew_last[b["fire"]] = (sim.t, b)
+                self._send_crews(sim, fc, b, why)
+
+    def _send_crews(self, sim, fc: dict, b: dict, why: list[str]) -> None:
+        msg = {"t": round(sim.t, 2), "fire": b["fire"], "forecast": fc["id"], "reason": "; ".join(why),
+               "headline": b["headline"], "text": b["text"]}
+        self.crew_log.append(msg)
+        sim.event("crew_update", None, fire=b["fire"], forecast=fc["id"], reason=msg["reason"], headline=b["headline"],
+                  text=b["text"], head_bearing_deg=b["head_bearing_deg"], cone_deg=b["cone_deg"],
+                  head_m_per_min=b["head_m_per_min"], head_from_xy=b["head_from_xy"], head_xy=b["head_xy"],
+                  head_track=b.get("head_track", []), places=b["places"], to=self.cfg.crew.channel)
 
     # -- alerts ------------------------------------------------------------------------------------------
     def _zone_targets(self, fc: dict) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
@@ -1236,6 +1658,8 @@ class Wildfire:
         out["forecast_t_s"] = round(self.forecasts[-1]["t"], 1) if self.forecasts else None
         out["mapped_ha"] = round(float(np.count_nonzero(np.isfinite(self.mapped_t))) * self.grid.cell_m ** 2 / 1e4, 2)
         out.update(self._forecast_skill())
+        out.update(self._direction_skill())
+        out["crew_updates"] = len(self.crew_log)
         out.update(self._warning_scores())
         out["today"] = today_methods(self, sim.seed)          # the same fires, found by today's methods
         return out
@@ -1282,6 +1706,74 @@ class Wildfire:
         else:
             out.update(phone_arrival_mae_min=None, phone_arrival_bias_min=None, phone_arrival_n=0, brier_60min=None)
         return out
+
+    def _direction_skill(self) -> dict:
+        """The last forecast's head directions against where each fire's head really runs in the next hour.
+
+        The true head is found as the brief finds it (``front_owner`` and ``head_of``), on each true fire's own
+        arrival times where it reaches the ground first (ground another fire burns first is that fire's), from
+        its burning ground now or, if it has not taken off yet, its ignition point. Every brief in the last
+        forecast (sent to the crews or not) is scored against the true fire whose burning ground (or ignition
+        point) is nearest the located fire, within ``MATCH_M``, if that fire's head advances at least two cells
+        in the hour: the brief's bearing, the downwind bearing of the wind the swarm measured (a wind-only rule)
+        and the upslope bearing under the fire (a slope-only rule, where the slope is 2% or more), each against
+        the true bearing; whether the truth is inside the brief's cone; and the head speeds. A brief that says
+        the head will not advance has no bearing and counts as missed (180 degrees off). Fires whose heads
+        advance with no located fire within ``MATCH_M`` of their ground are counted, not scored. Scoring only:
+        the station never reads the truth.
+        """
+        empty = {"direction_n": 0, "direction_err_deg_median": None, "direction_in_cone_pct": None,
+                 "direction_missed": 0, "direction_unlocated": 0, "direction_table": []}
+        if not self.forecasts:
+            return empty
+        fc = self.forecasts[-1]
+        t0 = fc["t"]
+        g = self.grid
+        wx, wy = fc["measured_wind"]
+        downwind = bearing_deg(wx, wy) if math.hypot(wx, wy) > 0 else None
+        locs = {l["id"]: l for l in fc["located"]}
+        # Each true fire's ground now (its ignition point if it has not taken off) and its true head.
+        truth = []
+        for j, f in enumerate(self.fires):
+            first = self.fire_arrival[j] <= self.arrival10
+            arr = np.where(first, self.fire_arrival[j], np.inf)
+            iy, ix = g.cell_of(f.x, f.y)
+            if first[iy, ix]:                          # not yet overrun by another fire
+                arr[iy, ix] = min(arr[iy, ix], t0)
+            now = arr <= t0 + 60.0
+            own = front_owner(g.X, g.Y, arr, t0, [(f.x, f.y, 0.0)], arr <= t0 + 3600.0, math.inf)
+            truth.append((g.X[now], g.Y[now], head_of(g.X, g.Y, arr, t0, own, 0)))
+        moving = {j for j, (_, _, h) in enumerate(truth) if h is not None and h[2] >= 2 * g.cell_m}
+        rows, briefed = [], set()
+        for b in fc["brief"]:
+            l = locs[b["fire"]]
+            gaps = [float(np.min(np.hypot(xs - l["x"], ys - l["y"]))) if len(xs) else math.inf for xs, ys, _ in truth]
+            briefed |= {k for k, gap in enumerate(gaps) if gap <= MATCH_M}
+            j = int(np.argmin(gaps)) if gaps else None
+            if j is None or gaps[j] > MATCH_M:
+                continue
+            if j not in moving:
+                continue
+            _, _, run, true_b = truth[j][2]
+            # The slope-only rule: straight up the slope under the located fire, where it is 2% or more.
+            cy, cx = g.cell_of(l["x"], l["y"])
+            sx, sy = float(g.slope_x[cy, cx]), float(g.slope_y[cy, cx])
+            up = round(bearing_deg(sx, sy), 1) % 360.0 if round(100 * math.hypot(sx, sy), 1) >= 2.0 else None
+            got = b["head_bearing_deg"]
+            rows.append({"fire": b["fire"], "truth_fire": j, "state": b["state"],
+                         "truth_bearing_deg": round(true_b, 1) % 360.0, "truth_m_per_min": round(run / 60.0, 2),
+                         "brief_bearing_deg": got, "cone_deg": b["cone_deg"], "brief_m_per_min": b["head_m_per_min"],
+                         "err_deg": None if got is None else round(float(angle_diff(got, true_b)), 1),
+                         "in_cone": None if got is None else bool(angle_diff(got, true_b) <= b["cone_deg"]),
+                         "wind_only_err_deg": None if downwind is None else round(float(angle_diff(downwind, true_b)), 1),
+                         "slope_only_err_deg": None if up is None else round(float(angle_diff(up, true_b)), 1)})
+        errs = [180.0 if r["err_deg"] is None else r["err_deg"] for r in rows]
+        cone = [r["in_cone"] for r in rows if r["in_cone"] is not None]
+        return {"direction_n": len(rows),
+                "direction_err_deg_median": round(float(np.median(errs)), 1) if errs else None,
+                "direction_in_cone_pct": round(100.0 * sum(cone) / len(cone), 1) if cone else None,
+                "direction_missed": sum(1 for r in rows if r["err_deg"] is None),
+                "direction_unlocated": len(moving - briefed), "direction_table": rows}
 
     def _warning_scores(self) -> dict:
         """Who was warned before the fire reached them, how early, and who was told to leave for nothing."""
