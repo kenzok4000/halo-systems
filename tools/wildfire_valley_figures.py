@@ -1,9 +1,12 @@
-"""Figures for the wildfire valley: one flight's map, the sweep by swarm size, and drones against today's methods.
+"""Figures for the wildfire valley: one flight's map, the sweep by swarm size, drones against today's methods,
+and which way the fires' heads run.
 
     PYTHONPATH=src python3 tools/wildfire_valley_figures.py --seed 3000 --n 16
 
 Writes results/wildfire_valley/map.png (re-flies one flight; the run is deterministic, so it is the
-sweep's flight) and, when the sweep's rows and summary.json exist, swarm_size.png and detection.png.
+sweep's flight) and, when the sweep's rows and summary.json exist, swarm_size.png and detection.png, and
+direction.png when the rows score the briefs' head directions. ``--out`` picks another results folder;
+``--brief`` adds the last brief's head arrows and cones to the map.
 """
 
 from __future__ import annotations
@@ -19,7 +22,7 @@ import matplotlib.pyplot as plt  # noqa: E402
 import numpy as np  # noqa: E402
 from matplotlib.colors import LightSource, ListedColormap  # noqa: E402
 from matplotlib.lines import Line2D  # noqa: E402
-from matplotlib.patches import Patch, Rectangle  # noqa: E402
+from matplotlib.patches import FancyArrow, Patch, Rectangle, Wedge  # noqa: E402
 
 OUT = Path("results/wildfire_valley")
 COVER_COLOURS = ["#9a958c", "#d9cf8a", "#a8a564", "#4f6b3a", "#c9b79c"]     # rock, grass, scrub, forest, bare
@@ -27,7 +30,7 @@ SHELTER_MARK = {"open": "o", "canopy": "^", "overhang": "s"}
 LEVEL_COLOURS = {3: "#ff2800", 4: "#aa00ff", 5: "#000000"}   # Japan's evacuation alert colours
 
 
-def flight_map(seed: int, n: int) -> dict:
+def flight_map(seed: int, n: int, brief: bool = False) -> dict:
     from halo_systems.eval.runner import make_controller, make_supervisor
     from halo_systems.eval.scenarios import wildfire_valley
     from halo_systems.sim.body import DroneBody
@@ -97,6 +100,18 @@ def flight_map(seed: int, n: int) -> dict:
                     color="white", weight="bold", path_effects=[matplotlib.patheffects.withStroke(linewidth=2.5, foreground="k")])
     for c in sc.world.cylinders[:1]:
         ax.scatter(c.x, c.y, marker="*", s=120, c="white", edgecolors="k", zorder=6)
+    if brief and fc is not None:
+        # Each fire's head in the next hour as the last brief gave it: an arrow, and the cone around it.
+        for b in fc["brief"]:
+            if b["head_xy"] is None:
+                continue
+            (x0, y0), (x1, y1) = b["head_from_xy"], b["head_xy"]
+            run = max(float(np.hypot(x1 - x0, y1 - y0)), 1.0)
+            mid = 90.0 - b["head_bearing_deg"]             # compass bearing to the plot's angle (east = 0, anticlockwise)
+            ax.add_patch(Wedge((x0, y0), run, mid - b["cone_deg"], mid + b["cone_deg"], color="#ffdd00", alpha=0.3,
+                               lw=0, zorder=8))
+            ax.add_patch(FancyArrow(x0, y0, x1 - x0, y1 - y0, width=4.0, head_width=16.0, head_length=min(20.0, run / 2),
+                                    length_includes_head=True, color="#ffdd00", ec="k", lw=0.8, zorder=9))
     ax.set_xlim(ext[0], ext[1])
     ax.set_ylim(ext[2], ext[3])
     ax.set_aspect("equal")
@@ -120,6 +135,7 @@ def flight_map(seed: int, n: int) -> dict:
         Line2D([], [], marker="o", ls="", mfc=LEVEL_COLOURS[4], mec="none", label="Level 4, evacuate now"),
         Line2D([], [], marker="o", ls="", mfc=LEVEL_COLOURS[3], mec="none", label="Level 3, prepare to leave"),
         Line2D([], [], marker="o", ls="", mfc="#bbbbbb", mec="none", label="phone not alerted"),
+        *([Line2D([], [], color="#ffdd00", lw=3, label="brief: head's run in the next hour, and its cone")] if brief else []),
         Line2D([], [], color="white", ls=":", label="survey block and sweep"),
         Line2D([], [], marker="*", ls="", mfc="white", mec="k", ms=11, label="radio mast (obstacle)"),
     ]
@@ -216,14 +232,60 @@ def detection_chart() -> None:
     plt.close(fig)
 
 
+def direction_chart() -> None:
+    """How far each brief's head bearing was from the truth, against two simple rules, at the largest swarm."""
+    path = OUT / "runs.jsonl"
+    if not path.exists():
+        return
+    rows = [json.loads(l) for l in path.read_text().splitlines() if l.strip()]
+    rows = [r for r in rows if "error" not in r and r["alert_rule"] == "forecast" and "direction_table" in r]
+    if not rows:
+        return
+    top = max(r["n"] for r in rows)
+    table = [d for r in rows if r["n"] == top for d in r["direction_table"]]
+    if not table:
+        return
+    fig, ax = plt.subplots(figsize=(9, 5), dpi=130)
+    lines = (("err_deg", f"Halo brief ({top} drones): wind, slope and fuel in an ensemble", "#d9542b", "-"),
+             ("wind_only_err_deg", "Straight downwind of the measured wind", "#3b6fb6", "--"),
+             ("slope_only_err_deg", "Straight upslope (slope 2% or more)", "#2f8f5b", ":"))
+    for key, label, colour, style in lines:
+        errs = np.sort([d[key] if d[key] is not None else 180.0 for d in table
+                        if key != "slope_only_err_deg" or d[key] is not None])
+        if not len(errs):
+            continue
+        ax.step(np.concatenate([[0.0], errs]), np.arange(len(errs) + 1) / len(errs) * 100.0, where="post", color=colour,
+                ls=style, lw=2.2, label=f"{label}: median {np.median(errs):.0f}°")
+    ax.axvline(22.5, color="#444444", lw=1.0, ls="--")
+    ax.text(24.0, 4.0, "one compass point (22.5°)", fontsize=9, color="#444444")
+    ax.set_xlim(0, 180)
+    ax.set_ylim(0, 100)
+    ax.set_xticks(range(0, 181, 30))
+    ax.set_xlabel("error in the head's direction (degrees)")
+    ax.set_ylabel("fires within that error (%)")
+    seeds = sorted({r["seed"] for r in rows})
+    ax.set_title(f"Which way the fire's head runs in the next hour: {len(table)} fires, seeds {seeds[0]}-{seeds[-1]}\n"
+                 "each flight's last forecast; a fire the brief called not spreading counts as 180°", fontsize=10.5)
+    ax.grid(True, alpha=0.25)
+    ax.legend(loc="lower right", fontsize=9, frameon=False)
+    fig.tight_layout()
+    fig.savefig(OUT / "direction.png")
+    plt.close(fig)
+
+
 if __name__ == "__main__":
     import matplotlib.patheffects  # noqa: F401
     ap = argparse.ArgumentParser()
     ap.add_argument("--seed", type=int, default=3000)
     ap.add_argument("--n", type=int, default=16)
     ap.add_argument("--no-map", action="store_true")
+    ap.add_argument("--brief", action="store_true", help="draw the last brief's head arrows and cones on the map")
+    ap.add_argument("--out", default=str(OUT))
     a = ap.parse_args()
+    OUT = Path(a.out)
     if not a.no_map:
-        print(json.dumps({k: v for k, v in flight_map(a.seed, a.n).items() if k != "fire_table"}))
+        print(json.dumps({k: v for k, v in flight_map(a.seed, a.n, a.brief).items()
+                          if k not in ("fire_table", "direction_table")}))
     swarm_size()
     detection_chart()
+    direction_chart()

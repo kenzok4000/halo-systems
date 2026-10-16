@@ -234,25 +234,28 @@ def angle_diff(a, b):
     return np.abs((np.asarray(a) - np.asarray(b) + 180.0) % 360.0 - 180.0)
 
 
-def front_owner(X: np.ndarray, Y: np.ndarray, arrival: np.ndarray, t0: float, fires: list[tuple[float, float, float]],
+def front_owner(X: np.ndarray, Y: np.ndarray, arrival: np.ndarray, t0: float,
+                fires: list[tuple[float, float, float] | None],
                 cells: np.ndarray) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
     """Which fire each cell's ground is reached from, on one arrival-time grid, and how far beyond its front.
 
     Ground burning within a minute of ``t0`` is the fires' ground now; each cell of it belongs to the fire
-    (x, y, radius) whose edge is nearest. Each other cell in ``cells`` belongs to the fire that owns the nearest
-    ground burning now, at that distance: the front reaches a cell from the ground nearest it, so a fire's
-    spread is not handed to another fire whose centre happens to be nearer. Returns the owner (-1 where none),
-    the distance in metres, and the (x, y) of that nearest burning cell.
+    (x, y, radius) whose edge is nearest, among those burning on this grid (None: a fire not burning on it).
+    Each other cell in ``cells`` belongs to the fire that owns the nearest ground burning now, at that
+    distance: the front reaches a cell from the ground nearest it, so a fire's spread is not handed to another
+    fire whose centre happens to be nearer. Returns the owner (an index into ``fires``; -1 where none), the
+    distance in metres, and the (x, y) of that nearest burning cell.
     """
     owner = np.full(X.shape, -1, dtype=int)
     dist = np.zeros(X.shape)
     ox = np.full(X.shape, np.nan)
     oy = np.full(X.shape, np.nan)
     now = arrival <= t0 + 60.0
-    if not now.any() or not fires:
+    idx = np.array([i for i, f in enumerate(fires) if f is not None], dtype=int)
+    if not now.any() or not len(idx):
         return owner, dist, ox, oy
-    fx, fy, fr = (np.array([f[k] for f in fires], dtype=float) for k in range(3))
-    owner[now] = np.argmin(np.hypot(X[now][:, None] - fx, Y[now][:, None] - fy) - fr, axis=1)
+    fx, fy, fr = (np.array([fires[i][k] for i in idx], dtype=float) for k in range(3))
+    owner[now] = idx[np.argmin(np.hypot(X[now][:, None] - fx, Y[now][:, None] - fy) - fr, axis=1)]
     ox[now], oy[now] = X[now], Y[now]
     # The nearest burning cell to any cell outside lies on the burning ground's edge.
     pad = np.pad(now, 1)
@@ -1061,11 +1064,20 @@ class Wildfire:
                 continue
             src = fc[key]
             p50 = src["p50"]
-            owned[key] = front_owner(g.X, g.Y, p50, t0, fires, (p50 <= t0 + 7200.0) | place_cells)
+            # The fires burning on this run: the ones believed spreading, or (potential) every located fire.
+            lit = [f if key == "potential" or not smouldering[i] else None for i, f in enumerate(fires)]
+            # Members start each fire at a jittered spot, so the median may show none of a fire's ground burning
+            # now; its located position anchors its spread in the median.
+            anchored = p50.copy()
+            for f in lit:
+                if f is not None:
+                    iy, ix = g.cell_of(f[0], f[1])
+                    anchored[iy, ix] = min(anchored[iy, ix], t0)
+            owned[key] = front_owner(g.X, g.Y, anchored, t0, lit, (p50 <= t0 + 7200.0) | place_cells)
             heads[key] = []
             ahead[key] = np.zeros((len(locs),) + g.X.shape)
             for a in src["members"]:
-                own = front_owner(g.X, g.Y, a, t0, fires, a <= t0 + 3600.0)
+                own = front_owner(g.X, g.Y, a, t0, lit, a <= t0 + 3600.0)
                 heads[key].append([head_of(g.X, g.Y, a, t0, own, i) for i in range(len(locs))])
                 hour = (a > t0 + 60.0) & (a <= t0 + 3600.0)
                 for i in range(len(locs)):
@@ -1108,10 +1120,13 @@ class Wildfire:
                 headline = f"{name}: not spreading"
                 run = "not expected to spread in the next hour"
             else:
-                headline = f"{name}: head runs {direction} at {head_m_min:.1f} m/min"
+                sure = cone < 90.0
+                headline = (f"{name}: " + ("smouldering, would run " if state == "smouldering" else "head runs ")
+                            + (direction if sure else "(direction uncertain)") + f" at {head_m_min:.1f} m/min")
+                way = f"head runs {direction} (within {cone:.0f}°)" if sure else \
+                    f"head most likely runs {direction} (direction uncertain)"
                 run = (("if it takes off, " if state == "smouldering" else "")
-                       + f"head runs {direction} (within {cone:.0f}°) at about {head_m_min:.1f} m/min, "
-                       + f"driven by {drivers['why']}")
+                       + f"{way} at about {head_m_min:.1f} m/min, driven by {drivers['why']}")
             fuel = ", ".join(f"{f['fuel']} {f['share']:.0%}" for f in drivers["fuel_ahead"])
             text = (f"{name} ({l['method']} find, {state}): {run}"
                     + (f"; burning into {fuel}" if fuel and bearing is not None else "")
