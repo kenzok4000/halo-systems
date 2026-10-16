@@ -10,11 +10,12 @@ from halo_systems.eval.scenarios import make, wildfire_valley
 from halo_systems.sim.body import DroneBody
 from halo_systems.sim.detection import COMBUSTION_KG_PER_MJ, FirePower, TodayConfig, fuel_load, today_methods
 from halo_systems.sim.engine import Simulation
-from halo_systems.sim.fire import FUEL_MODELS, Moisture, Period, SpreadGrid, anderson_check
+from halo_systems.sim.fire import FUEL_MODELS, Moisture, Period, SpreadGrid, anderson_check, rothermel, wind_slope_factors
 from halo_systems.sim.scenario import Scenario, SensorConfig, Target
 from halo_systems.sim.smoke import SmokeConfig, bearing_fix, cluster, fix_is_sound, plume_top, triangulate
-from halo_systems.sim.terrain import FOREST, Terrain, valley
-from halo_systems.sim.wildfire import AlertCheck, AlertPolicy, area_from_top, buffered_zone, inside, sorensen
+from halo_systems.sim.terrain import FOREST, GRASS, Terrain, valley
+from halo_systems.sim.wildfire import (AlertCheck, AlertPolicy, angle_diff, area_from_top, bearing_deg, buffered_zone,
+                                       compass_of, inside, mean_bearing, sorensen)
 
 
 def flat_terrain(extent=(-100.0, -100.0, 100.0, 100.0), cell=5.0, cover=FOREST, slope_x=0.0):
@@ -58,6 +59,17 @@ class FireTest(unittest.TestCase):
         b = hill.arrival([(0.0, 0.0, 0.0)], [Period(-10.0, (0.0, 0.0))], 4 * 3600.0)
         self.assertTrue(np.isfinite(b[iy, ix]))
         self.assertLess(b[iy, ix], b[jy, jx])
+
+    def test_wind_and_slope_factors_give_the_grid_head_rate(self):
+        # Wind blowing up a uniform slope: the head rate is r0 (1 + phi_w + phi_s), as the grid computes it.
+        hill = SpreadGrid(flat_terrain(cover=GRASS, slope_x=0.2), 5.0)
+        dry = Moisture()
+        phi_w, phi_s = wind_slope_factors(FUEL_MODELS[1], dry, 3.0, 0.2)
+        r0 = rothermel(FUEL_MODELS[1], dry)["r0_ft_min"] * 0.3048 / 60.0
+        self.assertAlmostEqual(hill.head_rate(Period(0.0, (3.0, 0.0), dry), 0.0, 0.0), r0 * (1.0 + phi_w + phi_s), places=9)
+        self.assertEqual(wind_slope_factors(FUEL_MODELS[1], dry, 0.0, 0.2)[0], 0.0)
+        self.assertEqual(wind_slope_factors(FUEL_MODELS[1], dry, 3.0, 0.0)[1], 0.0)
+        self.assertGreater(wind_slope_factors(FUEL_MODELS[1], dry, 5.0, 0.0)[0], phi_w)
 
     def test_later_ignitions_survive_earlier_weather_periods(self):
         # An ignition after the first period ends must still burn (it used to be dropped).
@@ -163,6 +175,16 @@ class AlertCheckTest(unittest.TestCase):
         self.assertTrue(check.check({**self.alert, "level": 5, "max_prob": 0.6}, self.forecast, [], zone_level=4).ok)
         self.assertFalse(check.check({**self.alert, "level": 5, "max_prob": 0.4}, self.forecast, [], zone_level=4).ok)
 
+    def test_bearings(self):
+        self.assertAlmostEqual(bearing_deg(0.0, 1.0), 0.0)
+        self.assertAlmostEqual(bearing_deg(1.0, 0.0), 90.0)
+        self.assertAlmostEqual(bearing_deg(-1.0, -1.0), 225.0)
+        self.assertAlmostEqual(float(angle_diff(350.0, 10.0)), 20.0)
+        self.assertAlmostEqual(float(angle_diff(90.0, 270.0)), 180.0)
+        self.assertAlmostEqual(mean_bearing([350.0, 10.0]) % 360.0, 0.0, places=6)
+        self.assertEqual(compass_of(45.0), "northeast")
+        self.assertEqual(compass_of(180.0), "south")
+
     def test_sorensen(self):
         a = np.array([1, 1, 0, 0], dtype=bool)
         self.assertEqual(sorensen(a, a), 1.0)
@@ -246,6 +268,70 @@ class ValleyFlightTest(unittest.TestCase):
         self.assertIn("terrain", res.world)
         self.assertEqual(len(row["today"]), len(row["fire_table"]))
         self.assertEqual(set(row["today"][0]), {"geostationary", "polar", "camera", "public", "camera_deployed"})
+        # Each brief says which way the head runs and why, and every fire reaches the crews, first as a new fire.
+        for b in forecast["brief"]:
+            if b["head_bearing_deg"] is None:
+                self.assertIn("not expected to spread", b["text"])
+                continue
+            self.assertTrue(0.0 <= b["head_bearing_deg"] < 360.0)
+            self.assertGreaterEqual(b["cone_deg"], 0.0)
+            self.assertEqual(b["direction"], compass_of(b["head_bearing_deg"]))
+            self.assertIn("driven by", b["text"])
+            self.assertIn(b["drivers"]["main"], ("wind", "slope", "wind and slope", "neither"))
+            self.assertAlmostEqual(sum(f["share"] for f in b["drivers"]["fuel_ahead"]), 1.0, delta=0.03)
+        crew = [e for e in res.events if e["kind"] == "crew_update"]
+        self.assertEqual(row["crew_updates"], len(crew))
+        firsts = {}
+        for e in crew:
+            firsts.setdefault(e["fire"], e)
+        self.assertEqual(set(firsts), {b["fire"] for e in res.events if e["kind"] == "forecast" for b in e["brief"]})
+        self.assertTrue(all(e["reason"] == "new fire" for e in firsts.values()))
+        for r in row["direction_table"]:
+            for key in ("err_deg", "wind_only_err_deg", "slope_only_err_deg"):
+                self.assertTrue(r[key] is None or 0.0 <= r[key] <= 180.0)
+        self.assertEqual(row["direction_n"], len(row["direction_table"]))
+
+    def test_crews_hear_of_changes_beyond_what_they_were_told(self):
+        sc = make("wildfire_valley", 2001, n=4)
+        body = DroneBody()
+        wf = Simulation(sc, make_controller("improved", body, sc.world), make_supervisor("rule"), seed=2001, body=body,
+                        record_hz=0).wildfire
+
+        class Radio:
+            t = 100.0
+
+            def __init__(self):
+                self.events = []
+
+            def event(self, kind, drone=None, **detail):
+                self.events.append(dict(detail, kind=kind))
+
+        def brief(**over):
+            b = {"fire": 7, "state": "spreading", "head_bearing_deg": 90.0, "cone_deg": 10.0, "head_m_per_min": 2.0,
+                 "direction": "east", "places": [{"name": "Hut", "eta_min": 60}], "head_from_xy": None, "head_xy": None, "headline": "h", "text": "t"}
+            b.update(over)
+            return b
+
+        def relay(**over):
+            radio = Radio()
+            wf._relay_to_crews(radio, {"id": 0, "brief": [brief(**over)]})
+            return [e["reason"] for e in radio.events]
+
+        self.assertEqual(relay(), ["new fire"])
+        self.assertEqual(relay(), [])                                                 # nothing new
+        self.assertEqual(relay(head_bearing_deg=115.0, direction="east-southeast"), [])     # under 30 degrees
+        self.assertEqual(relay(head_bearing_deg=130.0, direction="southeast"), ["head turned southeast"])
+        self.assertEqual(relay(head_bearing_deg=130.0, head_m_per_min=2.4), [])      # under 1.5 times
+        self.assertEqual(relay(head_bearing_deg=130.0, head_m_per_min=4.0), ["head faster"])
+        self.assertEqual(relay(head_bearing_deg=130.0, head_m_per_min=4.0, cone_deg=60.0,
+                               places=[{"name": "Hut", "eta_min": 40}, {"name": "Bridge", "eta_min": 90}]),
+                         ["now reaches Bridge; reaches Hut sooner"])
+        # The crews were told the head could be 60 degrees either way, so a 50 degree turn is not news.
+        self.assertEqual(relay(head_bearing_deg=180.0, head_m_per_min=4.0, cone_deg=60.0,
+                               places=[{"name": "Hut", "eta_min": 40}, {"name": "Bridge", "eta_min": 90}]), [])
+        self.assertEqual(relay(head_bearing_deg=None, head_m_per_min=0.0, cone_deg=None,
+                               places=[{"name": "Hut", "eta_min": 40}, {"name": "Bridge", "eta_min": 90}]),
+                         ["no longer spreading; head slower"])
 
     def test_thermal_map_scoring_and_event_rate(self):
         sc = make("wildfire_valley", 2001, n=16)
