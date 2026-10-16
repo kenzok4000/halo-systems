@@ -25,6 +25,7 @@ const LEVEL_RGB = { evacuate: "220,40,60", warning: "245,140,30", ...ZONE_RGB };
 const COMPASS = ["east", "east-northeast", "northeast", "north-northeast", "north", "north-northwest", "northwest", "west-northwest",
   "west", "west-southwest", "southwest", "south-southwest", "south", "south-southeast", "southeast", "east-southeast"];
 const HEAD_MIN = 60;   // a head arrow runs to where the forecast puts the fire's head this many minutes from now
+const GROW_S = 1.6;    // view seconds an arrow takes to draw itself out when the crews are told of its fire
 // A phone's dot, by the latest alert level it received (0: none or cleared).
 const PHONE_RGB = { 0: [0.93, 0.95, 0.97], 1: [1.0, 0.62, 0.12], 2: [1.0, 0.24, 0.24], 3: [1.0, 0.26, 0.22], 4: [0.74, 0.38, 1.0], 5: [0.2, 0.2, 0.24] };
 
@@ -41,6 +42,8 @@ export class WildfireLayer {
     this.zones = hello.wildfire.zones || wf.zones || [];   // fixed evacuation zones {code, name, polygon}
     this.zoneLevel = this.zones.map(() => 0);
     this.forecast = null;        // the latest forecast event
+    this.told = new Map();       // fire -> simulated time of its latest crew update
+    this.arrows = new Map();     // fire -> its head arrow { mesh, tags, L, born }
     this.t = 0;
     this.group = new THREE.Group();
     view.world.add(this.group);
@@ -187,6 +190,7 @@ export class WildfireLayer {
   }
 
   warm() {
+    for (const r of this.arrows.values()) if (r.born != null) { r.born = -Infinity; this.tick(this.view.vt); }   // a jump: no arrow grows on camera
     // A fire that was already burning when the run began (or when the recorder jumps ahead) already has its
     // plume: grow the plumes to their present height at once, instead of rising from the ground on camera.
     this.view.smoke.clear();
@@ -200,6 +204,10 @@ export class WildfireLayer {
       this._drawBands();
       this._heads();
       this.view.overlayDirty = true;
+    } else if (e.kind === "crew_update") {
+      // The crews were told about this fire with this forecast: its arrow draws itself out from the fire.
+      this.told.set(e.fire, e.t);
+      if (this.forecast && this.forecast.t === e.t) this._grow(e.fire);
     } else if (e.kind === "alert_drafted") {
       const poly = Array.isArray(e.polygon) ? e.polygon : Array.isArray(e.zone) ? e.zone : null;
       this.alerts.set(e.alert, { level: e.level, zone: e.zone, poly, state: "checked" });
@@ -437,17 +445,25 @@ export class WildfireLayer {
       g.lineWidth = Math.max(2.5, 1.1 * px); g.strokeStyle = `rgba(${rgb},.95)`;
       g.setLineDash(a.state === "delivered" ? [] : [5 * px, 3 * px]); g.stroke(); g.setLineDash([]);
     }
-    // Each moving head's direction and its uncertainty: a faint wedge of ±cone_deg round the forecast bearing,
-    // an hour's run long, fainter the fewer forecast members spread.
+    // Each moving head's direction and its uncertainty: a wedge of ±cone_deg round the forecast bearing, an hour's
+    // run long, shaded from the fire outwards for a spreading fire and only outlined for a smouldering one, fainter
+    // the fewer forecast members spread. None when the direction is uncertain (90 degrees or more either side).
     for (const b of (this.forecast && this.forecast.brief) || []) {
-      if (b.head_bearing_deg == null || b.cone_deg == null || !b.head_from_xy || !(b.head_m_per_min > 0)) continue;
+      if (b.head_bearing_deg == null || b.cone_deg == null || b.cone_deg >= 90 || !b.head_from_xy || !(b.head_m_per_min > 0)) continue;
       const [u, w] = v._toPx(b.head_from_xy[0], b.head_from_xy[1]);
       const r = (b.head_xy ? Math.hypot(b.head_xy[0] - b.head_from_xy[0], b.head_xy[1] - b.head_from_xy[1]) : b.head_m_per_min * HEAD_MIN) * px;
-      const c = Math.min(b.cone_deg, 179), a0 = ((b.head_bearing_deg - c - 90) * Math.PI) / 180, a1 = ((b.head_bearing_deg + c - 90) * Math.PI) / 180;
-      const share = b.spread_share ?? 1;
+      if (!(r > 1)) continue;
+      const c = b.cone_deg, a0 = ((b.head_bearing_deg - c - 90) * Math.PI) / 180, a1 = ((b.head_bearing_deg + c - 90) * Math.PI) / 180;
+      const share = b.spread_share ?? 1, spreading = b.state === "spreading";
       g.beginPath(); g.moveTo(u, w); g.arc(u, w, r, a0, a1); g.closePath();
-      g.fillStyle = `rgba(255,150,70,${(0.16 * share).toFixed(3)})`; g.fill();
-      g.lineWidth = Math.max(1.5, 0.5 * px); g.strokeStyle = `rgba(255,236,214,${(0.75 * share).toFixed(3)})`;
+      if (spreading) {
+        const fill = g.createRadialGradient(u, w, 0, u, w, r);
+        fill.addColorStop(0, `rgba(255,150,70,${(0.3 * share).toFixed(3)})`);
+        fill.addColorStop(1, `rgba(255,150,70,${(0.06 * share).toFixed(3)})`);
+        g.fillStyle = fill; g.fill();
+      }
+      g.lineWidth = Math.max(1.5, (spreading ? 0.6 : 0.4) * px);
+      g.strokeStyle = `rgba(255,236,214,${((spreading ? 0.8 : 0.45) * share).toFixed(3)})`;
       g.setLineDash([3 * px, 2.5 * px]); g.stroke(); g.setLineDash([]);
     }
     for (const l of this.located) {
@@ -464,13 +480,18 @@ export class WildfireLayer {
   // For each fire the forecast says is moving: an arrow above the trees along the path its head is forecast
   // to take (the brief's head track, from today's front through 15, 30, 60 and 120 minutes; on runs without
   // one, a line in the brief's direction from the located fire, labelled with no time), with chevrons running along it
-  // towards the head. A smouldering fire's arrow, where it would run if it took off, is fainter. Redrawn with
-  // each new forecast; the overlay draws each head's uncertainty wedge under it (drawOver).
+  // towards the head. A spreading fire's arrow is labelled at its tip and at the hour mark; a smouldering fire's,
+  // where it would run if it took off, is thinner and fainter, and left out while its direction is uncertain (its
+  // brief says so). Redrawn with each new forecast; an arrow whose fire the crews were just told about draws
+  // itself out from the fire (tick). The overlay draws each head's uncertainty wedge under it (drawOver).
   _heads() {
     for (const m of this.heads || []) { this.group.remove(m); m.geometry.dispose(); m.material.dispose?.(); m.material.map?.dispose(); }
     this.heads = [];
+    this.arrows = new Map();
     for (const b of (this.forecast && this.forecast.brief) || []) {
       if (!(b.head_m_per_min > 0)) continue;
+      const spreading = b.state === "spreading", sure = b.cone_deg == null || b.cone_deg < 90;
+      if (!spreading && !sure) continue;
       let pts, mins = HEAD_MIN, timed = true;
       if (b.head_from_xy && Array.isArray(b.head_track) && b.head_track.length) {
         pts = [b.head_from_xy, ...b.head_track.map(([, x, y]) => [x, y])];
@@ -483,20 +504,69 @@ export class WildfireLayer {
         pts = [[l.x, l.y], [l.x + Math.cos(a) * L, l.y + Math.sin(a) * L]];
         timed = false;   // a direction only: the tip is not where the forecast puts the head at any time
       }
-      const arrow = this._ribbon(pts, b.state === "spreading" ? 0.95 : 0.5);
+      const arrow = this._ribbon(pts, spreading ? (sure ? 0.95 : 0.55) : 0.4, spreading ? 1 : 0.55);
       if (!arrow) continue;
+      const rec = { mesh: arrow.mesh, tags: [], L: arrow.L, born: null };
+      this.arrows.set(b.fire, rec);
       this.heads.push(arrow.mesh);
       this.group.add(arrow.mesh);
-      if (b.state !== "spreading") continue;   // only a spreading fire's arrow is labelled
-      const tag = this.view._label(timed ? `Fire ${b.fire + 1} head in ${mins >= 60 ? `${+(mins / 60).toFixed(1)} h` : `${mins} min`}` : `Fire ${b.fire + 1} heading ${b.direction}`, "#ff9a4a");
-      tag.position.copy(arrow.tip).add(new THREE.Vector3(0, 6, 0));
-      tag.scale.multiplyScalar(0.8);
-      this.heads.push(tag);
-      this.group.add(tag);
+      if (spreading) {   // only a spreading fire's arrow is labelled
+        const name = `Fire ${b.fire + 1}`;
+        const text = !sure ? `${name} · direction uncertain` : timed ? `${name} head in ${mins >= 60 ? `${+(mins / 60).toFixed(1)} h` : `${mins} min`}` : `${name} heading ${b.direction}`;
+        const tag = this.view._label(text, "#ff9a4a");
+        tag.position.copy(arrow.tip).add(new THREE.Vector3(0, 6, 0));
+        tag.scale.multiplyScalar(0.8);
+        rec.tags.push(tag);
+        // Where the head is forecast to be in an hour, when the arrow runs on past it.
+        const hour = timed && mins > 60 && b.head_track.find(([m]) => m === 60);
+        if (hour) {
+          const [, x, y] = hour, mark = this.view._label("1 h", "#ffc58a");
+          mark.position.set(x, this.view.groundAt(x, y) + this._canopy(x, y) + 15, -y);
+          mark.scale.multiplyScalar(0.7);
+          rec.tags.push(mark);
+        }
+        for (const t of rec.tags) { this.heads.push(t); this.group.add(t); }
+      }
+      if (this.told.get(b.fire) === this.forecast.t) this._grow(b.fire);
     }
   }
 
-  _ribbon(pts, alpha) {
+  // An arrow drawing itself out from its fire over GROW_S view seconds, its labels fading in at the end.
+  _grow(fire) {
+    const r = this.arrows.get(fire);
+    if (!r || r.born != null) return;
+    r.born = this.view.vt;
+    this.tick(this.view.vt);
+  }
+  tick(vt) {
+    for (const r of this.arrows.values()) {
+      if (r.born == null) continue;
+      const k = Math.max(0, Math.min(1, (vt - r.born) / GROW_S)), ease = 1 - (1 - k) ** 3;
+      r.mesh.material.uniforms.uGrow.value = k >= 1 ? 1e6 : ease * (r.L + 12);
+      for (const t of r.tags) t.material.opacity = Math.max(0, Math.min(1, (k - 0.7) / 0.3));
+      if (k >= 1) r.born = null;
+    }
+  }
+
+  // What the fire camera frames: the fire's forecast head path from the front now (fire: 0-based; null picks the
+  // fastest spreading fire), or the located fire while the station has no direction for it.
+  shot(fire) {
+    const brief = (this.forecast && this.forecast.brief) || [];
+    const b = fire != null ? brief.find((q) => q.fire === fire)
+      : brief.filter((q) => q.state === "spreading" && q.head_bearing_deg != null).sort((p, q) => q.head_m_per_min - p.head_m_per_min)[0];
+    if (b && b.head_bearing_deg != null && b.head_from_xy) {
+      const tr = Array.isArray(b.head_track) && b.head_track.length ? b.head_track[b.head_track.length - 1] : null;
+      const end = tr ? [tr[1], tr[2]] : b.head_xy;
+      const dx = end ? end[0] - b.head_from_xy[0] : 0, dy = end ? end[1] - b.head_from_xy[1] : 0, len = Math.hypot(dx, dy);
+      // The arrow's own direction where it has one (a head track can bend), else the brief's bearing.
+      const bearing = len > 5 ? (Math.atan2(dx, dy) * 180) / Math.PI : b.head_bearing_deg;
+      return { x: b.head_from_xy[0], y: b.head_from_xy[1], bearing, len: Math.max(80, len) };
+    }
+    const id = b ? b.fire : fire, l = this.located.find((q) => q.id === id) || (fire == null && this.located[0]);
+    return l ? { x: l.x, y: l.y, bearing: null, len: 120 } : null;
+  }
+
+  _ribbon(pts, alpha, thin = 1) {
     // Resample the path every 4 m, at a height that clears the ground and the canopy below it.
     const v = this.view, path = [];
     for (let i = 0; i + 1 < pts.length; i++) {
@@ -508,7 +578,7 @@ export class WildfireLayer {
     const h = lift.map((_, i) => Math.max(...lift.slice(Math.max(0, i - 4), i + 5)));   // no dips between treetops
     const len = [0];
     for (let i = 1; i < path.length; i++) len.push(len[i - 1] + Math.hypot(path[i][0] - path[i - 1][0], path[i][1] - path[i - 1][1]));
-    const L = len[len.length - 1], W = Math.max(3.5, Math.min(9, L * 0.03)), headL = Math.min(L * 0.3, W * 4.2);
+    const L = len[len.length - 1], W = thin * Math.max(3.5, Math.min(9, L * 0.03)), headL = Math.min(L * 0.3, W * 4.2);
     const pos = [], aU = [], aV = [], idx = [];
     const push = (i, w) => {
       const p = path[i], q = path[Math.min(path.length - 1, i + 1)], o = path[Math.max(0, i - 1)];
@@ -532,15 +602,15 @@ export class WildfireLayer {
     geo.setAttribute("aV", new THREE.Float32BufferAttribute(aV, 1));
     geo.setIndex(idx);
     const mat = new THREE.ShaderMaterial({
-      uniforms: { uT: this.view.swayT, uAlpha: { value: alpha } },
+      uniforms: { uT: this.view.swayT, uAlpha: { value: alpha }, uGrow: { value: 1e6 } },
       vertexShader: `attribute float aU; attribute float aV; varying float vU; varying float vV;
         void main() { vU = aU; vV = aV; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }`,
-      fragmentShader: `uniform float uT, uAlpha; varying float vU; varying float vV;
+      fragmentShader: `uniform float uT, uAlpha, uGrow; varying float vU; varying float vV;
         void main() {
           float edge = smoothstep(0.7, 1.0, abs(vV));
           float c = fract((vU + abs(vV) * 5.0) / 16.0 - uT * 0.45);           // chevrons, moving towards the head
           float band = smoothstep(0.0, 0.06, c) * (1.0 - smoothstep(0.28, 0.36, c));
-          float a = uAlpha * smoothstep(0.0, 20.0, vU) * (0.3 + 0.45 * band + 0.3 * edge);
+          float a = uAlpha * smoothstep(0.0, 20.0, vU) * (0.3 + 0.45 * band + 0.3 * edge) * (1.0 - smoothstep(uGrow - 10.0, uGrow, vU));
           vec3 col = mix(vec3(1.0, 0.45, 0.12), vec3(1.0, 0.86, 0.62), band * 0.65 + edge * 0.2);   // display values
           gl_FragColor = vec4(pow(col, vec3(2.2)), a);
           #include <colorspace_fragment>
@@ -550,7 +620,7 @@ export class WildfireLayer {
     const mesh = new THREE.Mesh(geo, mat);
     mesh.renderOrder = 5;
     const e = path[path.length - 1];
-    return { mesh, tip: new THREE.Vector3(e[0], h[h.length - 1], -e[1]) };
+    return { mesh, L, tip: new THREE.Vector3(e[0], h[h.length - 1], -e[1]) };
   }
 
   // -- particles ----------------------------------------------------------------------------------

@@ -12,8 +12,9 @@
 // seconds (default 3) of the compiled plan are filmed before the flight, or end the video with --no-fly, and
 // the wait for the compiler is cut),
 // --speed 1|2|5 (the page's speed buttons; any other value has no button, so the click times out),
-// --view follow|chase|orbit|ride|top (the page's view buttons; --ride-drone N rides with drone N, not the one
-// nearest the swarm's centre), --seconds (default 15), --out (default video/shot.webm),
+// --view follow|chase|orbit|ride|close|top|fire (the page's view buttons; --ride-drone N rides with drone N, not the one
+// nearest the swarm's centre; fire, in the wildfire valley, looks along the forecast head of the fastest spreading
+// fire, or of fire N with --fire N, counted from 1 as on screen), --seconds (default 15), --out (default video/shot.webm),
 // --scroll (scroll the side panel while recording).
 // --zoom Z (with --film) pulls the camera back Z times its usual distance in the follow, chase, orbit and top views;
 // --panel alerts|brief|log (with --film) keeps that section of the side panel at its top in every frame.
@@ -56,7 +57,7 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 (async () => {
   mkdirSync(dirname(out), { recursive: true });
   if (args.film) return film();
-  for (const k of ["approve", "cancel", "allclear", "from", "ride-drone", "zoom", "panel", "cinema", "camera", "hold"]) if (args[k]) console.warn(`--${k} needs --film; ignored`);
+  for (const k of ["approve", "cancel", "allclear", "from", "ride-drone", "fire", "zoom", "panel", "cinema", "camera", "hold"]) if (args[k]) console.warn(`--${k} needs --film; ignored`);
   const browser = await chromium.launch({ args: ["--use-angle=swiftshader", "--enable-unsafe-swiftshader", "--ignore-gpu-blocklist"] });
   const context = await browser.newContext({ viewport: { width: 1920, height: 1080 },
     recordVideo: { dir: dirname(out), size: { width: 1920, height: 1080 } } });
@@ -128,10 +129,11 @@ async function film() {
   // The camera program: [{ mode, zoom, at }] in video seconds; without --camera, --view and --zoom for the whole shot.
   const program = (args.camera || "").split(",").filter(Boolean).map((s) => {
     const [view, at] = s.split("@"), [mode, z] = view.split(":");
-    if (!["follow", "chase", "orbit", "ride", "close", "top"].includes(mode)) throw new Error(`--camera: no view ${mode}`);
+    if (!["follow", "chase", "orbit", "ride", "close", "top", "fire"].includes(mode)) throw new Error(`--camera: no view ${mode}`);
     return { mode, zoom: z ? Number(z) : Number(args.zoom || 1), at: Number(at || 0) };
   }).sort((a, b) => a.at - b.at);
   if (program.length) { args.view = program[0].mode; args.zoom = String(program[0].zoom); }
+  if (args.fire && !(Number.isInteger(Number(args.fire)) && Number(args.fire) >= 1)) throw new Error("--fire takes a fire number, counted from 1");
   const panel = { alerts: "#zones", brief: "#brief", log: "#log" }[args.panel];
   if (args.panel && !panel) throw new Error("--panel takes alerts, brief or log");
   const actions = (kind, num) => (args[kind] || "").split(",").filter(Boolean).map((s) => s.split("@"))
@@ -204,6 +206,7 @@ async function film() {
   await click('#speed button[data-speed="5"]');   // buffer as fast as the server's pacing allows
   if (args.view) await click(`#view-${args.view === "follow" ? "reset" : args.view}`);
   if (args["ride-drone"]) await page.evaluate((i) => { window.haloView.rideDrone = i; window.haloView.ride = null; }, Number(args["ride-drone"]));
+  if (args.fire) await page.evaluate((i) => { window.haloView.fireTarget = i; }, Number(args.fire) - 1);
   if (args.zoom) await page.evaluate((z) => window.haloView.setZoom(z), Number(args.zoom));
   // Scroll the side panel so the section's heading sits at its top (the sections above it grow during a flight).
   const pinPanel = () => panel && page.evaluate((sel) => {

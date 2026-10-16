@@ -192,7 +192,19 @@ function onValleyEvent(e) {
       const why = e.reason ? `${e.reason.charAt(0).toUpperCase()}${e.reason.slice(1)}` : "";
       logItem("station", `<span class="chip station">crews</span> ${t} ${esc(e.headline || `Fire ${e.fire + 1}`)}${why ? `: ${esc(why.toLowerCase())}` : ""}` +
         `${e.text ? `<div class="why">${esc(e.text)}</div>` : ""}`);
-      if (cine) cine.notice("crew", `Crew update: ${e.headline || `Fire ${e.fire + 1}`}`, `${why ? `${why} · ` : ""}sent to ${e.to || "crew tablets and radio (simulated)"}`);
+      valley.told[e.fire] = e.t;
+      if (cine) {
+        // The updates sent with one forecast share a notice, led by a spreading fire's (else the first).
+        const key = `crew@${e.t}`, d = cine.live(key) || { all: [] };
+        d.all.push(e);
+        const lead = d.all.find((u) => u.head_bearing_deg != null && !/smouldering/.test(u.headline || "")) || d.all[0];
+        const withdrawn = lead.head_bearing_deg == null && /^(merged into|no longer tracked)/.test(lead.reason || "");
+        const lr = lead.reason ? `${lead.reason.charAt(0).toUpperCase()}${lead.reason.slice(1)}` : "";
+        const more = d.all.length - 1;
+        cine.notice("crew", `Crew update: ${lead.headline || `Fire ${lead.fire + 1}`}`,
+          `${withdrawn ? "Disregard its earlier brief" : lr}${more ? ` · ${more} more fire${more === 1 ? "" : "s"} updated` : ""} · to ${lead.to || "crew tablets and radio (simulated)"}`, key, d);
+      }
+      drawValley();
       return true;
     }
     case "alert_drafted":
@@ -218,9 +230,16 @@ function onValleyEvent(e) {
       if (a) { a.state = "delivered"; a.delivered = e.phones; a.of = e.of; }
       logItem("station", `<span class="chip station">station</span> ${t} alert ${e.alert + 1} delivered to ${e.phones} of ${plural(e.of, "simulated phone")}`);
       if (cine && a) {
+        // Alerts of one level sent the same way while its notice is still up share it: "zones F2, F4 and N3".
+        const auto = /^automatic/.test(a.by || ""), key = `alert:${a.level}:${auto ? "auto" : a.by || ""}`;
+        const d = cine.live(key) || { zones: [], phones: 0, of: 0 };
+        if (a.zone) d.zones.push(a.zone);
+        d.phones += e.phones || 0; d.of += e.of || 0;
         const z = a.zone ? valley.zones.find((q) => q.code === a.zone) : null, lv = valley.levels && valley.levels[String(a.level)];
-        cine.notice("alert", `${typeof a.level === "number" ? `Level ${a.level}` : levelName(a.level)} alert${a.zone ? `: zone ${a.zone}${z && z.name ? ` ${z.name}` : ""}` : ""}`,
-          `${lv && lv.head ? `${lv.head.charAt(0)}${lv.head.slice(1).toLowerCase()} · ` : ""}${/^automatic/.test(a.by || "") ? "sent automatically" : `approved by ${a.by || "the incident commander"}, sent`} to ${e.phones} of ${plural(e.of, "simulated phone")}`);
+        const lvl = typeof a.level === "number" ? `Level ${a.level}` : levelName(a.level);
+        const where = d.zones.length > 1 ? `s: zones ${d.zones.slice(0, -1).join(", ")} and ${d.zones[d.zones.length - 1]}` : a.zone ? `: zone ${a.zone}${z && z.name ? ` ${z.name}` : ""}` : "";
+        cine.notice("alert", `${lvl} alert${where}`,
+          `${lv && lv.head ? `${lv.head.charAt(0)}${lv.head.slice(1).toLowerCase()} · ` : ""}${auto ? "sent automatically" : `approved by ${a.by || "the incident commander"}, sent`} to ${d.phones} of ${plural(d.of, "simulated phone")}`, key, d);
       }
       drawValley();
       return true;
@@ -371,7 +390,7 @@ async function start(extra = {}) {
   $$(".hotspot-only").forEach((el) => { el.style.display = run.sensor && !run.wildfire ? "" : "none"; });
   $$(".valley-only").forEach((el) => { el.hidden = !run.wildfire; });
   valley = run.wildfire ? { located: 0, smoke: 0, warned: 0, brief: [], briefT: null, alerts: new Map(), approval: APPROVAL,
-    zones: run.wildfire.zones || [], levels: run.wildfire.levels || {}, zonesLevel: [] } : null;
+    zones: run.wildfire.zones || [], levels: run.wildfire.levels || {}, zonesLevel: [], told: {} } : null;
   drawValley();
   view.setSpeed(speed); view.setPaused(false);
   setHud(run.scenario.title, run.directive);
@@ -414,7 +433,7 @@ $$(".tabs button").forEach((b) => b.addEventListener("click", () => {
   if (b.dataset.tab === "about") loadEvidence();
 }));
 $("#start").addEventListener("click", () => start());
-for (const [id, mode] of [["view-reset", "follow"], ["view-top", "top"], ["view-orbit", "orbit"], ["view-chase", "chase"], ["view-ride", "ride"], ["view-close", "close"]]) {
+for (const [id, mode] of [["view-reset", "follow"], ["view-top", "top"], ["view-orbit", "orbit"], ["view-chase", "chase"], ["view-ride", "ride"], ["view-close", "close"], ["view-fire", "fire"]]) {
   $(`#${id}`).addEventListener("click", () => {
     view.setMode(mode);
     $$("#viewbtns button").forEach((b) => b.classList.toggle("active", b.id === id));

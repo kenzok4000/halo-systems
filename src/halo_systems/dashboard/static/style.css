@@ -156,10 +156,8 @@ body.cinema #wind svg { width: 22px; height: 22px; fill: #7fb6ff; }
 .cine-cards .brief .st { font-size: 12px; padding: 1px 7px; border-radius: 4px; margin-left: 6px; background: rgba(255, 255, 255, .12); }
 .cine-cards .brief .st.spreading { background: rgba(255, 110, 50, .85); color: #fff; }
 .cine-cards .brief .more { color: #b6c0cc; font-size: 14px; padding: 4px 0 0; }
-.cine-cards .drivers { margin: 4px 0 2px; display: flex; flex-wrap: wrap; gap: 5px; }
-.cine-cards .drv { position: relative; overflow: hidden; font-size: 12px; padding: 1px 8px; border-radius: 999px; background: rgba(255, 255, 255, .1); color: #e2e8ee; }
-.cine-cards .drv i { position: absolute; left: 0; top: 0; bottom: 0; width: var(--w); opacity: .45; z-index: -1; }
-.cine-cards .drv { z-index: 0; } .cine-cards .drv.wind i { background: #4f8fe6; } .cine-cards .drv.slope i { background: #d9a13a; } .cine-cards .drv.fuel i { background: #c8613a; }
+.cine-cards .brief .st.told { background: rgba(255, 154, 74, .2); color: #ffd2a8; }
+.cine-cards .brief .why-line { color: #b9c4cf; }
 .cine-cards .cone { color: #b6c0cc; font-size: 13px; }
 .rose { flex: 0 0 46px; width: 46px; height: 46px; }
 .rose .ring { fill: rgba(255, 255, 255, .06); stroke: rgba(255, 255, 255, .35); stroke-width: 1; }

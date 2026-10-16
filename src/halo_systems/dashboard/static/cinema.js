@@ -145,16 +145,17 @@ export class Cinema {
       // A smouldering fire's numbers are the station's what-if forecast, as its own brief text says.
       const ifs = b.state === "smouldering";
       const where = (b.places || []).slice(0, 1).map((p) => `${ifs ? "could reach" : "reaches"} ${esc(p.name)} ${p.eta_min < 1 ? "now" : `in about ${p.eta_min} min`}`);
-      // Why it runs that way: Rothermel's split of the head's rate between fuel, wind and slope, and the fuel ahead.
-      const d = b.drivers, sh = d && d.shares;
-      const why = sh ? `<div class="drivers">${[["wind", sh.wind, d.wind_mps != null ? `${fmt(d.wind_mps)} m/s from ${word(d.wind_from_deg)}` : ""],
-        ["slope", sh.slope, d.slope_pct != null ? `${Math.round(d.slope_pct)}%` : ""], ["fuel", sh.fuel, ""]]
-        .map(([name, v, note]) => `<span class="drv ${name}" style="--w:${Math.round(100 * (v || 0))}%"><i></i>${name} ${Math.round(100 * (v || 0))}%${note ? ` · ${esc(note)}` : ""}</span>`).join("")}</div>` +
-        (d.fuel_ahead && d.fuel_ahead.length ? `<div class="line">burning into ${esc(d.fuel_ahead[0].fuel)}${d.fuel_ahead[0].share != null ? ` (${Math.round(100 * d.fuel_ahead[0].share)}%)` : ""}</div>` : "") : "";
+      // Why it runs that way: what drives the head (the brief's main driver, with the measured wind) and the fuel ahead.
+      const d = b.drivers, by = d && { wind: "the wind", slope: "the slope", "wind and slope": "the wind and the slope" }[d.main];
+      const drive = !d || !(b.head_m_per_min > 0) ? [] : [
+        by ? `pushed by ${by}${d.main !== "slope" && d.wind_from_deg != null ? ` from ${word(d.wind_from_deg)}` : ""}` : d.main === "fuel" ? "following the fuel" : "",
+        d.against ? `held back by the ${esc(d.against)}` : "",
+        d.fuel_ahead && d.fuel_ahead.length ? `into ${esc(d.fuel_ahead[0].fuel)}` : ""].filter(Boolean);
+      const told = valley.told && valley.briefT != null && valley.told[b.fire] === valley.briefT;
       return `<li>${deg != null ? rose(deg, b.cone_deg) : '<span class="rose-none">·</span>'}<div>` +
-        `<b>Fire ${b.fire + 1}</b> <span class="st ${esc(b.state)}">${esc(b.state)}</span>` +
-        `<div class="line">${b.head_m_per_min > 0 ? `${ifs ? "if it takes off: head" : "head runs"} <b>${dir}</b>${within} at ${fmt(b.head_m_per_min)} m/min` : "not spreading"}${b.area_1h_ha != null ? ` · ${fmt(b.area_1h_ha)} ha in 1 h` : ""}</div>` +
-        why + (where.length ? `<div class="line">${where[0]}</div>` : "") + "</div></li>";
+        `<b>Fire ${b.fire + 1}</b> <span class="st ${esc(b.state)}">${esc(b.state)}</span>${told ? ' <span class="st told">crews updated</span>' : ""}` +
+        `<div class="line">${b.head_m_per_min > 0 ? `${ifs ? "if it takes off:" : "head runs"} <b>${dir}</b>${within} at ${fmt(b.head_m_per_min)} m/min` : esc(b.direction || "not spreading")}${b.area_1h_ha != null ? ` · ${fmt(b.area_1h_ha)} ha in 1 h` : ""}</div>` +
+        (drive.length ? `<div class="line why-line">${drive.join(" · ")}</div>` : "") + (where.length ? `<div class="line">${where[0]}</div>` : "") + "</div></li>";
     });
     const more = fires.length > 3 ? `<li class="more">and ${fires.length - 3} more</li>` : "";
     const brief = `<div class="card glass"><h4>Fire crew brief <span class="when">${valley.briefT != null ? `forecast at ${clock(valley.briefT)}` : ""}</span></h4>` +
@@ -171,13 +172,30 @@ export class Cinema {
 
   clearNotices() { this.notices.forEach((n) => n.el.remove()); this.notices = []; }
 
+  // The data of the notice with this key while it is still up and not about to go (null otherwise), so that things
+  // sent together can share one notice.
+  live(key) {
+    const n = this.notices.find((q) => q.key === key && !q.leaving && this.view.vt - q.at < NOTICE_S - 1.5);
+    return n ? n.data : null;
+  }
+
   // A short notice of something that just happened: kind picks its colour (station, alert, crew, plan, event).
-  notice(kind, title, sub = "") {
+  // With a key, a notice still up under that key is rewritten in place (and kept up a little longer) instead.
+  notice(kind, title, sub = "", key = null, data = null) {
+    const html = `<b>${esc(title)}</b>${sub ? `<span>${esc(sub)}</span>` : ""}`;
+    const same = key && this.notices.find((q) => q.key === key && !q.leaving && this.view.vt - q.at < NOTICE_S - 1.5);
+    if (same) {
+      same.el.innerHTML = html;
+      same.data = data;
+      same.at = Math.max(same.at, this.view.vt - 0.35);
+      this.update(this.view.vt);
+      return;
+    }
     const el = document.createElement("div");
     el.className = `notice glass ${kind}`;
-    el.innerHTML = `<b>${esc(title)}</b>${sub ? `<span>${esc(sub)}</span>` : ""}`;
+    el.innerHTML = html;
     this.$(".cine-notices").appendChild(el);
-    this.notices.push({ el, at: this.view.vt });
+    this.notices.push({ el, at: this.view.vt, key, data });
     // Too many at once: the oldest go early.
     const live = this.notices.filter((n) => !n.leaving);
     for (const n of live.slice(0, Math.max(0, live.length - MAX_NOTICES))) { n.leaving = true; n.at = Math.min(n.at, this.view.vt - NOTICE_S + 0.6); }

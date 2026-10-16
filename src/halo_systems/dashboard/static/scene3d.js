@@ -1289,7 +1289,7 @@ export class SwarmView {
     if (this.cut && this.hello && this.cur) this._camera(0);   // a cut: move the camera first, so the drones' drawn size and the cutaway use it
     if (this.hello && this.cur) this._drawDrones(simNow);
     this._drawFire(dtSim, this.vt);
-    if (this.wildfire) this.wildfire.step(dtSim);
+    if (this.wildfire) { this.wildfire.step(dtSim); this.wildfire.tick(this.vt); }
     this.smoke.update(dtSim, this.wind);
     this.flames.update(dtSim, this.wind);
     this.streaks.update(dtSim, this.wind, this.focus);
@@ -1459,6 +1459,7 @@ export class SwarmView {
     const k = snap ? 1 : 1 - Math.exp(-dt * 3);
     if (this.mode === "ride" && !this.userMoved && this._rideCamera(dt)) return;
     if (this.mode === "close" && !this.userMoved && this._closeCamera(dt)) return;
+    if (this.mode === "fire" && !this.userMoved && this._fireCamera(dt, snap)) return;
     if (this.swarmCentre) {
       const delta = this.swarmCentre.clone().sub(this.focus).multiplyScalar(k);
       this.focus.add(delta);
@@ -1496,6 +1497,33 @@ export class SwarmView {
     this.aim = this.aim == null ? aim : this.aim + (aim - this.aim) * k;
     this.controls.target.set(f.x, f.y + this.aim, f.z);
   }
+  // Fire (the wildfire valley): from behind and above a fire, looking along the path the station forecasts for
+  // its head, drifting slowly from side to side; it glides to each new forecast. fireTarget picks the fire
+  // (0-based; null: the fastest spreading one). zoom scales the distance.
+  _fireCamera(dt, snap) {
+    const s = this.wildfire && this.wildfire.shot(this.fireTarget);
+    if (!s) return false;
+    // With no forecast direction yet, look at the fire from where the camera already is.
+    let b = s.bearing == null ? null : (s.bearing * Math.PI) / 180;
+    if (b == null) { const cp = this.camera.position; b = Math.atan2(s.x - cp.x, s.y + cp.z); }
+    const hx = Math.sin(b), hy = Math.cos(b);   // the head's way, in simulated x (east) and y (north)
+    this.fireT = (this.fireT || 0) + dt;
+    const mid = s.len * 0.42, mx = s.x + hx * mid, my = s.y + hy * mid;
+    const dist = Math.max(170, s.len * 1.05) * this.zoom, side = 0.3 * Math.sin(this.fireT * 0.11);
+    const cx = mx - hx * dist + hy * dist * side, cy = my - hy * dist - hx * dist * side;
+    const want = new THREE.Vector3(cx, this.groundAt(mx, my) + dist * 0.36, -cy);
+    const look = new THREE.Vector3(mx, this.groundAt(mx, my) + 6, -my);
+    const k = snap ? 1 : this.film ? Math.min(1, dt * 1.6) : 1 - Math.exp(-dt * 1.6);
+    if (!this.fireLook) { this.fireLook = look.clone(); this.camera.position.copy(want); }
+    this.camera.position.lerp(want, k);
+    this.fireLook.lerp(look, k);
+    const cp = this.camera.position, floor = (this.sceneryHeight ? this.sceneryHeight(cp.x, -cp.z) : 0) + 12;
+    if (cp.y < floor) cp.y = floor;
+    this.focus.copy(this.fireLook);
+    this.controls.target.copy(this.fireLook);
+    return true;
+  }
+
   // The drone to stay with in the ride-along and close-up views: kept until it stops flying, else the one nearest
   // the swarm's centre (or rideDrone, set by the recorder).
   _pickDrone() {
