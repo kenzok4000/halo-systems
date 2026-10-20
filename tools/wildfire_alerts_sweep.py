@@ -52,8 +52,8 @@ def report(path: Path) -> None:
     if bad:
         raise SystemExit(f"{len(bad)} rows have errors: {bad[0]['error']}")
     seeds = sorted({r["seed"] for r in rows})
-    by = {(r["alert_rule"], r["approval"]): sorted((r for r in rows if (r["alert_rule"], r["approval"]) == arm),
-                                                  key=lambda r: r["seed"]) for arm in ARMS}
+    by = {arm: sorted((r for r in rows if (r["alert_rule"], r["approval"]) == arm), key=lambda r: r["seed"])
+          for arm in ARMS}
     for arm, rs in by.items():
         if [r["seed"] for r in rs] != seeds:
             raise SystemExit(f"arm {arm} is missing seeds")
@@ -87,6 +87,24 @@ def report(path: Path) -> None:
         lines.append(f"| {text} | " + " | ".join("n/a" if v is None else f"{v:.1f}" for v in vals) + " |")
     reached = sum(r["phones_reached_3h"] for r in by[ARMS[0]])
     lines.append(f"\nPhones the fire reached within 3 hours, all valleys: {reached}.")
+    # Paired by valley: each policy against today's rule on the same flight, with a bootstrap over valleys.
+    rng = np.random.default_rng(31)
+    idx = rng.integers(0, len(seeds), size=(10000, len(seeds)))
+    lines += ["", "Paired by valley, against today's rule (total over all valleys, 95% bootstrap interval over valleys):",
+              "", "| Difference | " + " | ".join(LABEL[a] for a in ARMS[1:]) + " |", "|---|" + "---|" * (len(ARMS) - 1)]
+    summary["paired"] = {}
+    for k, text in (("phones_warned_in_time", "Phones warned before the fire reached them"),
+                    ("phones_missed", "Phones reached without a warning"),
+                    ("alerts_for_smoulders", "Alerts while every fire behind it still smouldered"),
+                    ("alerts_not_justified", "Alerts not justified"), ("alerts_delivered", "Public alerts sent")):
+        cells = []
+        for a in ARMS[1:]:
+            d = np.array([(r2.get(k) or 0) - (r1.get(k) or 0) for r1, r2 in zip(by[ARMS[0]], by[a])], dtype=float)
+            boot = d[idx].sum(1)
+            lo, hi = float(np.percentile(boot, 2.5)), float(np.percentile(boot, 97.5))
+            summary["paired"].setdefault(f"{a[0]}/{a[1]}", {})[k] = {"total": float(d.sum()), "ci95": [lo, hi]}
+            cells.append(f"{d.sum():+.0f} ({lo:+.0f} to {hi:+.0f})")
+        lines.append(f"| {text} | " + " | ".join(cells) + " |")
     (path.parent / "REPORT.md").write_text("\n".join(lines) + "\n")
     (path.parent / "summary.json").write_text(json.dumps(summary, indent=1))
     print("\n".join(lines))

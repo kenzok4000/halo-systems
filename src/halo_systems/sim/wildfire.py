@@ -61,6 +61,7 @@ from .terrain import FOREST, Terrain, smooth_noise
 
 SMOULDER_AREA_M2 = 50.0      # the station treats a fire estimated smaller than this as smouldering, not spreading
 MATCH_M = 60.0               # a located fire within this of a true fire's burning ground counts as finding it (scoring only)
+CARD_MOVE_M = 30.0           # presigned: a fix that moves further than this (or twice its error) gets a new card to dispatch
 MAP_JOIN_M = 60.0            # mapped burning ground within this of a located fire belongs to it
 EVENT_GAP_S = 10.0           # smoke_sighted / smoke_contact events per drone at most this often (sightings are all kept)
 
@@ -616,6 +617,7 @@ class Wildfire:
         self.crew_log: list[dict] = []            # briefs relayed to the fire crews
         self.dispatch_log: list[dict] = []        # "presigned": cards to fire dispatch
         self._carded: dict[int, bool] = {}        # located fire id -> whether its last card said spreading
+        self._card_xy: dict[int, tuple[float, float]] = {}   # located fire id -> where its last card put it
         self._crew_last: dict = {}                # fire id -> (time, the brief the crews were last sent)
         self.alerts: list[dict] = []
         self.notices: list[dict] = []                                # cancellations and all-clears
@@ -1201,31 +1203,42 @@ class Wildfire:
         self._draft_alerts(sim, fc)
 
     def _dispatch(self, sim, fc: dict) -> None:
-        """"presigned": a card to fire dispatch for each newly located fire, and again when one believed
-        smouldering is first believed spreading. A smoulder goes here, not to the public."""
+        """"presigned": a card to fire dispatch for each newly located fire, again when one believed smouldering
+        is first believed spreading, and again when a fire's fix has moved from where its last card put it by more
+        than twice its error or CARD_MOVE_M (the crew goes to the card's position). Once a card has said spreading,
+        later cards for that fire do too. A smoulder goes here, not to the public."""
         pol = self.cfg.alerts
         brief = {b["fire"]: b for b in fc.get("brief", [])}
         for loc in fc["located"]:
-            spreading = loc["area_m2"] >= SMOULDER_AREA_M2
             sent = self._carded.get(loc["id"])
-            if sent is not None and (sent or not spreading):
-                continue
+            spreading = loc["area_m2"] >= SMOULDER_AREA_M2 or bool(sent)
+            moved = 0.0
+            if sent is not None:
+                px, py = self._card_xy[loc["id"]]
+                moved = math.hypot(loc["x"] - px, loc["y"] - py)
+                if moved <= max(2.0 * loc["err_m"], CARD_MOVE_M) and (sent or not spreading):
+                    continue
             self._carded[loc["id"]] = spreading
+            self._card_xy[loc["id"]] = (loc["x"], loc["y"])
             status = "spreading" if spreading else "smouldering"
             b = brief.get(loc["id"], {})
             where = self._nearest_place((loc["x"], loc["y"]))
-            size = f"{loc['area_m2']:.0f} m2" if spreading else "under 50 m2"
+            size = f"{loc['area_m2']:.0f} m2" if loc["area_m2"] >= SMOULDER_AREA_M2 else "under 50 m2"
+            shift = moved > max(2.0 * loc["err_m"], CARD_MOVE_M)
             text = (f"{'UPDATE: fire' if sent is not None else 'New fire'} {loc['id'] + 1}, {status}, about {size}, "
-                    f"near {where} at x {loc['x']:.0f} y {loc['y']:.0f} (within {max(loc['err_m'], 1.0):.0f} m), "
+                    f"{'now ' if shift else ''}near {where} at x {loc['x']:.0f} y {loc['y']:.0f} "
+                    f"(within {max(loc['err_m'], 1.0):.0f} m{f', moved {moved:.0f} m' if shift else ''}), "
                     f"located by {loc['method']}. "
-                    + (f"Head running {b['direction']}. " if spreading and b.get("direction") else "")
+                    + (f"Head running {b['direction']}. " if loc["area_m2"] >= SMOULDER_AREA_M2 and b.get("direction")
+                       else "")
                     + "Initial attack requested. (Simulated)")
             card = {"id": len(self.dispatch_log), "t": round(sim.t, 2), "fire": loc["id"], "status": status,
                     "x": round(loc["x"], 1), "y": round(loc["y"], 1), "err_m": round(loc["err_m"], 1),
                     "area_m2": round(loc["area_m2"], 1), "by": loc["method"], "update": sent is not None,
-                    "to": pol.dispatch_channel, "text": text}
+                    "moved_m": round(moved, 1) if shift else 0.0, "to": pol.dispatch_channel, "text": text}
             if self.cfg.report_v2:
-                card["truth"] = loc["truth"]               # scoring only
+                # Scoring only: the true fire at the card's position when it was sent, the one a crew sent there finds.
+                card["truth"] = self._match_truth(loc["x"], loc["y"], sim.t)[0]
             self.dispatch_log.append(card)
             sim.event("dispatch_card", None, **{k: v for k, v in card.items() if k != "truth"})
 
