@@ -1,6 +1,6 @@
 # Halo Systems
 
-**Autonomous drone swarms that find wildfires early and keep flying safely while the fire changes the weather.**
+**Drone swarms that find wildfires while they still smoulder, tell crews which way they will run, and warn the people in their path.**
 
 [![Licence: Apache-2.0](https://img.shields.io/badge/licence-Apache--2.0-blue)](LICENSE)
 
@@ -18,7 +18,7 @@ Lightning fires are the hard ones to catch early. Across 42 datasets, the median
 * the crew gets its position, to within about 8 m (median), and which way its head will run, worked out from the wind the swarm measured, the slope and the fuel ahead;
 * the phones in the evacuation zones in its path are warned automatically by fixed rules, and an operator can cancel an alert or give a zone the all-clear.
 
-Mountain search and rescue is the second use: the same sweep, looking for a person's heat signature instead of a hotspot.
+Next: mountain search and rescue, the same sweep looking for a person's heat signature instead of a hotspot. It has not been measured yet.
 
 **What it achieved in simulation, on valleys it was never tuned on.**
 * Sixteen drones found 59% of 100 fires while they still smouldered. They reported 60 of the 100 before the earliest of today's four methods, a median 69 minutes sooner (seeds 4000-4019). On 20 fresh valleys it was 62 of 100, by 62 minutes (seeds 7000-7019).
