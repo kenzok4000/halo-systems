@@ -4,7 +4,7 @@ Reads bom.csv (one row per part, prices and masses with sources) and
 exports/mass_properties.json (written by cad/halo_scout.py), then writes:
 
     BOM.md        the parts table and the totals against the simulator
-    COSTS.md      cost per flight hour and per hectare, with the crewed comparison
+    COSTS.md      cost per flight hour and per hectare
     budget.json   every computed number, for anything else that wants them
 
 Run from anywhere with any Python that has numpy (the simulator's only
@@ -431,33 +431,7 @@ def costs_md(t, c):
       f"last hotspot 13 times sooner. With crew counted the swarm is cheaper per hectare "
       f"({six['usd_ha_with_crew']:.2f} against {one['usd_ha_with_crew']:.2f} USD), because the same two people "
       f"cover {six['ha_per_hour'] / one['ha_per_hour']:.0f} times the ground per hour.\n")
-    w("## Crewed aircraft, for comparison\n")
-    w("| Aircraft | Role | USD per flight hour | What it includes | Source |")
-    w("|---|---|---|---|---|")
-    for a in c["crewed"]:
-        inc = a["basis"]
-        if a["usd_h_flight_only"]:
-            inc += f"; flight and miscellaneous alone USD {a['usd_h_flight_only']:,}/h"
-            inc += f" (USD {a['total_usd'] / 1e6:.1f} M over {a['hours']:,} h)"
-        w(f"| {a['name']} | {a['role']} | {a['usd_h']:,} | {inc} | [link]({a['source']}) |")
-    w(f"| NIROPS night infrared mapping flight | large fire perimeter mapping | about USD 3,000 per incident, not per hour | the 2026 FAQ's average, billed to the incident | [link]({SOURCES['nirops2026']}) |")
-    w("")
-    heli = c["crewed"][0]["usd_h"]
-    fixed = c["crewed"][1]["usd_h"]
-    cessna = c["crewed"][2]["usd_h"]
-    w(f"A swarm hour with crew, USD {b['swarm_hour_with_crew']:,.0f}, is about {b['swarm_hour_with_crew'] / heli:.0%} of the cost of "
-      f"a contract light helicopter hour (USD {heli:,}) and {b['swarm_hour_with_crew'] / fixed:.0%} of a contract fixed-wing hour "
-      f"(USD {fixed:,}). It is close to the Montana DNRC's operating cost for a Cessna patrol hour, USD {cessna}, "
-      "which is not an all-in figure.\n")
     w("Read these with care:\n")
-    w("- **Not like for like.** A crewed patrol aircraft covers far more ground per hour, flies in wind and "
-      "terrain a 1 kg drone cannot, and carries people and water. The swarm's job is narrower: a close thermal "
-      "sweep (about 0.14 m per pixel at 20 m) of a small block after lightning, to find smouldering spots a "
-      "high pass can miss. It is a complement for ground crews, not a replacement for aircraft.")
-    w("- **USFS figures are 2017 dollars**, averaged over every contract of that type, with availability "
-      "(standby) included. Flight-only figures are shown alongside. No inflation adjustment is applied.")
-    w("- **Montana DNRC figures are the agency's own operating cost per hour** as reported to the legislature "
-      "in June 2022; the report does not say what they include.")
     w("- **The swarm figures leave out** training, insurance, regulatory approval, a vehicle, software "
       "development, data links beyond the BOM, and crashes beyond what the 300-hour life absorbs. The 100-hour "
       "row above is a rough stand-in for a hard first season.")

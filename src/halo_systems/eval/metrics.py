@@ -86,6 +86,9 @@ def compute_metrics(sim) -> dict:
     settle = _first_formed(t, form, 0.0)
     # Plan changes ordered by an operator or a supervisor (formation, spacing, speed, altitude or margin).
     change_times = [e["t"] for e in events if e["kind"] == "directive"]
+    if getattr(sim, "squads", False):
+        # Moving drones between squads re-forms both squads, like a change of plan.
+        change_times = sorted(change_times + [e["t"] for e in events if e["kind"] == "squad_changed"])
     transition = []
     for ct in change_times:
         f = _first_formed(t, form, ct)
@@ -167,6 +170,8 @@ def compute_metrics(sim) -> dict:
         "ai_tokens": int(sum(c.get("total_tokens", 0) for c in ai)),
         "ai_cost_usd": round(float(sum(c.get("cost_usd", 0.0) for c in ai)), 5),
     }
+    if getattr(sim, "squads", False):
+        metrics.update(squad_metrics(sim))
     if sim.sc.sensor.enabled:
         metrics.update(scouting_metrics(sim, t, duration))
     if getattr(sim, "wildfire", None) is not None:
@@ -199,3 +204,20 @@ def scouting_metrics(sim, t: np.ndarray, duration: float) -> dict:
         if duration > 0:
             out["coverage_ha_per_min"] = round(float(cov[-1]) / 100.0 * area_ha / (duration / 60.0), 3)
     return out
+
+
+def squad_metrics(sim) -> dict:
+    """Squad runs only: the split flown, and per squad its drones, circuits flown and predicted circuit time."""
+    from ..control.squads import canonical
+    plan = sim.ctrl.plan
+    act = sim.active_mask()
+    per = []
+    for sq, part, m in zip(plan.squads, plan.parts, plan.part_masks()):
+        per.append({"code": sq.code, "start_n": len(sim.sc.squads[sq.id].drones), "end_flying": int((m & act).sum()),
+                    "lanes": sq.lanes, "pass_s": round(sq.pass_s, 1),
+                    "passes": round(float(part.s / part.path.length), 2) if part.path.length > 0 else None})
+    return {"squads": canonical(sim.sc.squad_counts), "patrol_s": sim.sc.patrol_s,
+            "reserve": int((sim.sc.squad_counts or {}).get("R", 0)),
+            "squad_changes": sum(1 for e in sim.events if e["kind"] == "squad_changed"),
+            "squad_table": per}
+

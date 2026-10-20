@@ -135,3 +135,46 @@ class SafetyValidator:
         result = ValidationResult("rejected", current, violations)
         self.log.append({"t": round(t, 2), "source": source, **result.to_dict()})
         return result
+
+    # -- squad orders (squad runs only) --------------------------------------------------------------------------
+    SQUAD_ORDER_GAP_S = 10.0
+
+    def check_squads(self, order: dict, flying_by_squad: dict, caps: dict, t: float, source: str,
+                     incoming: dict | None = None) -> list[str]:
+        """Check an order to move drones between squads; returns the violations (empty: accepted).
+
+        ``order`` is {"op": "move", "from": code, "to": code, "k": drones}; ``flying_by_squad`` maps each squad's
+        code to its drones flying now, ``incoming`` to drones already on their way to it, and ``caps`` to the most
+        drones one line fits across its area. A move needs k of at least 1, the source to keep at least one flying
+        drone, the receiving squad (with those on their way) to stay within its cap, and orders at least
+        SQUAD_ORDER_GAP_S apart. Logged like a directive, with ``kind`` "squads".
+        """
+        incoming = incoming or {}
+        bad = []
+        op, src, dst = order.get("op"), order.get("from"), order.get("to")
+        k = order.get("k")
+        if op != "move":
+            bad.append(f"unknown squad order {op!r}")
+        if src not in flying_by_squad:
+            bad.append(f"no squad {src!r}")
+        if dst not in flying_by_squad:
+            bad.append(f"no squad {dst!r}")
+        if src == dst:
+            bad.append("source and destination are the same squad")
+        if not isinstance(k, int) or isinstance(k, bool) or k < 1:
+            bad.append("k must be a whole number of drones, at least 1")
+        if not bad:
+            if flying_by_squad[src] - k < 1:
+                bad.append(f"squad {src} has {flying_by_squad[src]} flying; it must keep at least one")
+            after = flying_by_squad[dst] + incoming.get(dst, 0) + k
+            if after > caps[dst]:
+                bad.append(f"squad {dst} would have {after}, more than fit across its area ({caps[dst]})")
+        last = getattr(self, "_last_squad_t", -math.inf)
+        if t - last < self.SQUAD_ORDER_GAP_S:
+            bad.append(f"squad orders must be {self.SQUAD_ORDER_GAP_S:.0f} s apart")
+        if not bad:
+            self._last_squad_t = t
+        self.log.append({"t": round(t, 2), "source": source, "kind": "squads", "order": dict(order),
+                         "action": "accepted" if not bad else "rejected", "violations": bad})
+        return bad
+

@@ -53,7 +53,8 @@ class FormationPlan:
     """
 
     def __init__(self, path: Path, directive: Directive, n: int, *, reassign: bool, blend: bool, pace: bool,
-                 start_progress: float = 0.0, yaw_rate: float = 0.35, blend_speed: float = 5.0):
+                 start_progress: float = 0.0, yaw_rate: float = 0.35, blend_speed: float = 5.0,
+                 members: np.ndarray | None = None):
         self.path = path
         self.directive = directive
         self.n = n
@@ -78,7 +79,9 @@ class FormationPlan:
         # ground. The directive's altitude is then height above that surface.
         self.surface = None
         self.changes = 0
-        self._rebuild(np.arange(n), None, t=0.0, initial=True)
+        # ``members`` (sorted drone indices) builds the plan for a subset of the n drones, as one squad of several
+        # does (control/squads.py); None is every drone.
+        self._rebuild(np.arange(n) if members is None else np.asarray(members, dtype=int), None, t=0.0, initial=True)
 
     # -- membership and directives ---------------------------------------
     def set_members(self, members: np.ndarray, positions: np.ndarray | None, t: float) -> None:
@@ -122,6 +125,26 @@ class FormationPlan:
         self.target = new_target
         self.members = np.asarray(members, dtype=int)
         self.changes += 0 if initial else 1
+
+    def adopt(self, positions: np.ndarray, t: float) -> None:
+        """Start a blend from where the members are now to their slots (a squad given a new route mid-flight)."""
+        m = self.members
+        if not len(m):
+            return
+        rel = self._to_frame(positions)
+        self.offset = np.zeros((self.n, 3))
+        self.offset[m] = rel[m]
+        if self.reassign:
+            order = assign_slots(rel[m], formation_offsets(self.directive.formation, len(m), self.directive.spacing_m))
+            self.target = np.zeros((self.n, 3))
+            self.target[m] = formation_offsets(self.directive.formation, len(m), self.directive.spacing_m)[order]
+        if self.blend:
+            self.blend_from = self.offset.copy()
+            disp = np.linalg.norm(self.target[m] - self.blend_from[m], axis=1)
+            self.blend_T = float(max(1.0, disp.max() / self.blend_speed))
+            self.blend_t0 = t
+        else:
+            self.offset = self.target.copy()
 
     def _to_frame(self, positions: np.ndarray) -> np.ndarray:
         centre = self.centre()

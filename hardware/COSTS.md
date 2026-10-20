@@ -57,22 +57,6 @@ Coverage rates are the simulator's measured rates on the 6 ha wildfire block, me
 
 Per hectare of hardware, one drone is cheaper (0.19 against 0.25 USD): 16 drones cover 23 ha per drone-hour against 30 for one drone, close to the 30% extra energy the simulator reports. What the swarm buys is time. It covers 90% of the block in 44 s instead of 620 s and finds the last hotspot 13 times sooner. With crew counted the swarm is cheaper per hectare (0.40 against 2.09 USD), because the same two people cover 12 times the ground per hour.
 
-## Crewed aircraft, for comparison
-
-| Aircraft | Role | USD per flight hour | What it includes | Source |
-|---|---|---|---|---|
-| USFS contract Type 3 (light) helicopters, CY2017 | light helicopters on fire and resource missions | 3,376 | Table 18: availability plus flight, all contracts; flight and miscellaneous alone USD 1,523/h (USD 49.2 M over 14,572 h) | [link](https://www.fs.usda.gov/sites/default/files/2019-07/cy2017_usfs_aviation_report_final_20190702.pdf) |
-| USFS contract fixed-wing aircraft, FY2017 | air attack 52% of hours, lead plane 13%, detection 8%, smokejumpers 5% (Table 9) | 2,500 | Table 10: availability plus flight, all contracts; flight and miscellaneous alone USD 1,710/h (USD 67.7 M over 27,078 h) | [link](https://www.fs.usda.gov/sites/default/files/2019-07/cy2017_usfs_aviation_report_final_20190702.pdf) |
-| Montana DNRC Cessna 182/185, 2021-22 | fire patrol and detection, transport | 175 | agency operating cost per hour | [link](https://archive.legmt.gov/content/Publications/fiscal/2023-Interim/IBC-C/Aviation.pdf) |
-| Montana DNRC Bell 206A, 2021-22 | light helicopter | 515 | agency operating cost per hour | [link](https://archive.legmt.gov/content/Publications/fiscal/2023-Interim/IBC-C/Aviation.pdf) |
-| Montana DNRC Bell UH-1H, 2021-22 | initial attack helicopter | 1,650 | agency operating cost per hour | [link](https://archive.legmt.gov/content/Publications/fiscal/2023-Interim/IBC-C/Aviation.pdf) |
-| NIROPS night infrared mapping flight | large fire perimeter mapping | about USD 3,000 per incident, not per hour | the 2026 FAQ's average, billed to the incident | [link](https://gacc.nifc.gov/oscc/docs/2026/2026_IAA-and-NIROPS_FAQs.pdf) |
-
-A swarm hour with crew, USD 149, is about 4% of the cost of a contract light helicopter hour (USD 3,376) and 6% of a contract fixed-wing hour (USD 2,500). It is close to the Montana DNRC's operating cost for a Cessna patrol hour, USD 175, which is not an all-in figure.
-
 Read these with care:
 
-- **Not like for like.** A crewed patrol aircraft covers far more ground per hour, flies in wind and terrain a 1 kg drone cannot, and carries people and water. The swarm's job is narrower: a close thermal sweep (about 0.14 m per pixel at 20 m) of a small block after lightning, to find smouldering spots a high pass can miss. It is a complement for ground crews, not a replacement for aircraft.
-- **USFS figures are 2017 dollars**, averaged over every contract of that type, with availability (standby) included. Flight-only figures are shown alongside. No inflation adjustment is applied.
-- **Montana DNRC figures are the agency's own operating cost per hour** as reported to the legislature in June 2022; the report does not say what they include.
 - **The swarm figures leave out** training, insurance, regulatory approval, a vehicle, software development, data links beyond the BOM, and crashes beyond what the 300-hour life absorbs. The 100-hour row above is a rough stand-in for a hard first season.

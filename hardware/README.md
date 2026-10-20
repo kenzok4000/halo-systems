@@ -38,7 +38,7 @@ This folder is its hardware design: parametric CAD, exports, renders, a costed b
 | [bom.csv](bom.csv) | 11.9 kB | The parts list with prices, masses, power, sources and the date checked. The single source for everything below |
 | [budget.py](budget.py) | 28.8 kB | Reads the CSV and the CAD masses, runs the simulator's own endurance formula, writes the three files below |
 | [BOM.md](BOM.md) | 16.9 kB | Bill of materials and the mass, power and endurance budget against the simulator |
-| [COSTS.md](COSTS.md) | 6.8 kB | Cost per flight hour and per hectare, and crewed aircraft for comparison |
+| [COSTS.md](COSTS.md) | 4.1 kB | Cost per flight hour and per hectare |
 | [budget.json](budget.json) | 6.7 kB | Every computed number, for other tools |
 | [BUILD.md](BUILD.md) | 18.3 kB | Tools, build time, step-by-step build and set-up, pre-flight checks and the legal note |
 

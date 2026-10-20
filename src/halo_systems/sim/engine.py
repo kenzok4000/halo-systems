@@ -138,7 +138,15 @@ class Simulation:
         self.mission_directive: Directive = start.directive
         self.validator.last_change_t = -math.inf
         self.ctrl.nav_sigma_m = nav_sigma
-        self.ctrl.reset(self.path, self.directive, n)
+        # Squads (control/squads.py): several formations, each patrolling its own area. Every squad-only branch
+        # below is guarded by self.squads, so runs without squads are unchanged.
+        self.squads = bool(scenario.squads)
+        if self.squads:
+            swath = 2.0 * float(scenario.sensor.footprint_radius(self.directive.altitude_m))
+            self.ctrl.reset_squads(scenario.squads, self.directive, n, swath)
+            self._squad_orders = sorted(scenario.squad_script, key=lambda o: o["t"])
+        else:
+            self.ctrl.reset(self.path, self.directive, n)
         pos, vel = self.ctrl.plan.slots()
         self.p = pos + r_init.normal(0.0, 0.3, size=(n, 3))
         self.v = vel.copy()
@@ -169,6 +177,7 @@ class Simulation:
         sensor = scenario.sensor
         self.targets = np.array([[t.x, t.y, t.radius_m] for t in scenario.targets], dtype=float).reshape(-1, 3)
         self.target_seen_s = np.zeros(len(self.targets))
+        self.target_view_s = np.zeros(len(self.targets))   # time in some camera's footprint, hidden or not (scoring)
         self.target_found_t = np.full(len(self.targets), np.nan)
         self.target_found_by = np.full(len(self.targets), -1)
         # Share of each target a camera looking down can see; only the wildfire valley hides any.
@@ -275,8 +284,16 @@ class Simulation:
             proposal = {**self.directive.to_dict(), **s.changes}
             self._apply(proposal, "operator", obs)
 
+        if self.squads:
+            while self._squad_orders and self._squad_orders[0]["t"] <= t:
+                self.squad_order(self._squad_orders.pop(0), obs)
+
         # Control (fast loop).
         a_cmd = self.ctrl.command(obs, dt)
+        if self.squads:
+            for d, to in self.ctrl.plan.join_arrivals(p_est, t):
+                sq = self.ctrl.plan.squads[to]
+                self.event("squad_joined", d, squad=sq.code, squad_now=sq.to_dict())
 
         # Physics.
         powered = active.copy()
@@ -310,6 +327,7 @@ class Simulation:
             d = np.hypot(p[:, None, 0] - self.targets[None, :, 0], p[:, None, 1] - self.targets[None, :, 1])
             in_view = d - self.targets[None, :, 2] <= foot[:, None]
             seen = in_view.any(axis=0)
+            self.target_view_s[seen] += elapsed
             pending = np.isnan(self.target_found_t)
             if self.target_visible is None:
                 self.target_seen_s[seen & pending] += elapsed
@@ -474,7 +492,15 @@ class Simulation:
         s = self.series
         s["t"].append(self.t)
         s["speed_over_plan"].append(self.directive.speed_mps - self.mission_directive.speed_mps)
-        if active.any():
+        if active.any() and self.squads:
+            err = np.linalg.norm(self.p[active] - slots[active], axis=1)
+            s["rms_error"].append(float(np.sqrt(np.mean(err ** 2))))
+            s["max_error"].append(float(err.max()))
+            s["shape_error"].append(self._pooled(lambda m: self._shape_error(m, slots)))
+            if self.k % INTEGRITY_EVERY == 1 or INTEGRITY_EVERY == 1:
+                self._integrity = self._pooled(self._integrity_of)
+            s["integrity_error"].append(self._integrity)
+        elif active.any():
             err = np.linalg.norm(self.p[active] - slots[active], axis=1)
             rel = (self.p[active] - self.p[active].mean(axis=0)) - (slots[active] - slots[active].mean(axis=0))
             s["rms_error"].append(float(np.sqrt(np.mean(err ** 2))))
@@ -537,6 +563,80 @@ class Simulation:
         cols = hungarian(cost)
         return float(np.sqrt(np.mean(cost[np.arange(k), cols])))
 
+    # -- squads ---------------------------------------------------------------------------------------------------
+    def _pooled(self, fn) -> float:
+        """A per-squad error pooled over the flying drones: sqrt(sum k e^2 / sum k), squads with none left out."""
+        act = self.active_mask()
+        num, den = 0.0, 0
+        for i, m in enumerate(self.ctrl.plan.part_masks()):
+            k = int((m & act).sum())
+            if k:
+                num += k * fn(i) ** 2
+                den += k
+        return float(np.sqrt(num / den)) if den else float("nan")
+
+    def _shape_error(self, i: int, slots: np.ndarray) -> float:
+        a = self.ctrl.plan.part_masks()[i] & self.active_mask()
+        rel = (self.p[a] - self.p[a].mean(axis=0)) - (slots[a] - slots[a].mean(axis=0))
+        return float(np.sqrt(np.mean(np.sum(rel ** 2, axis=1))))
+
+    def _integrity_of(self, i: int) -> float:
+        """integrity_error for squad i alone: its flying members against the ideal line for their number."""
+        part = self.ctrl.plan.parts[i]
+        a = self.ctrl.plan.part_masks()[i] & self.active_mask()
+        k = int(a.sum())
+        pa = self.p[a].copy()
+        if part.surface is not None:
+            pa[:, 2] -= part.surface.follow(pa[:, 0], pa[:, 1])[0]
+        ideal = rotate(formation_offsets(self.directive.formation, k, self.directive.spacing_m), part.heading)
+        rel = pa - pa.mean(axis=0)
+        cost = np.sum((rel[:, None, :] - ideal[None, :, :]) ** 2, axis=2)
+        cols = hungarian(cost)
+        return float(np.sqrt(np.mean(cost[np.arange(k), cols])))
+
+    def squad_state(self) -> dict:
+        """Squad ids per drone and each squad's state, for frames and the dashboard (squad runs only)."""
+        plan = self.ctrl.plan
+        act = self.active_mask()
+        out = []
+        for i, (sq, part, m) in enumerate(zip(plan.squads, plan.parts, plan.part_masks())):
+            c = part.centre()
+            out.append({"id": sq.id, "code": sq.code, "flying": int((m & act).sum()),
+                        "centre": [round(float(c[0]), 1), round(float(c[1]), 1)],
+                        "heading": round(float(part.heading), 3),
+                        "passes": round(float(part.s / part.path.length), 2) if part.path.length > 0 else 0.0,
+                        "joining": sorted(int(d) for d, tr in plan.transit.items() if tr["to"] == i)})
+        return {"sq": plan.squad_of.tolist(), "squads": out}
+
+    def squad_order(self, order: dict, obs: Observation, source: str = "operator") -> dict:
+        """Move drones between squads: {"op": "move", "from": code, "to": code, "k": n}. The k flying drones of
+        the source squad nearest the receiving squad's centre go (by their own position estimates, ties by
+        number). Checked by the safety validator first; returns {ok, reasons, t, drones}."""
+        plan = self.ctrl.plan
+        codes = {sq.code: sq.id for sq in plan.squads}
+        act = self.active_mask()
+        masks = plan.part_masks()
+        flying = {sq.code: int((masks[sq.id] & act).sum()) for sq in plan.squads}
+        swath = plan.swath
+        from ..control.squads import cap_for
+        caps = {sq.code: cap_for(sq.rect[3] - sq.rect[1], self.directive.spacing_m, swath) for sq in plan.squads}
+        k = order.get("k")
+        incoming = {sq.code: sum(1 for d, tr in plan.transit.items() if tr["to"] == sq.id and act[d])
+                    for sq in plan.squads}
+        bad = self.validator.check_squads(order, flying, caps, self.t, source, incoming)
+        if bad:
+            self.event("squad_change_rejected", None, by=source, order=dict(order), reasons=bad)
+            return {"ok": False, "reasons": bad, "t": round(self.t, 2), "drones": []}
+        src, dst = codes[order["from"]], codes[order["to"]]
+        cand = np.nonzero(masks[src] & act)[0]
+        target = plan.parts[dst].centre()[:2]
+        dist = np.hypot(obs.p_est[cand, 0] - target[0], obs.p_est[cand, 1] - target[1])
+        movers = [int(d) for d in cand[np.lexsort((cand, dist))][:k]]
+        plan.move(movers, dst, obs.p_est, self.t)
+        self.event("squad_changed", None, by=source, op="move", **{"from": order["from"]}, to=order["to"],
+                   drones=movers, squads=[sq.to_dict() for sq in plan.squads])
+        return {"ok": True, "reasons": [], "t": round(self.t, 2), "drones": movers}
+
     def _estimated_min_sep(self, obs: Observation) -> float:
         act = obs.active
         if act.sum() < 2:
@@ -560,6 +660,7 @@ class Simulation:
             **({"found": (~np.isnan(self.target_found_t)).tolist(), "coverage_pct": self.coverage_pct}
                if self.sc.sensor.enabled else {}),
             **(self.wildfire.frame(self) if self.wildfire is not None else {}),
+            **(self.squad_state() if self.squads else {}),
         }
 
     def _check_end(self) -> None:
@@ -610,6 +711,17 @@ class Simulation:
             changes = dict(kw.get("changes") or {})
             self._script.insert(0, ScriptedDirective(start, changes))
             detail = {"changes": changes}
+        elif kind == "squad":
+            if not self.squads:
+                raise ValueError("this run has no squads")
+            # Applied at the first step at or after at_s, so a recorded take reproduces a headless run.
+            at = max(float(kw["at_s"]), start) if kw.get("at_s") is not None else start
+            order = {"t": round(at, 10), "op": kw.get("op", "move"), "from": kw.get("from"), "to": kw.get("to"),
+                     "k": kw.get("k")}
+            self._squad_orders.append(order)
+            self._squad_orders.sort(key=lambda o: o["t"])
+            start = order["t"]
+            detail = {k: v for k, v in order.items() if k != "t"}
         else:
             raise ValueError(f"unknown injection {kind!r}")
         self.event("injected", detail.get("drone"), what=kind, **{k: v for k, v in detail.items() if k != "drone"})
@@ -634,20 +746,44 @@ class Simulation:
         obs = obs or self.obs
         plan = self.ctrl.plan
         act = self.active_mask()
-        centre = plan.centre()
-        heading = np.array([math.cos(plan.heading), math.sin(plan.heading), 0.0])
+        if self.squads:
+            # Squads: the corridor ahead of every squad (the narrowest counts), the largest squad for the shape.
+            parts = [p for p in plan.parts if len(p.members)]
+            lead = plan.largest()
+        else:
+            parts, lead = [plan], plan
+        centre = lead.centre()
+        heading = np.array([math.cos(lead.heading), math.sin(lead.heading), 0.0])
         world = self.sc.world
         lookahead = LOOKAHEAD_M
-        # The corridor check covers the whole formation: from its tail to the lookahead point.
-        tail = float(max(0.0, -np.min(plan.target[plan.members, 0]))) if len(plan.members) else 0.0
-        flight_z = self.directive.altitude_m + (0.0 if world.terrain is None else float(world.terrain.follow(centre[0], centre[1])[0]))
-        width_free = world.free_width_ahead(centre, heading, lookahead, flight_z, behind=tail) if world.obstacle_count else None
+        frees, tail = [], 0.0
+        for part in parts:
+            c = part.centre()
+            h = np.array([math.cos(part.heading), math.sin(part.heading), 0.0])
+            # The corridor check covers the whole formation: from its tail to the lookahead point.
+            tail_i = float(max(0.0, -np.min(part.target[part.members, 0]))) if len(part.members) else 0.0
+            flight_z = self.directive.altitude_m + (0.0 if world.terrain is None else float(world.terrain.follow(c[0], c[1])[0]))
+            if world.obstacle_count:
+                frees.append((world.free_width_ahead(c, h, lookahead, flight_z, behind=tail_i), tail_i))
+            if part is lead:
+                tail = tail_i
+        if frees:
+            width_free, tail = min(frees) if self.squads else frees[0]
+        else:
+            width_free = None
         density = world.density_ahead(centre, heading, lookahead, 40.0) if world.obstacle_count else 0.0
         seps = [s for _, s in self._sep_window if math.isfinite(s)]
         winds = np.array([w for _, w in self._wind_window]) if self._wind_window else np.zeros((1, 3))
         mean_wind = self._ambient_est
         gust = float(np.max(np.linalg.norm(winds - mean_wind[None, :], axis=1))) if len(winds) else 0.0
-        if obs is not None and act.sum() >= 2:
+        if obs is not None and act.sum() >= 2 and self.squads:
+            # Links that matter are within a squad; squads hundreds of metres apart are often out of radio range.
+            sq = plan.squad_of[act]
+            ages = obs.nbr_age[np.ix_(act, act)]
+            off = ~np.eye(int(act.sum()), dtype=bool) & (sq[:, None] == sq[None, :]) & (sq[:, None] >= 0)
+            stale = float(np.mean(ages[off] > 1.0)) if off.any() else 0.0
+            isolated = int(np.sum(np.all((ages > 1.0) | ~off, axis=1) & off.any(axis=1)))
+        elif obs is not None and act.sum() >= 2:
             ages = obs.nbr_age[np.ix_(act, act)]
             off = ~np.eye(int(act.sum()), dtype=bool)
             stale = float(np.mean(ages[off] > 1.0))
@@ -658,17 +794,24 @@ class Simulation:
         power = self._power[act] if act.any() else np.array([1.0])
         endurance_min = float(np.min((self.battery_wh[act] - self.sc.battery_reserve * self.capacity_wh)
                                      / np.maximum(power, 1.0) * 60.0)) if act.any() else 0.0
-        remaining = max(0.0, plan.path.length - plan.s) if not plan.path.loop else None
+        if self.squads:
+            # A patrol ends on time: what is left is the patrol's remaining time at the mission speed.
+            remaining = max(0.0, (self.sc.patrol_s or 0.0) - self.t) * self.mission_directive.speed_mps
+        else:
+            remaining = max(0.0, plan.path.length - plan.s) if not plan.path.loop else None
         lost = sorted(int(d) for d in self.failed_at if self.t - self.failed_at[d] >= FAILURE_DETECTION_S)
         lost += [int(d) for d in np.nonzero(self.status == CRASHED)[0] if int(d) not in lost]
         width_now = plan.width()
+        # Drones in one formation: all flying drones, or the flying members of the largest squad.
+        line = int(act.sum()) if not self.squads else int((plan.part_masks()[plan.parts.index(lead)] & act).sum())
         headwind = float(-mean_wind[:2] @ heading[:2])
         wh_table = energy_table(self.body, headwind, self.validator.limits.speed_mps)
         out = {
             "time_s": round(self.t, 1),
             "mission": {
                 "brief": self.sc.description,
-                "progress_pct": round(100 * plan.s / plan.path.length, 1) if plan.path.length > 0 and not plan.path.loop else None,
+                "progress_pct": (round(100 * self.t / self.sc.patrol_s, 1) if self.squads and self.sc.patrol_s else
+                                 round(100 * plan.s / plan.path.length, 1) if not self.squads and plan.path.length > 0 and not plan.path.loop else None),
                 "remaining_m": round(remaining, 1) if remaining is not None else None,
                 "leader_speed_mps": round(plan.speed_now, 2),
                 **({"targets_found_so_far": self.targets_found, "area_covered_pct": self.coverage_pct}
@@ -717,11 +860,11 @@ class Simulation:
                 "safety_margin_m": list(self.validator.limits.safety_margin_m),
             },
             "formation_widths_at_current_spacing_m": {
-                shape: round(float(np.ptp(formation_offsets(shape, max(int(act.sum()), 1), self.directive.spacing_m)[:, 1])), 1)
+                shape: round(float(np.ptp(formation_offsets(shape, max(line, 1), self.directive.spacing_m)[:, 1])), 1)
                 for shape in SHAPES
             },
         }
-        out["checks"] = self._checks(int(act.sum()), width_free, wh_table, remaining, out["energy"]["usable_wh_mean"])
+        out["checks"] = self._checks(line, width_free, wh_table, remaining, out["energy"]["usable_wh_mean"])
         return out
 
     def _checks(self, flying: int, free: float | None, wh_table: dict, remaining: float | None, usable: float) -> dict:

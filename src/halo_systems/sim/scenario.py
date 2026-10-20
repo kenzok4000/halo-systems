@@ -99,6 +99,16 @@ class Scenario:
     use_case: str = "research"
     tags: tuple = ()
     wildfire: "WildfireConfig | None" = None   # fires, weather, phones and alert policy (the wildfire valley)
+    # Squads (control/squads.py): None flies one formation along ``waypoints``. Otherwise each squad patrols its
+    # own area until ``patrol_s``; ``squad_counts`` is the split asked for ("R": drones kept in reserve, not
+    # flown), ``squad_areas`` the areas, and ``squad_script`` operator orders at fixed times.
+    squads: list | None = None
+    patrol_s: float | None = None
+    squad_counts: dict | None = None
+    squad_areas: list | None = None
+    squad_script: list = field(default_factory=list)
+    # Lightning strikes reported overnight (the wildfire valley, when asked for): what a mission may cue on.
+    strikes: list | None = None
 
     def summary(self) -> dict:
         return {
@@ -114,4 +124,10 @@ class Scenario:
             "sensor": {"fov_deg": self.sensor.fov_deg, "dwell_s": self.sensor.dwell_s, "cell_m": self.sensor.cell_m,
                        "area": list(self.sensor.area) if self.sensor.area else None} if self.sensor.enabled else None,
             **({"wildfire": self.wildfire.summary(self.world.terrain)} if self.wildfire is not None else {}),
+            **({"squads": [sq.to_dict() for sq in self.squads], "squad_counts": dict(self.squad_counts or {}),
+                "patrol_s": self.patrol_s,
+                "squad_areas": [{"code": a.code, "name": a.name, "rect": list(a.rect), "ha": round(a.ha, 2)}
+                                for a in (self.squad_areas or [])],
+                "squad_script": [dict(o) for o in self.squad_script]} if self.squads else {}),
+            **({"strikes": [dict(k) for k in self.strikes]} if self.strikes is not None else {}),
         }

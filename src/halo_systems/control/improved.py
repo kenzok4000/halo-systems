@@ -115,15 +115,28 @@ class ImprovedController(Controller):
         plan = self.plan
         p, v = self._filter(obs, dt)
         act = obs.active
+        squad_of = self.squad_of
         if "cbf" in self.features and self.world is not None and self.world.obstacle_count \
                 and obs.t - self._cap_checked_t >= 0.2:
             self._cap_checked_t = obs.t
-            plan.speed_cap = self._sensing_limited_speed(plan, p[act])
-        plan.advance(dt, obs.t, self.shape_error_estimate(obs))
+            if squad_of is None:
+                plan.speed_cap = self._sensing_limited_speed(plan, p[act])
+            else:
+                for part, m in zip(plan.parts, plan.part_masks()):
+                    part.speed_cap = self._sensing_limited_speed(part, p[act & m])
+        plan.advance(dt, obs.t, self.pace_errors(obs))
         ref_p, ref_v = plan.slots()
         if self._ref_v_prev is None:
             self._ref_v_prev = ref_v.copy()
             self._ref_a = np.zeros_like(ref_v)
+        if squad_of is not None:
+            # A drone that changed squad (or started or ended a transit) has a new slot: restart its feed-forward.
+            prev = getattr(self, "_squad_prev", None)
+            if prev is not None and (prev != squad_of).any():
+                moved = prev != squad_of
+                self._ref_v_prev[moved] = ref_v[moved]
+                self._ref_a[moved] = 0.0
+            self._squad_prev = squad_of.copy()
         # Feed-forward of the slot's acceleration, low-passed (0.2 s) so plan steps do not kick.
         raw = (ref_v - self._ref_v_prev) / dt
         self._ref_a += min(1.0, dt / 0.2) * (raw - self._ref_a)
@@ -137,6 +150,9 @@ class ImprovedController(Controller):
         dist = np.linalg.norm(rel_now, axis=2)
         near = (np.isfinite(obs.nbr_age) & (obs.nbr_age < 1.0) & act[None, :] & act[:, None]
                 & (dist < 2.5 * spacing))
+        if squad_of is not None:
+            # Hold shape only with drones of the same squad; drones in transit hold none.
+            near &= (squad_of[:, None] == squad_of[None, :]) & (squad_of[:, None] >= 0)
         np.fill_diagonal(near, False)
         cnt = np.maximum(near.sum(axis=1, keepdims=True), 1)
         consensus = np.sum(np.where(near[..., None], rel_now - rel_want, 0.0), axis=1) / cnt

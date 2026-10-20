@@ -142,7 +142,10 @@ LEVELS = {
 
 @dataclass
 class AlertPolicy:
-    rule: str = "forecast"            # "forecast", or "distance" (the ablation: alert by distance alone)
+    # "forecast"; "presigned" (public alerts only for fires believed spreading, each under a trigger rule the
+    # alerting authority signed in advance; a newly located fire goes to fire dispatch as a card); or "distance"
+    # (the ablation: alert by distance alone)
+    rule: str = "forecast"
     prob_threshold: float = 0.3
     evacuate_within_s: float = 3600.0      # Level 4
     warn_within_s: float = 3 * 3600.0      # Level 3
@@ -164,6 +167,18 @@ class AlertPolicy:
     max_chars: int = 360              # Wireless Emergency Alerts and EU-Alert carry up to 360 characters
     authority: str = "Valley Fire District"
     channel: str = "cell broadcast (simulated)"
+    dispatch_channel: str = "fire dispatch, initial attack (simulated)"
+
+    def trigger(self, level: int) -> dict:
+        """The pre-signed trigger rule behind an automatic alert at this level ("presigned" only)."""
+        if level == 5:
+            text = (f"a fire believed spreading has at least a {self.emergency_prob:.0%} chance of reaching a phone "
+                    f"in the zone within {self.emergency_within_s / 60:.0f} minutes")
+        else:
+            within = self.evacuate_within_s if level == 4 else self.warn_within_s
+            text = (f"a fire believed spreading has at least a {self.prob_threshold:.0%} chance of reaching a phone "
+                    f"in the zone within {within / 3600:.0f} hour{'s' if within != 3600 else ''}")
+        return {"rule": f"T{level}", "text": text, "signed_by": self.authority, "signed": "in advance (simulated)"}
 
 
 @dataclass
@@ -183,6 +198,10 @@ class WildfireConfig:
     truth_cell_m: float = 5.0
     horizon_s: float = 4 * 3600.0     # truth is computed this far; forecasts made during the flight look 3 h ahead
     heterogeneity_sigma: float = 0.3
+    # "legacy": a thermal find within 60 m (plus the fire's radius) of a fire located by smoke moves that fix to it.
+    # "tight": only within 3 x (the two fixes' errors) + 5 m, never wider than legacy; see Wildfire._locate.
+    station: str = "legacy"
+    report_v2: bool = False           # extra scoring keys (own evidence, camera time, miss class); scoring only
 
     def summary(self, terrain: Terrain) -> dict:
         return {
@@ -194,6 +213,8 @@ class WildfireConfig:
             "smoke_model": {"rise_mps": self.smoke.rise_mps, "top_ref_m": self.smoke.top_ref_m,
                             "ref_area_m2": self.smoke.ref_area_m2, "top_max_m": self.smoke.top_max_m},
             "alert_rule": self.alerts.rule,
+            **({"station": self.station} if self.station != "legacy" else {}),
+            **({"report_v2": True} if self.report_v2 else {}),
         }
 
 
@@ -473,6 +494,13 @@ class AlertCheck:
             reasons.append(f"{n} recipients is more than {p.max_recipients}; needs escalation")
         if not 3600 <= alert.get("expires_in_s", 0) <= 12 * 3600:
             reasons.append("expiry must be 1 to 12 hours")
+        if p.rule == "presigned" and level in LEVELS:
+            if not alert.get("trigger") or alert["trigger"].get("rule") != f"T{level}":
+                reasons.append(f"an automatic Level {level} alert must name the pre-signed rule T{level}")
+            if forecast is None or forecast.get("id") != alert.get("forecast_id"):
+                reasons.append("alert must cite the current forecast")
+            elif max(alert.get("max_prob", 0.0), 0.0) < (p.emergency_prob if level == 5 else p.prob_threshold):
+                reasons.append(f"forecast probability below the Level {level} trigger")
         if p.rule == "forecast" and level in (4, 5):
             # An evacuation must rest on the forecast it cites.
             need = p.emergency_prob if level == 5 else p.prob_threshold
@@ -575,10 +603,19 @@ class Wildfire:
         self.merged: list[dict] = []              # located fires found to be part of another (mapped ground joins them)
         self._loc_id = 0
         self._fix_src: list | None = None         # scoring only: the true fires behind a smoke fix's bearings
+        self._own_src: list | None = None         # scoring only (report_v2): the true fires behind a thermal fix
+        self._fix_votes: list[int] = []           # scoring only (report_v2): the true fire behind each bearing of a fix
+        self.relabelled: list[dict] = []          # scoring only (tight station): what an upgraded fix pointed at before
+        if cfg.station not in ("legacy", "tight"):
+            raise ValueError(f"station must be 'legacy' or 'tight', not {cfg.station!r}")
+        if cfg.alerts.rule not in ("forecast", "presigned", "distance"):
+            raise ValueError(f"alert rule must be 'forecast', 'presigned' or 'distance', not {cfg.alerts.rule!r}")
         self._wind_now = np.zeros(2)
         self.forecasts: list[dict] = []
         self._measured_wind = (0.0, 0.0)          # the wind the swarm measured for the latest forecast
         self.crew_log: list[dict] = []            # briefs relayed to the fire crews
+        self.dispatch_log: list[dict] = []        # "presigned": cards to fire dispatch
+        self._carded: dict[int, bool] = {}        # located fire id -> whether its last card said spreading
         self._crew_last: dict = {}                # fire id -> (time, the brief the crews were last sent)
         self.alerts: list[dict] = []
         self.notices: list[dict] = []                                # cancellations and all-clears
@@ -741,7 +778,9 @@ class Wildfire:
                 if len(comp) < 2:
                     continue                    # one hot cell alone is not called a fire
                 cx, cy = float(xs.mean()), float(ys.mean())
+                self._own_src = [i for i in range(len(self.fires)) if np.any(self.fire_arrival[i].ravel()[comp] <= sim.t)]
                 new |= self._locate(sim, cx, cy, self.grid.cell_m, "thermal", len(comp) * cell2)
+                self._own_src = None
                 best = min(self.located, key=lambda l: math.hypot(l["x"] - cx, l["y"] - cy))
             groups.setdefault(best["id"], []).append(comp)
         self._loc_cells = {k: np.concatenate(v) for k, v in groups.items()}
@@ -839,7 +878,9 @@ class Wildfire:
             foot = float(sim.sc.sensor.footprint_radius(max(agl, 1.0)))
             seen_area = min(float(area[j]), math.pi * foot * foot) * (1.0 - self.fires[j].cover) \
                 * float(np.exp(0.2 * sim.rng_misc.normal()))
+            self._own_src = [int(j)]
             new |= self._locate(sim, x, y, err + 1.0, "thermal", seen_area)
+            self._own_src = None
         # Burning ground the thermal cameras have mapped: joined to the fires it belongs to.
         new |= self._assign_mapped(sim)
         # New camera sightings: explained by a located fire (they size it), or kept for triangulation.
@@ -863,8 +904,10 @@ class Wildfire:
                         continue
                     x, y = self._drift_back(sim, fix, [self._pool[i] for i in fix["used"]])
                     self._fix_src = sorted({int(self.sightings[self._pool[i]][9]) for i in fix["used"]})
+                    self._fix_votes = [int(self.sightings[self._pool[i]][9]) for i in fix["used"]]
                     new |= self._locate(sim, x, y, max(fix["err_m"], 3.0), "smoke", None)
                     self._fix_src = None
+                    self._fix_votes = []
                 self._pool = [i for i in self._pool if not self._associate(self.sightings[i], wind)]
         # Sizes. Mapped burning ground and the hotspot image measure a fire directly; the plume top only infers
         # it (area grows as the top to the power 2.9, and the tallest plumes all look alike), so it sizes a
@@ -990,8 +1033,25 @@ class Wildfire:
                 end = np.array([loc["x"], loc["y"]]) + self._wind_now * top / self.cfg.smoke.rise_mps
                 gap = min(gap, _to_segment(x, y, loc["x"], loc["y"], float(end[0]), float(end[1])))
             same = gap <= (3.0 * (loc["err_m"] + err) + 5.0 if method == loc["method"] == "thermal" else reach)
+            if same and self.cfg.station == "tight" and method == "thermal" and loc["method"] == "smoke":
+                # Two fires 30 to 60 m apart are common: a hotspot outside both fixes' errors is another fire.
+                agree = 3.0 * (loc["err_m"] + err) + 5.0
+                if cells is not None and len(cells):
+                    agree += math.sqrt(max(loc["area_m2"], 0.0) / math.pi)
+                same = gap <= min(agree, reach)
             if same:
                 if method == "thermal" and loc["method"] == "smoke":
+                    if self.cfg.station == "tight":
+                        # Scoring only: the fix now sits on the hotspot, so it is scored as that fire from now on;
+                        # what it pointed at before is kept, so finding that fire earlier still counts.
+                        truth, truth_err = self._match_truth(x, y, sim.t)
+                        if truth != loc["truth"]:
+                            self.relabelled.append({"id": loc["id"], "truth": loc["truth"], "t": loc.get("truth_t", loc["t"]),
+                                                    "first_method": loc.get("truth_by", loc["first_method"]),
+                                                    "truth_err_m": loc["truth_err_m"]})
+                            loc.update(truth=truth, truth_err_m=truth_err, truth_t=round(sim.t, 2), truth_by="thermal")
+                    if self.cfg.report_v2:
+                        loc.setdefault("own", []).extend((i, round(sim.t, 2), "thermal") for i in (self._own_src or []))
                     loc.update(x=x, y=y, err_m=err, method="thermal", upgraded_t=round(sim.t, 2),
                                area_m2=max(loc["area_m2"], area_est or 0.0), seen_m2=area_est or 0.0)
                     sim.event("fire_located", None, fire=loc["id"], x=round(x, 1), y=round(y, 1), err_m=round(err, 1),
@@ -1005,10 +1065,30 @@ class Wildfire:
                "area_m2": area_est if area_est is not None else 0.5 * SMOULDER_AREA_M2, "tops": [],
                "seen_m2": area_est if method == "thermal" and area_est is not None else 0.0, "mapped_m2": 0.0,
                "truth": truth, "first_method": method, "truth_err_m": truth_err, "fix_src": self._fix_src}
+        if self.cfg.report_v2:
+            if method == "thermal":
+                src = self._own_src or []
+            else:
+                # Most of its bearings came from one fire's plume, and the fix landed on that fire. A fix made
+                # mostly from two fires' bearings sits where their lines cross, which is neither fire.
+                votes = [v for v in self._fix_votes if v >= 0]
+                top = max(set(votes), key=votes.count) if votes else None
+                src = [top] if top is not None and 2 * votes.count(top) > len(self._fix_votes) else []
+                src = [i for i in src if self._gap_to(i, x, y, sim.t) <= MATCH_M]
+            loc["own"] = [(i, loc["t"], method) for i in src]
         self._loc_id += 1
         self.located.append(loc)
         sim.event("fire_located", None, fire=loc["id"], x=round(x, 1), y=round(y, 1), err_m=round(err, 1), by=method)
         return True
+
+    def _gap_to(self, i: int, x: float, y: float, t: float) -> float:
+        """Distance from (x, y) to true fire i's burning ground (or ignition point) at time t; scoring only."""
+        f = self.fires[i]
+        d = math.hypot(f.x - x, f.y - y)
+        burnt = (self.fire_arrival[i] <= t).ravel()
+        if burnt.any():
+            d = min(d, float(np.min(np.hypot(self._gx[burnt] - x, self._gy[burnt] - y))))
+        return d
 
     def _match_truth(self, x: float, y: float, t: float) -> tuple[int | None, float | None]:
         """The true fire whose burning ground (or ignition point) at time t is nearest; scoring only."""
@@ -1116,7 +1196,38 @@ class Wildfire:
                   potential_prob_180min=[round(float(v), 2) for v in pot["probs"][180].ravel()],
                   isochrones_min=[30, 60, 120, 180], mapped_cells=fc["mapped_cells"], brief=brief)
         self._relay_to_crews(sim, fc)
+        if self.cfg.alerts.rule == "presigned":
+            self._dispatch(sim, fc)
         self._draft_alerts(sim, fc)
+
+    def _dispatch(self, sim, fc: dict) -> None:
+        """"presigned": a card to fire dispatch for each newly located fire, and again when one believed
+        smouldering is first believed spreading. A smoulder goes here, not to the public."""
+        pol = self.cfg.alerts
+        brief = {b["fire"]: b for b in fc.get("brief", [])}
+        for loc in fc["located"]:
+            spreading = loc["area_m2"] >= SMOULDER_AREA_M2
+            sent = self._carded.get(loc["id"])
+            if sent is not None and (sent or not spreading):
+                continue
+            self._carded[loc["id"]] = spreading
+            status = "spreading" if spreading else "smouldering"
+            b = brief.get(loc["id"], {})
+            where = self._nearest_place((loc["x"], loc["y"]))
+            size = f"{loc['area_m2']:.0f} m2" if spreading else "under 50 m2"
+            text = (f"{'UPDATE: fire' if sent is not None else 'New fire'} {loc['id'] + 1}, {status}, about {size}, "
+                    f"near {where} at x {loc['x']:.0f} y {loc['y']:.0f} (within {max(loc['err_m'], 1.0):.0f} m), "
+                    f"located by {loc['method']}. "
+                    + (f"Head running {b['direction']}. " if spreading and b.get("direction") else "")
+                    + "Initial attack requested. (Simulated)")
+            card = {"id": len(self.dispatch_log), "t": round(sim.t, 2), "fire": loc["id"], "status": status,
+                    "x": round(loc["x"], 1), "y": round(loc["y"], 1), "err_m": round(loc["err_m"], 1),
+                    "area_m2": round(loc["area_m2"], 1), "by": loc["method"], "update": sent is not None,
+                    "to": pol.dispatch_channel, "text": text}
+            if self.cfg.report_v2:
+                card["truth"] = loc["truth"]               # scoring only
+            self.dispatch_log.append(card)
+            sim.event("dispatch_card", None, **{k: v for k, v in card.items() if k != "truth"})
 
     def _brief(self, fc: dict) -> list[dict]:
         """Per located fire: which way its head runs and why, how fast, its size in 1 and 2 h, places reached.
@@ -1422,8 +1533,9 @@ class Wildfire:
             level[near_spreading <= pol.distance_emergency_m] = 5
             prob[level > 0] = 1.0
         else:
-            p3 = np.maximum((pot["phone_arrivals"] <= t0 + pol.warn_within_s).mean(axis=0),
-                            (act["phone_arrivals"] <= t0 + pol.warn_within_s).mean(axis=0))
+            p3 = (act["phone_arrivals"] <= t0 + pol.warn_within_s).mean(axis=0)
+            if pol.rule != "presigned":         # the forecast rule also warns for smoulders, as if they took off now
+                p3 = np.maximum((pot["phone_arrivals"] <= t0 + pol.warn_within_s).mean(axis=0), p3)
             p4 = (act["phone_arrivals"] <= t0 + pol.evacuate_within_s).mean(axis=0)
             p5 = (act["phone_arrivals"] <= t0 + pol.emergency_within_s).mean(axis=0)
             level[p3 >= pol.prob_threshold] = 3
@@ -1471,6 +1583,13 @@ class Wildfire:
             }
             alert["message"] = (f"{pol.authority}: {tag} {head}. Wildfire near zone {zone['code']}, {area}{when}. "
                                 f"{action} Alert expires {alert['expires']}. (Simulated alert)")
+            if pol.rule == "presigned":
+                alert["trigger"] = pol.trigger(target)
+            if self.cfg.report_v2:
+                # Scoring only: the located fires this level rests on (all of them for a forecast-rule Level 3).
+                smoulders_count = pol.rule == "forecast" and target == 3
+                alert["drivers"] = [{"id": l["id"], "truth": l["truth"]} for l in fc["located"]
+                                    if smoulders_count or l["area_m2"] >= SMOULDER_AREA_M2]
             recent = [a for a in self.alerts if a["state"] not in ("rejected",)]
             result = self.check.check(alert, fc, recent, int(self.zone_level[k]))
             alert["check"] = result.to_dict()
@@ -1630,9 +1749,17 @@ class Wildfire:
         nf = len(self.fires)
         first = {}
         made = sorted(self.located + self.merged, key=lambda l: l["id"])
-        for loc in made:
-            if loc["truth"] is not None and loc["truth"] not in first:
-                first[loc["truth"]] = loc
+        if self.cfg.station == "tight":
+            # A fix re-scored on an upgrade counts for its new fire from the upgrade, and for its old one before.
+            recs = [{"id": l["id"], "truth": l["truth"], "t": l.get("truth_t", l["t"]),
+                     "first_method": l.get("truth_by", l["first_method"]), "truth_err_m": l["truth_err_m"]} for l in made]
+            for loc in sorted(recs + self.relabelled, key=lambda r: (r["t"], r["id"])):
+                if loc["truth"] is not None and loc["truth"] not in first:
+                    first[loc["truth"]] = loc
+        else:
+            for loc in made:
+                if loc["truth"] is not None and loc["truth"] not in first:
+                    first[loc["truth"]] = loc
         fires = []
         for i, f in enumerate(self.fires):
             loc = first.get(i)
@@ -1646,6 +1773,8 @@ class Wildfire:
         out["fires_located_by_smoke"] = sum(1 for f in fires if f["by"] == "smoke")
         out["fires_located_by_thermal"] = sum(1 for f in fires if f["by"] == "thermal")
         out["false_locations"] = sum(1 for l in made if l["truth"] is None)          # every false fix, merged or not
+        if self.cfg.station == "tight":
+            out["false_locations"] += sum(1 for r in self.relabelled if r["truth"] is None)   # false until upgraded
         out["false_locations_standing"] = sum(1 for l in self.located if l["truth"] is None)
         out["duplicates_merged"] = len(self.merged)
         out["all_located_s"] = max(f["t"] for f in fires) if fires and all(f["located"] for f in fires) else None
@@ -1654,6 +1783,8 @@ class Wildfire:
         out["smoke_sightings"] = sum(1 for s in self.sightings if s[7] == "camera")
         out["smoke_contacts"] = self.contacts
         out["fire_table"] = fires
+        if self.cfg.report_v2:
+            out.update(self._own_evidence(sim, made, fires))
         out["forecasts"] = len(self.forecasts)
         out["forecast_t_s"] = round(self.forecasts[-1]["t"], 1) if self.forecasts else None
         out["mapped_ha"] = round(float(np.count_nonzero(np.isfinite(self.mapped_t))) * self.grid.cell_m ** 2 / 1e4, 2)
@@ -1663,6 +1794,47 @@ class Wildfire:
         out.update(self._warning_scores())
         out["today"] = today_methods(self, sim.seed)          # the same fires, found by today's methods
         return out
+
+    def _own_evidence(self, sim, made: list, fires: list) -> dict:
+        """report_v2: fires found by their own evidence, and why each other fire was missed (scoring only).
+
+        A fire is found by its own evidence when a fix was placed by its hotspot (a thermal find of it, or its
+        mapped burning ground) or by bearings to its own plume (more than half of a smoke fix's bearings came from it,
+        and the fix landed within 60 m of it). The nearest-fire rule in ``fire_table`` credits any fix within 60 m, which can
+        credit a fire for a fix made from its neighbour's evidence.
+        Each fire then gets one class: found smouldering; found after it spread; seen by the camera but not
+        credited (the hotspot was confirmed but no fix came from it); in view but never confirmed (cover or an
+        overhang hid it); never in view.
+        """
+        own: dict[int, tuple] = {}
+        for loc in made:
+            for i, t, by in loc.get("own", []):
+                if i not in own or t < own[i][0]:
+                    own[i] = (t, by)
+        cam = sim.target_found_t
+        view = getattr(sim, "target_view_s", None)
+        classes = {"smouldering": 0, "after_spread": 0, "not_credited": 0, "hidden": 0, "not_in_view": 0}
+        for i, (f, row) in enumerate(zip(self.fires, fires)):
+            t_own = own.get(i, (None, None))[0]
+            row["own_t"] = t_own
+            row["own_by"] = own.get(i, (None, None))[1]
+            row["camera_t"] = None if i >= len(cam) or np.isnan(cam[i]) else round(float(cam[i]), 2)
+            if t_own is not None:
+                c = "smouldering" if t_own < f.t_active_s else "after_spread"
+            elif row["camera_t"] is not None:
+                c = "not_credited"
+            elif view is not None and i < len(view) and view[i] > 0.0:
+                c = "hidden"
+            else:
+                c = "not_in_view"
+            row["miss"] = c
+            classes[c] += 1
+            if self.cfg.alerts.rule == "presigned":
+                cards = [c2["t"] for c2 in self.dispatch_log if c2.get("truth") == i]
+                row["dispatch_t"] = min(cards) if cards else None
+        n = len(self.fires)
+        return {"fires_found_own": len(own), "fires_found_own_pct": round(100.0 * len(own) / n, 1) if n else None,
+                "fires_found_own_smouldering": classes["smouldering"], "fire_classes": classes}
 
     def _forecast_skill(self) -> dict:
         """The flight's last forecast against where the fires really burn in the next 1 and 3 hours."""
@@ -1824,7 +1996,44 @@ class Wildfire:
             "alert_send_delay_s_median": round(float(np.median(latency)), 1) if latency else None,
             "phones_level5": int(sum(1 for ph, d in self.phone_delivered.items() if any(c == 5 for c, _, _ in d))),
             "first_alert_s": round(min(float(first_any.min()), 1e12), 1) if np.isfinite(first_any).any() else None,
+            **(self._alert_scores(delivered) if self.cfg.report_v2 else {}),
         }
+
+    def _alert_scores(self, delivered: list[dict]) -> dict:
+        """report_v2: which public alerts the fire did not justify, and what each rested on (scoring only).
+
+        An alert is not justified when no true fire reached a phone in its zone within its level's window (3 hours
+        for Level 3, 1 hour for Level 4, 15 minutes for Level 5), as far as the 4-hour truth runs. Its drivers are
+        the located fires the level rested on: under the forecast rule a Level 3 rests on every located fire,
+        smouldering ones included; otherwise on those believed spreading.
+        """
+        pol = self.cfg.alerts
+        window = {3: pol.warn_within_s, 4: pol.evacuate_within_s, 5: pol.emergency_within_s}
+        rows = []
+        for a in delivered:
+            k = self._zone_index(a["zone"])
+            members = np.nonzero(self.zone_of_phone == k)[0]
+            reach = float(self.phone_truth_s[members].min()) if len(members) else math.inf
+            t_sent = float(a.get("approved_t", a["t"]))
+            truths = [d["truth"] for d in a.get("drivers", [])]
+            real = sorted({i for i in truths if i is not None})
+            rows.append({"id": a["id"], "t": a["t"], "sent_t": round(t_sent, 2), "level": a["level"], "zone": a["zone"],
+                         "rule": a.get("trigger", {}).get("rule", a["rule"]),
+                         "justified": reach <= t_sent + window[a["level"]],
+                         "window_past_truth": t_sent + window[a["level"]] > self.cfg.horizon_s,
+                         "drivers": truths,
+                         "false_only": bool(truths) and not real,
+                         "smouldering_only": bool(real) and all(self.fires[i].t_active_s > a["t"] for i in real),
+                         "never_spread": bool(real) and all(self.fires[i].t_active_s >= self.cfg.horizon_s for i in real)})
+        cards = [c for c in self.dispatch_log if not c["update"]]
+        return {"alerts_not_justified": sum(not r["justified"] for r in rows),
+                "alerts_level3_not_justified": sum(not r["justified"] for r in rows if r["level"] == 3),
+                "alerts_from_false_fires": sum(r["false_only"] for r in rows),
+                "alerts_for_smoulders": sum(r["smouldering_only"] for r in rows),
+                "alerts_for_fires_never_spreading": sum(r["never_spread"] for r in rows),
+                "alert_table": rows,
+                "dispatch_cards": len(cards), "dispatch_cards_false": sum(c.get("truth") is None for c in cards),
+                "dispatch_cards_smouldering": sum(c["status"] == "smouldering" for c in cards)}
 
     # -- dashboard ------------------------------------------------------------------------------------
     def hello(self) -> dict:

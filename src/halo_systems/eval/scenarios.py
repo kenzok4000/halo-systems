@@ -287,7 +287,58 @@ def _pick(rng, terrain, box, want, tries=400):
     return x, y
 
 
-def wildfire_valley(seed: int = 0, n: int = 16, alert_rule: str = "forecast", approval: str = "auto") -> Scenario:
+# The overnight lightning list (wildfire_valley's ``strikes``), on the clock of sim.detection.TodayConfig: the
+# flight starts at 08:00 local time.
+FLIGHT_CLOCK_H = 8.0
+STRIKE_ERR_M = 50.0                  # simulated error of a reported strike position, per axis (one sigma)
+LAST_NIGHT_H = (-13.0, -4.0)         # last night's storm, hours from the flight's start: 19:00 to 04:00
+NIGHT_BEFORE_H = (-37.0, -28.0)      # an earlier storm the night before: 19:00 to 04:00
+
+PATROL_S = 720.0       # a squad patrol: one battery (41 Wh to the 15% reserve lasts about 16 min at 6 m/s), with margin
+
+
+def valley_areas() -> list:
+    """The squad areas, fixed before any squad was flown: the valley floor (the survey block) and, over the same
+    columns, the alert-zone rows on either side of it (the north and south slopes, to the valley's edge)."""
+    from ..control.squads import Area
+    bx0, by0, bx1, by1 = VALLEY_BLOCK
+    _, y0, _, y1 = VALLEY_EXTENT
+    return [Area("F", "Valley floor", VALLEY_BLOCK), Area("N", "North slopes", (bx0, by1 + 30.0, bx1, y1)),
+            Area("S", "South slopes", (bx0, y0, bx1, by0 - 30.0))]
+
+
+def _strike_list(seed: int, fires) -> list[dict]:
+    """Lightning strikes reported over the valley: one near each fire's ignition point (all five are lightning
+    fires) among strikes that started nothing, last night and the night before. Positions carry a location error
+    (STRIKE_ERR_M) and are clipped to the valley; ``area`` is the squad area the reported position falls in ("-"
+    for none). Drawn from their own random stream, so asking for them changes nothing else in the valley."""
+    rng = _rng(seed, 23)
+    x0, y0, x1, y1 = VALLEY_EXTENT
+    raw = [(rng.uniform(*LAST_NIGHT_H), f.x + rng.normal(0.0, STRIKE_ERR_M), f.y + rng.normal(0.0, STRIKE_ERR_M))
+           for f in fires]
+    raw += [(rng.uniform(*LAST_NIGHT_H), rng.uniform(x0, x1), rng.uniform(y0, y1)) for _ in range(int(rng.integers(6, 11)))]
+    raw += [(rng.uniform(*NIGHT_BEFORE_H), rng.uniform(x0, x1), rng.uniform(y0, y1)) for _ in range(int(rng.integers(3, 7)))]
+    areas = valley_areas()
+    out = []
+    for t_h, x, y in sorted(raw):
+        mins = int(round(t_h * 60.0))
+        clock = int(round(FLIGHT_CLOCK_H * 60.0)) + mins            # minutes after midnight today (negative: before)
+        day = "today" if clock >= 0 else "yesterday" if clock >= -1440 else "2 days ago"
+        x, y = float(np.clip(x, x0, x1)), float(np.clip(y, y0, y1))
+        code = next((a.code for a in areas if a.rect[0] <= x <= a.rect[2] and a.rect[1] <= y <= a.rect[3]), "-")
+        out.append({"id": len(out) + 1, "day": day, "time": f"{(clock // 60) % 24:02d}:{clock % 60:02d}",
+                    "hours_ago": round(-mins / 60.0, 2), "x": round(x), "y": round(y), "area": code})
+    return out
+
+
+def valley_strikes(seed: int) -> list[dict]:
+    """The lightning strikes reported over ``seed``'s valley (see _strike_list), as a mission request sees them."""
+    return wildfire_valley(seed, n=1, strikes="all").strikes
+
+
+def wildfire_valley(seed: int = 0, n: int = 16, alert_rule: str = "forecast", approval: str = "auto",
+                    squads=None, patrol_s: float = PATROL_S, squad_script=None, station: str = "legacy",
+                    report_v2: bool = False, strikes=None) -> Scenario:
     """Scout a mountain valley for lightning fires, forecast their spread and warn the phones in their way.
 
     The morning after dry lightning, five fires smoulder in a valley between two ridges: one already
@@ -300,6 +351,16 @@ def wildfire_valley(seed: int = 0, n: int = 16, alert_rule: str = "forecast", ap
     phones only), which an operator can cancel or clear.
     Everything that is true here (spread, smoke, weather) is hidden from the station except through the
     drones' sensors and a weather forecast with errors; ``docs/WILDFIRE.md`` lists every assumption.
+
+    ``squads`` ("auto", "auto:F", "F6-N5-S5" or a dict) flies the drones as squads over ``valley_areas()``
+    instead, each patrolling its area on a circuit until ``patrol_s``; "auto" splits n by control.squads.allocate
+    ("auto:F" over the valley floor alone), and drones it cannot use stay in reserve. The fires, weather and phones are drawn first and do not depend on the squads, so a
+    seed is the same valley whatever flies it. ``squad_script`` lists operator orders, e.g.
+    [{"t": 300, "op": "move", "from": "F", "to": "N", "k": 4}]. ``station`` ("legacy" or "tight") sets when the
+    ground station counts a thermal find as the fire it already located by smoke, and ``report_v2`` adds scoring
+    keys (WildfireConfig); neither changes what flies. ``strikes`` ("all" or a list of strike ids) attaches the
+    night's lightning list (_strike_list) to the scenario, and with squads each squad starts its circuit on the
+    lane nearest the listed strikes in its area (control.squads.cue_lane); the strikes never change the valley.
     """
     from ..sim.fire import Moisture, Period
     from ..sim.terrain import FOREST, GRASS, SCRUB, valley
@@ -414,12 +475,26 @@ def wildfire_valley(seed: int = 0, n: int = 16, alert_rule: str = "forecast", ap
     world = World(cylinders=cyls, boxes=boxes, geofence_lo=(x0, y0, 0.0),
                   geofence_hi=(x1, y1, float(terrain.heights.max()) + 150.0), terrain=terrain)
     w0 = weather[6].wind_mps
+    strike_list, cue = None, []
+    if strikes is not None:
+        strike_list = _strike_list(seed, fires)
+        want = set() if strikes == "all" else {int(i) for i in strikes}
+        unknown = want - {k["id"] for k in strike_list}
+        if unknown:
+            raise ValueError(f"no strike {sorted(unknown)} on this seed; strikes are 1 to {len(strike_list)}")
+        for k in strike_list:
+            k["cue"] = k["id"] in want
+        cue = [(k["x"], k["y"]) for k in strike_list if k["cue"]]
+    flight = {}
+    if squads is not None and squads != "none":
+        flight = _valley_squads(n, squads, sensor, swath, float(patrol_s), squad_script, cue)
     # Fixed evacuation zones: south slopes, valley floor and north slopes, four across from west to east.
     zones = grid_zones([x0, bx0, 0.5 * (bx0 + bx1), bx1, x1], [y0, by0 - 30.0, by1 + 30.0, y1],
                        [("S", "South slopes"), ("F", "Valley floor"), ("N", "North slopes")], places)
     wildfire = WildfireConfig(fires=fires, weather=weather, weather_forecast=told, phones=phones, places=places,
-                              overhangs=overhangs, zones=zones, alerts=AlertPolicy(rule=alert_rule, approval=approval))
-    return Scenario(
+                              overhangs=overhangs, zones=zones, alerts=AlertPolicy(rule=alert_rule, approval=approval),
+                              station=station, report_v2=report_v2)
+    sc = Scenario(
         name="wildfire_valley",
         title="Wildfire valley",
         description=f"Lightning fires in a mountain valley: a {bx1 - bx0:.0f} x {by1 - by0:.0f} m thermal sweep line "
@@ -431,7 +506,51 @@ def wildfire_valley(seed: int = 0, n: int = 16, alert_rule: str = "forecast", ap
         wind=_wind_from(rng, math.hypot(*w0), sigma=1.0, local=0.4, direction_deg=math.degrees(math.atan2(w0[1], w0[0]))),
         targets=targets, sensor=sensor, wildfire=wildfire,
         use_case="wildfire scouting: finding fires, forecasting their spread and warning people in their way",
-        tags=("survey", "scouting", "wildfire", "terrain"),
+        tags=("survey", "scouting", "wildfire", "terrain"), strikes=strike_list,
+    )
+    return dataclasses.replace(sc, **flight) if flight else sc
+
+
+def _valley_squads(n, spec, sensor, swath, patrol_s, script, cue=()) -> dict:
+    """The Scenario fields for a squad patrol of the valley (see wildfire_valley); ``cue`` holds (x, y) points
+    each squad looks at first."""
+    from ..control.squads import allocate, build_squads, cue_lane, parse_counts
+    directive = Directive("line", SCOUT_SPACING_M, SCOUT_SPEED_MPS, SCOUT_ALTITUDE_M, 1.0, source="mission")
+    areas = valley_areas()
+    if isinstance(spec, str) and spec.lower().startswith("auto:"):
+        # The default split over some areas only, e.g. "auto:F" for the valley floor alone.
+        use = [a for a in areas if a.code in spec[5:].upper()]
+        if not use:
+            raise ValueError(f"bad squad spec {spec!r}: name areas after 'auto:', e.g. 'auto:F'")
+        got = allocate(n, use, directive, swath, patrol_s)
+        counts = {a.code: got.get(a.code, 0) for a in areas} | {"R": got["R"]}
+    elif (counts := parse_counts(spec)) == "auto":
+        counts = allocate(n, areas, directive, swath, patrol_s)
+    else:
+        counts = {a.code: int(counts.get(a.code, 0)) for a in areas} | {"R": int(counts.get("R", 0))}
+        unknown = set(parse_counts(spec)) - {a.code for a in areas} - {"R"}
+        if unknown:
+            raise ValueError(f"no area {sorted(unknown)}; the valley's areas are F, N and S")
+    starts = {a.code: cue_lane(a.rect, counts[a.code], directive.spacing_m, swath, cue)
+              for a in areas if counts.get(a.code, 0) > 0} if cue else None
+    squads = build_squads(counts, areas, directive, swath, starts)
+    flown = sum(len(sq.drones) for sq in squads)
+    if not flown:
+        raise ValueError("a squad patrol needs at least one drone in an area")
+    rects = [sq.rect for sq in squads]
+    area = (min(r[0] for r in rects), min(r[1] for r in rects), max(r[2] for r in rects), max(r[3] for r in rects))
+    names = ", ".join(f"{sq.name.lower()} {len(sq.drones)}" for sq in squads)
+    reserve = counts.get("R", 0)
+    return dict(
+        n=flown, squads=squads, squad_counts=counts, squad_areas=areas, patrol_s=patrol_s,
+        squad_script=[dict(o) for o in (script or [])],
+        waypoints=squads[0].waypoints, loop=True, end_when_done=False, duration_s=patrol_s,
+        sensor=dataclasses.replace(sensor, area=area),
+        description=(f"Lightning fires in a mountain valley, patrolled by squads ({names}"
+                     f"{f'; {reserve} in reserve' if reserve else ''}) for {patrol_s / 60:.0f} minutes, each a "
+                     f"thermal line abreast at {SCOUT_ALTITUDE_M:.0f} m above the trees on its own circuit, with smoke "
+                     "watch on the forward cameras, a spread forecast for the fire crews and automatic, checked zone "
+                     "alerts for simulated phones."),
     )
 
 
@@ -444,11 +563,15 @@ SCENARIOS = {
 ADAPTIVE = ("forest_trail", "urban_canyon", "gusty_day", "comms_degraded", "low_battery", "motor_failures")
 
 
-def make(name: str, seed: int = 0, n: int | None = None, **overrides) -> Scenario:
-    """Build a scenario by name. ``overrides`` replace any ``Scenario`` field afterwards."""
+def make(name: str, seed: int = 0, n: int | None = None, options: dict | None = None, **overrides) -> Scenario:
+    """Build a scenario by name. ``options`` are the builder's own keyword arguments (such as the wildfire
+    valley's ``squads``); ``overrides`` replace any ``Scenario`` field afterwards."""
     if name not in SCENARIOS:
         raise KeyError(f"unknown scenario {name!r}; choose from {', '.join(SCENARIOS)}")
-    sc = SCENARIOS[name](seed) if n is None else SCENARIOS[name](seed, n=n)
+    kw = dict(options or {})
+    if n is not None:
+        kw["n"] = n
+    sc = SCENARIOS[name](seed, **kw)
     return dataclasses.replace(sc, **overrides) if overrides else sc
 
 
