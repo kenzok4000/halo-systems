@@ -111,9 +111,11 @@ halo run wildfire_valley --config improved+rule --seed 4000 --n 16  # one valley
 halo serve --open                       # live 3D dashboard on http://127.0.0.1:8765; Ctrl-C stops it
 ```
 
+The dashboard opens on the incident: the wildfire valley starts flying with 16 drones and the rule supervisor, with the fire crew brief, the evacuation alerts (each with the operator's all-clear) and the log in front. The scenario, supervisor, seed and drone-count pickers and the disturbance buttons are under **Lab controls**; `?start=0` opens the page without starting a flight.
+
 Run the commands from the repository folder: the dashboard reads `results/` and `evidence/` from there. In the valley run, `targets_found` (3) and `all_found_s` (null) are the generic sweep metrics the scout uses: `targets_found` counts only fires a downward thermal camera held in view, and `all_found_s`, the time until it had all five, stays null because two of the five fires are out of its reach. The valley's own results are `fires_located` and `all_located_s`. CI runs the tests on Python 3.10 to 3.13 ([tests.yml](.github/workflows/tests.yml)).
 
-With no key, `halo serve` replays the recorded Nemotron 3 Nano flights: pick a scenario, a seed from 1000 to 1019 and the Nemotron supervisor, and every call is answered from `results/nemotron_cache.jsonl`, so the flight is the one in the results. On a seed or scenario that was not recorded, the rules take that step and the log says so. A new mission typed into the Mission tab is parsed by the regex baseline, and the page says why; only the default request and the examples can then be flown.
+With no key, `halo serve` replays the recorded Nemotron 3 Nano flights: in Lab controls, pick a scenario, a seed from 1000 to 1019 and the Nemotron supervisor, and every call is answered from `results/nemotron_cache.jsonl`, so the flight is the one in the results. On a seed or scenario that was not recorded, the rules take that step and the log says so. A new mission typed into the Mission tab is parsed by the regex baseline, and the page says why; only the default request and the examples can then be flown.
 
 To check one recorded Nemotron flight from the command line, exactly and with no key:
 
@@ -139,8 +141,8 @@ A spend guard refuses any call that could take the estimated total past `HALO_BU
 
 | Control | What happens |
 |---|---|
-| Scenario, seed, swarm size, controller, supervisor | Starts a new flight; the same seed gives the same conditions |
-| Gust front, motor failure, radio blackout | Injected into the running flight; the controller and supervisor react |
+| Lab controls: scenario, seed, swarm size, controller, supervisor | Starts a new flight; the same seed gives the same conditions |
+| Lab controls: gust front, motor failure, radio blackout | Injected into the running flight; the controller and supervisor react |
 | Formation buttons | An operator order, checked by the same safety validator as any directive |
 | Mission tab | Plain words to a mission plan with Nemotron, then fly it. Without a key, the regex baseline parses the request, and only the default request and the examples fly |
 | Decision log | Every directive with its source (mission, rules, Nemotron, fallback, operator) and reason |

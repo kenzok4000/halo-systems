@@ -40,22 +40,7 @@
     </nav>
 
     <div class="tab active" id="tab-fly">
-      <label>Scenario <select id="scenario"></select></label>
-      <p id="scenario-desc" class="muted"></p>
-      <div class="row">
-        <label>Supervisor
-          <select id="config">
-            <option value="original+fixed">Original controller, fixed plan</option>
-            <option value="improved+fixed">Improved controller, fixed plan</option>
-            <option value="improved+rule" selected>Improved + rule supervisor</option>
-            <option value="improved+nemotron" id="opt-nemotron">Improved + Nemotron supervisor</option>
-          </select>
-        </label>
-      </div>
-      <div class="row">
-        <label class="narrow">Seed <input id="seed" type="number" value="1000" min="0"></label>
-        <label class="narrow">Drones <input id="drones" type="number" placeholder="16" min="1" max="64"></label>
-      </div>
+      <p id="run-desc" class="run-desc muted">No flight running.</p>
       <div class="row">
         <button id="start" class="primary">Start flight</button>
         <div class="seg" id="speed">
@@ -64,29 +49,39 @@
         <button id="pause">Pause</button>
       </div>
 
-      <h3>Disturb the swarm</h3>
-      <div class="row wrap">
-        <button data-inject="gust">Gust front</button>
-        <button data-inject="motor_failure">Motor failure</button>
-        <button data-inject="blackout">Radio blackout</button>
-      </div>
-      <div class="row">
-        <select id="order-shape"><option>grid</option><option>line</option><option>column</option><option>v</option><option>ring</option></select>
-        <button id="order">Order formation</button>
-      </div>
+      <details id="lab" class="lab">
+        <summary><span class="lab-title">Lab controls</span> <span class="muted small">scenario, supervisor, seed, drones, disturbances</span></summary>
+        <div class="lab-body">
+          <label>Scenario <select id="scenario"></select></label>
+          <p id="scenario-desc" class="muted"></p>
+          <div class="row">
+            <label>Supervisor
+              <select id="config">
+                <option value="original+fixed">Original controller, fixed plan</option>
+                <option value="improved+fixed">Improved controller, fixed plan</option>
+                <option value="improved+rule" selected>Improved + rule supervisor</option>
+                <option value="improved+nemotron" id="opt-nemotron">Improved + Nemotron supervisor</option>
+              </select>
+            </label>
+          </div>
+          <div class="row">
+            <label class="narrow">Seed <input id="seed" type="number" value="1000" min="0"></label>
+            <label class="narrow">Drones <input id="drones" type="number" placeholder="16" min="1" max="64"></label>
+          </div>
+          <p class="muted small">Start flight, above, flies the scenario picked here.</p>
 
-      <h3>Live</h3>
-      <div class="stats">
-        <div><span class="k">Formation error</span><span class="v" id="m-err">–</span></div>
-        <div><span class="k">Closest pair</span><span class="v" id="m-sep">–</span></div>
-        <div><span class="k">Flying / lost / left</span><span class="v" id="m-fly">–</span></div>
-        <div><span class="k">Lost in crashes</span><span class="v" id="m-crash">–</span></div>
-        <div><span class="k">Battery, mean</span><span class="v" id="m-batt">–</span></div>
-        <div><span class="k">Speed</span><span class="v" id="m-speed">–</span></div>
-      </div>
-      <div class="progress"><div id="m-progress"></div></div>
-      <canvas id="spark" height="70"></canvas>
-      <p class="muted small">Formation error: distance from the ideal shape, in metres (formed below 1 m).</p>
+          <h3>Disturb the swarm</h3>
+          <div class="row wrap">
+            <button data-inject="gust">Gust front</button>
+            <button data-inject="motor_failure">Motor failure</button>
+            <button data-inject="blackout">Radio blackout</button>
+          </div>
+          <div class="row">
+            <select id="order-shape"><option>grid</option><option>line</option><option>column</option><option>v</option><option>ring</option></select>
+            <button id="order">Order formation</button>
+          </div>
+        </div>
+      </details>
 
       <div class="valley-only" hidden>
         <h3>Fire crew brief <span class="muted small" id="fc-when"></span></h3>
@@ -99,6 +94,19 @@
 
       <h3>Decisions and events <span id="ai-wait" class="muted small"></span></h3>
       <ol id="log"></ol>
+
+      <h3>Swarm</h3>
+      <div class="stats">
+        <div><span class="k">Formation error</span><span class="v" id="m-err">–</span></div>
+        <div><span class="k">Closest pair</span><span class="v" id="m-sep">–</span></div>
+        <div><span class="k">Flying / lost / left</span><span class="v" id="m-fly">–</span></div>
+        <div><span class="k">Lost in crashes</span><span class="v" id="m-crash">–</span></div>
+        <div><span class="k">Battery, mean</span><span class="v" id="m-batt">–</span></div>
+        <div><span class="k">Speed</span><span class="v" id="m-speed">–</span></div>
+      </div>
+      <div class="progress"><div id="m-progress"></div></div>
+      <canvas id="spark" height="70"></canvas>
+      <p class="muted small">Formation error: distance from the ideal shape, in metres (formed below 1 m).</p>
       <button id="export">Download this run (JSON)</button>
     </div>
 

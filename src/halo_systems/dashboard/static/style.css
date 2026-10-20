@@ -86,6 +86,21 @@ body.wide aside { width: min(1000px, 70vw); max-width: none; }
 table.headline th:not(:first-child), table.headline td:not(:first-child) { text-align: right; font-variant-numeric: tabular-nums; }
 .examples button { font-size: 12px; }
 pre { white-space: pre-wrap; font-size: 12px; background: var(--panel-2); padding: 8px; border-radius: 6px; }
+/* The Fly tab opens on the incident: what is flying, the run controls, then the lab controls folded away. */
+.run-desc { margin: 0 0 10px; font-size: 13px; }
+.run-desc b { color: var(--text); font-weight: 600; }
+.run-desc .desc { display: block; margin-top: 2px; font-size: 12px; }
+details.lab { border: 1px solid var(--line); border-radius: 8px; margin: 4px 0 6px; }
+details.lab > summary { cursor: pointer; padding: 7px 10px; font-weight: 600; list-style: none; display: flex; align-items: baseline; gap: 8px; }
+details.lab > summary::-webkit-details-marker { display: none; }
+details.lab > summary::before { content: "\25B8"; color: var(--accent); width: 10px; flex: none; }
+details.lab[open] > summary::before { content: "\25BE"; }
+details.lab > summary .lab-title { white-space: nowrap; }
+details.lab > summary .small { font-weight: 400; }
+details.lab > summary:hover, details.lab > summary:focus-visible { color: var(--accent); outline: none; }
+details.lab[open] > summary { border-bottom: 1px solid var(--line); }
+.lab-body { padding: 10px 10px 4px; }
+.lab-body h3:first-of-type { margin-top: 12px; }
 @media (max-width: 800px) {
   main { flex-direction: column; height: auto; }
   #view { height: 60vh; }

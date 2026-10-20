@@ -386,6 +386,9 @@ async function start(extra = {}) {
       approval: APPROVAL, ...extra });
   } catch (err) { alert(err.message); return; }
   view.build(run);
+  // What is flying, above the run controls: the lab controls that chose it may be folded away.
+  $("#run-desc").innerHTML = `<b>${esc(run.scenario.title)}</b>, in simulation: ${plural(run.n, "drone")}, ` +
+    `${esc($("#config").selectedOptions[0].textContent)}, seed ${run.seed}<span class="desc">${esc(run.scenario.description)}</span>`;
   if (cine) {
     // The side panel's disclosures, which the cinema layout hides: replayed calls and the drones' drawn size.
     const replay = /nemotron/.test($("#config").value) && status && status.mode === "replay" ? "Nemotron replayed from its recorded calls · " : "";
@@ -431,6 +434,34 @@ async function start(extra = {}) {
   });
   if (film) source.addEventListener("end", () => { source.close(); source = null; });
 }
+
+// ---------------------------------------------------------------- landing and lab controls
+// With no options, the page lands on the incident: the wildfire valley starts flying on its own, with the fire
+// crew brief, the evacuation alerts and the log in front, and the scenario, supervisor, seed and drone-count
+// pickers, the disturbances and formation orders behind the "Lab controls" toggle, folded at first. Each browser
+// remembers whether the toggle was left open. URL options: ?lab=1 opens the lab controls for this visit and
+// ?lab=0 folds them (neither is remembered); ?start=0 opens the page without starting a flight. Film mode and
+// the cinema layout never start one, since the recorder picks the flight and presses Start itself, and film
+// mode keeps the lab controls open, as its tools work the pickers.
+const PARAMS = new URLSearchParams(location.search);
+const LAB_FLAG = PARAMS.get("lab");
+const AUTOSTART = !FILM && CINEMA === null && PARAMS.get("start") !== "0";
+const LAB_KEY = "halo.labControls";
+{
+  let open = LAB_FLAG !== null ? LAB_FLAG !== "0" : FILM;
+  if (LAB_FLAG === null && !FILM) { try { open = localStorage.getItem(LAB_KEY) === "open"; } catch { /* storage blocked: folded */ } }
+  $("#lab").open = open;
+  $("#lab").addEventListener("toggle", () => {
+    if (LAB_FLAG !== null || FILM) return;
+    try { localStorage.setItem(LAB_KEY, $("#lab").open ? "open" : "closed"); } catch { /* not remembered, still works */ }
+  });
+}
+// A flight whose page has gone is stopped, so reloading the page does not leave flights running on the server.
+addEventListener("pagehide", (e) => {
+  if (!run || FILM || e.persisted) return;
+  fetch(`/api/runs/${run.id}/control`, { method: "POST", headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ stop: true }), keepalive: true }).catch(() => {});
+});
 
 // ---------------------------------------------------------------- UI wiring
 $$(".tabs button").forEach((b) => b.addEventListener("click", () => {
@@ -612,7 +643,15 @@ async function loadEvidence() {
 async function init() {
   scenarios = await api("/api/scenarios");
   $("#scenario").innerHTML = scenarios.map((s) => `<option value="${s.name}">${esc(s.title)}</option>`).join("");
-  $("#scenario").value = "forest_trail";
+  // The landing flies the wildfire valley with the page's own defaults (a reload's remembered form values are
+  // dropped); film mode and the cinema layout start on the forest trail, as their tools expect.
+  const landing = !FILM && CINEMA === null && scenarios.some((s) => s.name === "wildfire_valley");
+  $("#scenario").value = landing ? "wildfire_valley" : "forest_trail";
+  if (landing) {
+    $("#config").value = "improved+rule";
+    $("#seed").value = $("#seed").defaultValue;
+    $("#drones").value = "";
+  }
   $("#scenario").dispatchEvent(new Event("change"));
   status = await api("/api/status");
   const pill = $("#ai-pill");
@@ -622,5 +661,6 @@ async function init() {
     pill.classList.add("on");
   }
   else { pill.textContent = status.key_present ? "Nemotron: no model set" : "Nemotron not configured (rules only)"; $("#opt-nemotron").disabled = true; }
+  if (AUTOSTART && landing && !run) start();
 }
 init();

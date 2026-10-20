@@ -63,7 +63,9 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
     recordVideo: { dir: dirname(out), size: { width: 1920, height: 1080 } } });
   const page = await context.newPage();
   page.on("pageerror", (e) => console.error("page error:", e.message));
-  await page.goto(args.approval ? `${url}/?approval=${encodeURIComponent(args.approval)}` : url);
+  // lab=1 opens the page's lab controls, which Playwright's clicks need visible; start=0 stops the page from
+  // starting its own wildfire valley flight, so the one picked here is the only one.
+  await page.goto(`${url}/?lab=1&start=0${args.approval ? `&approval=${encodeURIComponent(args.approval)}` : ""}`);
   await page.waitForFunction(() => document.querySelectorAll("#scenario option").length > 0);
   await page.waitForFunction(() => !/checking/.test(document.querySelector("#ai-pill").textContent));
 
