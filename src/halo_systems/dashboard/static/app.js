@@ -52,6 +52,7 @@ window.haloFilm = {
     const t = this.step(0, dtSim);
     if (view.wildfire) view.wildfire.warm();
     if (cine) cine.clearNotices();   // what happened in the skipped stretch is not news when the shot starts
+    view.cut = true;                 // and the camera lands where it should be, rather than gliding from where it was
     return t;
   },
 };
@@ -194,15 +195,19 @@ function onValleyEvent(e) {
         `${e.text ? `<div class="why">${esc(e.text)}</div>` : ""}`);
       valley.told[e.fire] = e.t;
       if (cine) {
-        // The updates sent with one forecast share a notice, led by a spreading fire's (else the first).
+        // The updates sent with one forecast share a notice. It leads with the one that matters most: a spreading
+        // fire on the move, then a new fire, then one that now reaches a place, then the fastest; withdrawals last.
         const key = `crew@${e.t}`, d = cine.live(key) || { all: [] };
         d.all.push(e);
-        const lead = d.all.find((u) => u.head_bearing_deg != null && !/smouldering/.test(u.headline || "")) || d.all[0];
-        const withdrawn = lead.head_bearing_deg == null && /^(merged into|no longer tracked)/.test(lead.reason || "");
+        const gone = (u) => u.head_bearing_deg == null && /^(merged into|no longer tracked)/.test(u.reason || "");
+        const rank = (u) => gone(u) ? 4 : u.head_bearing_deg != null && !/smouldering/.test(u.headline || "") ? 0
+          : /new fire/.test(u.reason || "") ? 1 : /reaches/.test(u.reason || "") ? 2 : 3;
+        const lead = d.all.slice().sort((a, b) => rank(a) - rank(b) || (b.head_m_per_min || 0) - (a.head_m_per_min || 0))[0];
         const lr = lead.reason ? `${lead.reason.charAt(0).toUpperCase()}${lead.reason.slice(1)}` : "";
-        const more = d.all.length - 1;
+        const more = d.all.length - 1, fresh = d.all.filter((u) => u !== lead && /new fire/.test(u.reason || "")).map((u) => `Fire ${u.fire + 1}`);
         cine.notice("crew", `Crew update: ${lead.headline || `Fire ${lead.fire + 1}`}`,
-          `${withdrawn ? "Disregard its earlier brief" : lr}${more ? ` · ${more} more fire${more === 1 ? "" : "s"} updated` : ""} · to ${lead.to || "crew tablets and radio (simulated)"}`, key, d);
+          `${gone(lead) ? "Disregard its earlier brief" : lr}${more ? ` · ${more} more fire${more === 1 ? "" : "s"} updated` : ""}` +
+          `${fresh.length ? ` (new: ${fresh.join(", ")})` : ""} · to ${lead.to || "crew tablets and radio (simulated)"}`, key, d);
       }
       drawValley();
       return true;
@@ -389,6 +394,10 @@ async function start(extra = {}) {
   $$(".scout-only").forEach((el) => { el.style.display = run.sensor ? "" : "none"; });
   $$(".hotspot-only").forEach((el) => { el.style.display = run.sensor && !run.wildfire ? "" : "none"; });
   $$(".valley-only").forEach((el) => { el.hidden = !run.wildfire; });
+  if (!run.wildfire && view.mode === "fire") {   // the fire view's button is gone: back to the default view
+    view.setMode("follow");
+    $$("#viewbtns button").forEach((b) => b.classList.toggle("active", b.id === "view-reset"));
+  }
   valley = run.wildfire ? { located: 0, smoke: 0, warned: 0, brief: [], briefT: null, alerts: new Map(), approval: APPROVAL,
     zones: run.wildfire.zones || [], levels: run.wildfire.levels || {}, zonesLevel: [], told: {} } : null;
   drawValley();

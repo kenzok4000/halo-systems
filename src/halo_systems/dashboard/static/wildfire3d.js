@@ -24,7 +24,7 @@ const LEVEL_RGB = { evacuate: "220,40,60", warning: "245,140,30", ...ZONE_RGB };
 // The station's compass words (sim/wildfire.py compass), 22.5 degrees apart anticlockwise from east.
 const COMPASS = ["east", "east-northeast", "northeast", "north-northeast", "north", "north-northwest", "northwest", "west-northwest",
   "west", "west-southwest", "southwest", "south-southwest", "south", "south-southeast", "southeast", "east-southeast"];
-const HEAD_MIN = 60;   // a head arrow runs to where the forecast puts the fire's head this many minutes from now
+const HEAD_MIN = 60;   // a head arrow runs to where the brief puts the fire's head this many minutes from now (head_xy)
 const GROW_S = 1.6;    // view seconds an arrow takes to draw itself out when the crews are told of its fire
 // A phone's dot, by the latest alert level it received (0: none or cleared).
 const PHONE_RGB = { 0: [0.93, 0.95, 0.97], 1: [1.0, 0.62, 0.12], 2: [1.0, 0.24, 0.24], 3: [1.0, 0.26, 0.22], 4: [0.74, 0.38, 1.0], 5: [0.2, 0.2, 0.24] };
@@ -43,7 +43,8 @@ export class WildfireLayer {
     this.zoneLevel = this.zones.map(() => 0);
     this.forecast = null;        // the latest forecast event
     this.told = new Map();       // fire -> simulated time of its latest crew update
-    this.arrows = new Map();     // fire -> its head arrow { mesh, tags, L, born }
+    this.arrows = new Map();     // fire -> its head arrow { mesh, tags, L, born, pending }
+    this.into = new Map();       // a merged fire -> the fire it was merged into
     this.t = 0;
     this.group = new THREE.Group();
     view.world.add(this.group);
@@ -175,6 +176,10 @@ export class WildfireLayer {
   // -- per frame and per event --------------------------------------------------------------------
   frame(f) {
     this.t = f.t;
+    for (const r of this.arrows.values()) if (r.pending) {
+      r.pending = false; r.mesh.material.uniforms.uGrow.value = 1e6;
+      for (const t of r.tags) t.material.opacity = 1;
+    }
     if (f.fires_state) f.fires_state.forEach((s) => { this.state[s.id] = s; });
     if (!this.warmed) { this.warmed = true; this.warm(); }
     if (f.phones_alerted) this._colourPhones(f.phones_alerted);
@@ -204,6 +209,8 @@ export class WildfireLayer {
       this._drawBands();
       this._heads();
       this.view.overlayDirty = true;
+    } else if (e.kind === "fire_merged") {
+      this.into.set(e.fire, e.into);
     } else if (e.kind === "crew_update") {
       // The crews were told about this fire with this forecast: its arrow draws itself out from the fire.
       this.told.set(e.fire, e.t);
@@ -492,11 +499,10 @@ export class WildfireLayer {
       if (!(b.head_m_per_min > 0)) continue;
       const spreading = b.state === "spreading", sure = b.cone_deg == null || b.cone_deg < 90;
       if (!spreading && !sure) continue;
+      // Straight from the head along the brief's own bearing to its 1-hour head, so the arrow, the shaded cone and
+      // the card's speed all agree. (head_track can wander off that bearing early on, or turn back, so it is not drawn.)
       let pts, mins = HEAD_MIN, timed = true;
-      if (b.head_from_xy && Array.isArray(b.head_track) && b.head_track.length) {
-        pts = [b.head_from_xy, ...b.head_track.map(([, x, y]) => [x, y])];
-        mins = b.head_track[b.head_track.length - 1][0];
-      } else if (b.head_from_xy && b.head_xy) pts = [b.head_from_xy, b.head_xy];
+      if (b.head_from_xy && b.head_xy) pts = [b.head_from_xy, b.head_xy];
       else {
         const l = this.located.find((q) => q.id === b.fire), k = COMPASS.indexOf(b.direction);
         if (!l || k < 0) continue;
@@ -506,7 +512,10 @@ export class WildfireLayer {
       }
       const arrow = this._ribbon(pts, spreading ? (sure ? 0.95 : 0.55) : 0.4, spreading ? 1 : 0.55);
       if (!arrow) continue;
-      const rec = { mesh: arrow.mesh, tags: [], L: arrow.L, born: null };
+      // Hidden until the next frame: the crews' update for this forecast comes just after it and grows the arrow;
+      // an arrow nobody was told about then shows at full length (frame()).
+      const rec = { mesh: arrow.mesh, tags: [], L: arrow.L, born: null, pending: true };
+      arrow.mesh.material.uniforms.uGrow.value = 0;
       this.arrows.set(b.fire, rec);
       this.heads.push(arrow.mesh);
       this.group.add(arrow.mesh);
@@ -517,15 +526,7 @@ export class WildfireLayer {
         tag.position.copy(arrow.tip).add(new THREE.Vector3(0, 6, 0));
         tag.scale.multiplyScalar(0.8);
         rec.tags.push(tag);
-        // Where the head is forecast to be in an hour, when the arrow runs on past it.
-        const hour = timed && mins > 60 && b.head_track.find(([m]) => m === 60);
-        if (hour) {
-          const [, x, y] = hour, mark = this.view._label("1 h", "#ffc58a");
-          mark.position.set(x, this.view.groundAt(x, y) + this._canopy(x, y) + 15, -y);
-          mark.scale.multiplyScalar(0.7);
-          rec.tags.push(mark);
-        }
-        for (const t of rec.tags) { this.heads.push(t); this.group.add(t); }
+        for (const t of rec.tags) { t.material.opacity = 0; this.heads.push(t); this.group.add(t); }
       }
       if (this.told.get(b.fire) === this.forecast.t) this._grow(b.fire);
     }
@@ -535,6 +536,7 @@ export class WildfireLayer {
   _grow(fire) {
     const r = this.arrows.get(fire);
     if (!r || r.born != null) return;
+    r.pending = false;
     r.born = this.view.vt;
     this.tick(this.view.vt);
   }
@@ -551,14 +553,14 @@ export class WildfireLayer {
   // What the fire camera frames: the fire's forecast head path from the front now (fire: 0-based; null picks the
   // fastest spreading fire), or the located fire while the station has no direction for it.
   shot(fire) {
+    for (let k = 0; fire != null && this.into.has(fire) && k < 50; k++) fire = this.into.get(fire);   // a merged fire: the one it joined
     const brief = (this.forecast && this.forecast.brief) || [];
     const b = fire != null ? brief.find((q) => q.fire === fire)
       : brief.filter((q) => q.state === "spreading" && q.head_bearing_deg != null).sort((p, q) => q.head_m_per_min - p.head_m_per_min)[0];
     if (b && b.head_bearing_deg != null && b.head_from_xy) {
-      const tr = Array.isArray(b.head_track) && b.head_track.length ? b.head_track[b.head_track.length - 1] : null;
-      const end = tr ? [tr[1], tr[2]] : b.head_xy;
+      const end = b.head_xy;
       const dx = end ? end[0] - b.head_from_xy[0] : 0, dy = end ? end[1] - b.head_from_xy[1] : 0, len = Math.hypot(dx, dy);
-      // The arrow's own direction where it has one (a head track can bend), else the brief's bearing.
+      // The arrow's direction (to the 1-hour head), else the brief's bearing.
       const bearing = len > 5 ? (Math.atan2(dx, dy) * 180) / Math.PI : b.head_bearing_deg;
       return { x: b.head_from_xy[0], y: b.head_from_xy[1], bearing, len: Math.max(80, len) };
     }
@@ -575,7 +577,10 @@ export class WildfireLayer {
     }
     if (path.length < 3) return null;
     const lift = path.map(([x, y]) => v.groundAt(x, y) + this._canopy(x, y) + 9);
-    const h = lift.map((_, i) => Math.max(...lift.slice(Math.max(0, i - 4), i + 5)));   // no dips between treetops
+    // No dips between treetops, and gentle ramps at a forest's edge: the highest point within 56 m, averaged over
+    // 40 m (each averaged value covers the point's own 16 m, so the ribbon still clears everything under it).
+    const top = lift.map((_, i) => Math.max(...lift.slice(Math.max(0, i - 14), i + 15)));
+    const h = top.map((_, i) => { const w = top.slice(Math.max(0, i - 10), i + 11); return w.reduce((a, b) => a + b, 0) / w.length; });
     const len = [0];
     for (let i = 1; i < path.length; i++) len.push(len[i - 1] + Math.hypot(path[i][0] - path[i - 1][0], path[i][1] - path[i - 1][1]));
     const L = len[len.length - 1], W = thin * Math.max(3.5, Math.min(9, L * 0.03)), headL = Math.min(L * 0.3, W * 4.2);

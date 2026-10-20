@@ -1250,9 +1250,10 @@ export class SwarmView {
   // cut: jump straight to the new view instead of gliding there (the recorder's camera program cuts between views).
   setMode(mode, cut = false) {
     this.mode = mode;
+    this.fireLook = this.fireHold = null;
     if (cut) {
       this.cut = true;
-      if (this.ride) this.ride.offset = this.ride.target = null;
+      if (this.ride) this.ride.offset = this.ride.target = this.ride.aim = null;
       if (this.swarmCentre) this.focus.copy(this.swarmCentre);
     }
     // A longer lens close up, so the drone fills the frame without the camera sitting on it.
@@ -1460,7 +1461,7 @@ export class SwarmView {
     if (this.mode === "ride" && !this.userMoved && this._rideCamera(dt)) return;
     if (this.mode === "close" && !this.userMoved && this._closeCamera(dt)) return;
     if (this.mode === "fire" && !this.userMoved && this._fireCamera(dt, snap)) return;
-    if (this.swarmCentre) {
+    if (this.swarmCentre && this.mode !== "fire") {   // a user turning the fire view keeps looking at the fire
       const delta = this.swarmCentre.clone().sub(this.focus).multiplyScalar(k);
       this.focus.add(delta);
       this.camera.position.add(delta);   // every mode moves with the swarm; the user's own angle and zoom are kept
@@ -1497,24 +1498,33 @@ export class SwarmView {
     this.aim = this.aim == null ? aim : this.aim + (aim - this.aim) * k;
     this.controls.target.set(f.x, f.y + this.aim, f.z);
   }
-  // Fire (the wildfire valley): from behind and above a fire, looking along the path the station forecasts for
-  // its head, drifting slowly from side to side; it glides to each new forecast. fireTarget picks the fire
+  // Fire (the wildfire valley): from above a fire, behind and to one side, looking along the path the station
+  // forecasts for its head, drifting slowly; it glides to each new forecast. fireTarget picks the fire
   // (0-based; null: the fastest spreading one). zoom scales the distance.
   _fireCamera(dt, snap) {
     const s = this.wildfire && this.wildfire.shot(this.fireTarget);
     if (!s) return false;
     // With no forecast direction yet, look at the fire from where the camera already is.
+    // The angle is worked out once and kept: worked out afresh each frame, the sideways drift would circle the fire.
     let b = s.bearing == null ? null : (s.bearing * Math.PI) / 180;
-    if (b == null) { const cp = this.camera.position; b = Math.atan2(s.x - cp.x, s.y + cp.z); }
+    if (b == null) {
+      const h = this.fireHold, cp = this.camera.position;
+      if (!h || h.x !== s.x || h.y !== s.y) this.fireHold = { x: s.x, y: s.y, b: Math.atan2(s.x - cp.x, s.y + cp.z) };
+      b = this.fireHold.b;
+    } else this.fireHold = null;
     const hx = Math.sin(b), hy = Math.cos(b);   // the head's way, in simulated x (east) and y (north)
     this.fireT = (this.fireT || 0) + dt;
+    // From behind and to the left of the head's path (about 50 degrees round), so the arrow runs up and to the left
+    // across the frame, clear of the cards on the right; the aim sits a little right of the path for the same reason.
     const mid = s.len * 0.42, mx = s.x + hx * mid, my = s.y + hy * mid;
-    const dist = Math.max(170, s.len * 1.05) * this.zoom, side = 0.3 * Math.sin(this.fireT * 0.11);
-    const cx = mx - hx * dist + hy * dist * side, cy = my - hy * dist - hx * dist * side;
-    const want = new THREE.Vector3(cx, this.groundAt(mx, my) + dist * 0.36, -cy);
-    const look = new THREE.Vector3(mx, this.groundAt(mx, my) + 6, -my);
+    const dist = Math.max(170, s.len * 1.1) * this.zoom, a = 0.88 + 0.12 * Math.sin(this.fireT * 0.11);
+    const fx = hx * Math.cos(a) + hy * Math.sin(a), fy = hy * Math.cos(a) - hx * Math.sin(a);   // the camera's forward
+    const cx = mx - fx * dist, cy = my - fy * dist, ax = mx + fy * dist * 0.12, ay = my - fx * dist * 0.12;
+    const want = new THREE.Vector3(cx, this.groundAt(mx, my) + dist * 0.5, -cy);
+    const look = new THREE.Vector3(ax, this.groundAt(mx, my) + 6, -ay);
     const k = snap ? 1 : this.film ? Math.min(1, dt * 1.6) : 1 - Math.exp(-dt * 1.6);
-    if (!this.fireLook) { this.fireLook = look.clone(); this.camera.position.copy(want); }
+    // A fire found mid-shot: glide to it from where the camera looks now (a programmed cut lands at once, k = 1).
+    if (!this.fireLook) this.fireLook = this.controls.target.clone();
     this.camera.position.lerp(want, k);
     this.fireLook.lerp(look, k);
     const cp = this.camera.position, floor = (this.sceneryHeight ? this.sceneryHeight(cp.x, -cp.z) : 0) + 12;
@@ -1559,12 +1569,14 @@ export class SwarmView {
     if (!r.offset) r.offset = want.clone().sub(p);
     r.offset.lerp(want.clone().sub(p), this.film ? Math.min(1, dt * 2) : 1 - Math.exp(-dt * 2));
     this.camera.position.copy(p).add(r.offset);
-    if (!r.target) r.target = look.clone();
-    r.target.lerp(look, this.film ? Math.min(1, dt * 5) : 1 - Math.exp(-dt * 5));
+    // The aim is smoothed relative to the drone too: smoothed in the world, it trails a metre behind a drone
+    // flying at 5 m/s, which from 1.6 m away puts the drone out of the frame.
+    if (!r.aim) r.aim = look.clone().sub(p);
+    r.aim.lerp(look.clone().sub(p), this.film ? Math.min(1, dt * 5) : 1 - Math.exp(-dt * 5));
     const cp = this.camera.position, floor = (this.sceneryHeight ? this.sceneryHeight(cp.x, -cp.z) : 0) + 1.5;
     if (cp.y < floor) cp.y = floor;
     this.focus.copy(p);
-    this.controls.target.copy(r.target);
+    this.controls.target.copy(p).add(r.aim);
     return true;
   }
 

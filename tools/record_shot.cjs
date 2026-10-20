@@ -16,7 +16,7 @@
 // nearest the swarm's centre; fire, in the wildfire valley, looks along the forecast head of the fastest spreading
 // fire, or of fire N with --fire N, counted from 1 as on screen), --seconds (default 15), --out (default video/shot.webm),
 // --scroll (scroll the side panel while recording).
-// --zoom Z (with --film) pulls the camera back Z times its usual distance in the follow, chase, orbit and top views;
+// --zoom Z (with --film) pulls the camera back Z times its usual distance in the follow, chase, orbit, top, close and fire views;
 // --panel alerts|brief|log (with --film) keeps that section of the side panel at its top in every frame.
 // --cinema (with --film) films the cinema layout: the 3D view fills the frame, with the flight's title, clock,
 // counts, the fire crew brief and alerts on cards over it, and notices of what just happened (with a typed
@@ -134,6 +134,8 @@ async function film() {
   }).sort((a, b) => a.at - b.at);
   if (program.length) { args.view = program[0].mode; args.zoom = String(program[0].zoom); }
   if (args.fire && !(Number.isInteger(Number(args.fire)) && Number(args.fire) >= 1)) throw new Error("--fire takes a fire number, counted from 1");
+  const usesFire = args.view === "fire" || program.some((c) => c.mode === "fire");
+  if (args.fire && !usesFire) console.warn("--fire picks the fire for the fire view, which this shot does not use; ignored");
   const panel = { alerts: "#zones", brief: "#brief", log: "#log" }[args.panel];
   if (args.panel && !panel) throw new Error("--panel takes alerts, brief or log");
   const actions = (kind, num) => (args[kind] || "").split(",").filter(Boolean).map((s) => s.split("@"))
@@ -203,6 +205,7 @@ async function film() {
   }
   // The run exists, and the drone model has loaded (or failed, and simple drones are drawn).
   await page.waitForFunction(() => { const s = window.haloFilm.status(); return s !== null && s.model !== "loading"; }, null, { timeout: 120000 });
+  if ((usesFire || args.fire) && !(await page.evaluate(() => !!window.haloView.wildfire))) throw new Error("--view fire and --fire need the wildfire valley");
   await click('#speed button[data-speed="5"]');   // buffer as fast as the server's pacing allows
   if (args.view) await click(`#view-${args.view === "follow" ? "reset" : args.view}`);
   if (args["ride-drone"]) await page.evaluate((i) => { window.haloView.rideDrone = i; window.haloView.ride = null; }, Number(args["ride-drone"]));
@@ -248,7 +251,7 @@ async function film() {
     await page.evaluate((ds) => window.haloFilm.seek(ds), Math.max(0, end - preSim - st.played_s));
     for (let k = 0; k < pre; k++) await page.evaluate(([dv, ds]) => window.haloFilm.step(dv, ds), [1 / fps, preSim / pre]);
   }
-  let cue = 1;
+  let cue = 1, unframed = 0;
   for (let k = 0; k < frames; k++) {
     if (cue < program.length && k / fps >= program[cue].at) {
       const c = program[cue++];
@@ -256,11 +259,14 @@ async function film() {
         document.querySelectorAll("#viewbtns button").forEach((b) => b.classList.toggle("active", b.id === `view-${m === "follow" ? "reset" : m}`)); }, [c.mode, c.zoom]);
     }
     await page.evaluate(([dv, ds]) => window.haloFilm.step(dv, ds), [1 / fps, k || from > 0 ? playback / fps : 0]);
+    // The fire view with no fire to frame yet (not located, or no such fire): count the frames, to warn at the end.
+    if (usesFire && !(await page.evaluate(() => { const v = window.haloView; return v.mode !== "fire" || !!v.wildfire.shot(v.fireTarget); }))) unframed++;
     await pinPanel();
     // The first frame also compiles every shader, which takes a while without a GPU.
     await shoot();
     if (k % fps === 0) process.stdout.write(`\r${k}/${frames} frames`);
   }
+  if (unframed) console.warn(`\nthe fire view had no ${args.fire ? `Fire ${args.fire}` : "fire"} to frame in ${unframed} of ${frames} frames`);
   return encode(browser, dir, fps);
 }
 

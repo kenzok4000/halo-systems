@@ -141,20 +141,24 @@ export class Cinema {
       const k = COMPASS.indexOf(b.direction), compass = b.head_bearing_deg != null;
       const deg = compass ? 90 - b.head_bearing_deg : k >= 0 ? k * 22.5 : null;
       const dir = compass ? word(b.head_bearing_deg) : k >= 0 ? SHORT[k] : esc(b.direction);
-      const within = b.cone_deg != null && b.cone_deg < 90 ? ` <span class="cone">±${Math.round(b.cone_deg)}°</span>` : b.cone_deg != null ? ' <span class="cone">direction uncertain</span>' : "";
+      const sure = b.cone_deg == null || b.cone_deg < 90;
+      const within = b.cone_deg != null && sure ? ` <span class="cone">±${Math.round(b.cone_deg)}°</span>` : !sure ? ' <span class="cone">(direction uncertain)</span>' : "";
       // A smouldering fire's numbers are the station's what-if forecast, as its own brief text says.
       const ifs = b.state === "smouldering";
       const where = (b.places || []).slice(0, 1).map((p) => `${ifs ? "could reach" : "reaches"} ${esc(p.name)} ${p.eta_min < 1 ? "now" : `in about ${p.eta_min} min`}`);
       // Why it runs that way: what drives the head (the brief's main driver, with the measured wind) and the fuel ahead.
-      const d = b.drivers, by = d && { wind: "the wind", slope: "the slope", "wind and slope": "the wind and the slope" }[d.main];
+      // A smouldering fire's drivers are what-ifs too ("would be pushed"). The slope pushes the head uphill, so only
+      // the wind gets a "from".
+      const d = b.drivers, from = d && d.wind_from_deg != null ? ` from ${word(d.wind_from_deg)}` : "";
+      const by = d && { wind: `by the wind${from}`, slope: "up the slope", "wind and slope": `by the wind${from} and up the slope` }[d.main];
       const drive = !d || !(b.head_m_per_min > 0) ? [] : [
-        by ? `pushed by ${by}${d.main !== "slope" && d.wind_from_deg != null ? ` from ${word(d.wind_from_deg)}` : ""}` : d.main === "fuel" ? "following the fuel" : "",
+        by ? `${ifs ? "would be pushed" : "pushed"} ${by}` : d.main === "fuel" ? (ifs ? "would follow the fuel" : "following the fuel") : "",
         d.against ? `held back by the ${esc(d.against)}` : "",
         d.fuel_ahead && d.fuel_ahead.length ? `into ${esc(d.fuel_ahead[0].fuel)}` : ""].filter(Boolean);
       const told = valley.told && valley.briefT != null && valley.told[b.fire] === valley.briefT;
       return `<li>${deg != null ? rose(deg, b.cone_deg) : '<span class="rose-none">·</span>'}<div>` +
         `<b>Fire ${b.fire + 1}</b> <span class="st ${esc(b.state)}">${esc(b.state)}</span>${told ? ' <span class="st told">crews updated</span>' : ""}` +
-        `<div class="line">${b.head_m_per_min > 0 ? `${ifs ? "if it takes off:" : "head runs"} <b>${dir}</b>${within} at ${fmt(b.head_m_per_min)} m/min` : esc(b.direction || "not spreading")}${b.area_1h_ha != null ? ` · ${fmt(b.area_1h_ha)} ha in 1 h` : ""}</div>` +
+        `<div class="line">${b.head_m_per_min > 0 ? `${ifs ? "if it takes off:" : sure ? "head runs" : "head most likely"} <b>${dir}</b>${within} at ${fmt(b.head_m_per_min)} m/min` : esc(b.direction || "not spreading")}${b.area_1h_ha != null ? ` · ${fmt(b.area_1h_ha)} ha in 1 h` : ""}</div>` +
         (drive.length ? `<div class="line why-line">${drive.join(" · ")}</div>` : "") + (where.length ? `<div class="line">${where[0]}</div>` : "") + "</div></li>";
     });
     const more = fires.length > 3 ? `<li class="more">and ${fires.length - 3} more</li>` : "";
