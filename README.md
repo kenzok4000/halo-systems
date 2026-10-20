@@ -12,10 +12,10 @@
 
 Lightning fires are the hard ones to catch early. Across 42 datasets, the median time from a lightning strike to the fire being detected ranges from 1.4 to 53.6 hours ([Moris et al. 2023](https://doi.org/10.5194/essd-15-1151-2023)). In May 2019 a lightning strike in northern Alberta most likely started a fire at 18:08. It "held over and grew during the daytime heating", and a lookout first saw it at 13:22 the next day, already 20 hectares. That was the Chuckegg Creek wildfire. It burned 350,135 hectares, took 98 days to bring under control and forced the evacuation of the Town of High Level ([Spring 2019 Wildfire Review](https://open.alberta.ca/dataset/5fa709d9-d70a-4176-a1b8-e097abafa9fe/resource/f42b9020-69e0-4d2c-984b-68ad33761f10/download/af-spring-2019-wildfire-review-final-report.pdf)).
 
-**Who it is for.** The detection team of a wildland fire agency, on the morning after lightning. Agencies already fly this job: Alberta's patrol aircraft "typically follow lightning storms", guided by lightning detection. From 2015 to 2019 they made 12.2% of the province's wildfire detections, at an average of CAD 9.6 million a year (the same review, table 12).
+**Who it is for.** The detection team of a wildland fire agency, on the morning after lightning. Agencies already fly this job: Alberta's patrol aircraft are "informed by lightning monitoring systems to target patrols in areas of lightning activity". From 2015 to 2019 they made 12.2% of the province's wildfire detections, at an average of CAD 9.6 million a year (the same review, table 12), an estimated USD 51,000 for each fire they found ([docs/PATROL_COST.md](docs/PATROL_COST.md)).
 
 **What Halo does.** In simulation, sixteen small drones sweep a 500 x 300 m block of a mountain valley floor, with thermal cameras looking down and cameras looking ahead for smoke. For each fire they find:
-* the crew gets its position, to within about 8 m (median), and which way its head will run, worked out from the wind the swarm measured, the slope and the fuel ahead;
+* the crew gets its position, to within about 5 m (median), and which way its head will run, worked out from the wind the swarm measured, the slope and the fuel ahead;
 * the phones in the evacuation zones in its path are warned automatically by fixed rules, and an operator can cancel an alert or give a zone the all-clear.
 
 Next: mountain search and rescue, the same sweep looking for a person's heat signature instead of a hotspot. It has not been measured yet.
@@ -24,7 +24,8 @@ Next: mountain search and rescue, the same sweep looking for a person's heat sig
 * Sixteen drones found 59% of 100 fires while they still smouldered. They reported 60 of the 100 before the earliest of today's four methods, a median 69 minutes sooner (seeds 4000-4019). On 20 fresh valleys it was 62 of 100, by 62 minutes (seeds 7000-7019).
 * The crews' briefs put each fire's head a median 14 degrees off its true direction, against 22 for running straight downwind: a modest gain (seeds 7000-7019).
 * 94.7% of the phones the fire reached were warned before it arrived, a median 126 minutes ahead. Against alerting by distance alone, the forecast told 24 fewer phones per flight to evacuate that the fire did not reach within 3 hours (seeds 4000-4019).
-* The scout drone is a priced design from off-the-shelf parts: USD 1,095 each, USD 20,281 for sixteen with a ground station and spares ([hardware/](hardware/README.md)).
+
+**What it would cost, as an estimate.** The scout drone is a priced design from off-the-shelf parts: USD 1,095 each, USD 20,281 for sixteen with a ground station and spares ([hardware/](hardware/README.md)). With a crew of two, a 16-drone squad would cost about USD 840 a patrol day and check about 29 lightning strikes, about USD 29 a strike. In Alberta, a fire attacked on time that still escaped cost an average USD 2.2 million (CAD 3.1 million) to suppress, against USD 14,600 for one attacked on time and held (2011-2019, moderate hazard); US federal suppression comes to about USD 0.67 to 1.35 million for each escaped fire. So a squad's 120-day season, about USD 100,000, pays for itself on suppression alone if it keeps one fire from escaping every 21 seasons at Alberta's figure, or every 6 to 13 at the US ones ([docs/PATROL_COST.md](docs/PATROL_COST.md)).
 
 **Where NVIDIA Nemotron works, on Nebius Token Factory.** It never flies the drones and never decides an alert. It turns an operator's plain words into a checked mission plan: on 20 held-out requests Nemotron 3 Nano got 18 fully right and a regex parser 9. It supervises the swarm's formation every 5 seconds in nine flight scenarios, slightly better than tuned rules in 4 and worse in none. It also works as a test engineer, finding 39 distinct conditions that make the swarm fail in 200 flights, 2.6 times the best classical search. Every plan it makes passes a safety check first. The valley flights above used the hand-written rule supervisor.
 
@@ -250,9 +251,9 @@ The committed rows already hold every flight, so these commands write to a new `
 | [src/halo_systems/dashboard/](src/halo_systems/dashboard) | The live 3D dashboard (`halo serve`) |
 | [results/](results/README.md) | Every committed result, with the rows behind it |
 | [evidence/](evidence/README.md) | The live end-to-end check against Token Factory, and the spend ledger's total |
-| [docs/](docs/README.md) | Results, architecture, the benchmark protocol, Nemotron and Nebius notes, reproduction commands and a code tour, in reading order; the wildfire valley's methods and sources in [WILDFIRE.md](docs/WILDFIRE.md) |
+| [docs/](docs/README.md) | Results, architecture, the benchmark protocol, Nemotron and Nebius notes, reproduction commands and a code tour, in reading order; the wildfire valley's methods and sources in [WILDFIRE.md](docs/WILDFIRE.md), and what a patrol costs in [PATROL_COST.md](docs/PATROL_COST.md) |
 | [hardware/](hardware/README.md) | The scout drone's priced design: CAD model, parts list, running costs and build guide |
-| [tools/](tools) | The wildfire valley's sweep, report and charts, the README's figures and the dashboard recorder for the video |
+| [tools/](tools) | The wildfire valley's sweep, report and charts, the README's figures, the patrol cost model and the dashboard recorder for the video |
 | [tests/](tests) | Unit and integration tests, offline (a fake transport stands in for the API) |
 
 ## Limits and responsible use

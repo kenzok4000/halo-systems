@@ -137,6 +137,14 @@ PYTHONPATH=src python3 tools/wildfire_valley_report.py results/wildfire_valley/r
 PYTHONPATH=src python3 tools/wildfire_valley_figures.py --seed 4012 --n 16                       # map.png, swarm_size.png, detection.png
 ```
 
+## Patrol cost (no key needed)
+
+The cost model reads the build sheet's figures, copied into the script, and checks its valley-flight means against `results/wildfire_valley/runs.jsonl`. The real-world figures it compares with are typed beside their sources ([PATROL_COST.md](PATROL_COST.md)).
+
+```bash
+python3 tools/patrol_cost.py --charts   # results/patrol_cost/ and docs/figures/patrol-*.png
+```
+
 ## Tuning rounds
 
 `results/tuning/` keeps the three rounds on the tuning seeds. They used the same `bench` and `mission-eval` commands with `--seeds 0-4` (rounds 1 and 2) or `--seeds 5-9` (round 3), `--sets tuning`, and the configurations `improved+nemotron:$NANO`, `improved+nemotron:$SUPER` and `improved+nemotron-think:$NANO`, on seven scenarios in rounds 1 and 2 and all nine in round 3. See [results/README.md](../results/README.md) for what each round changed.

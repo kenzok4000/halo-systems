@@ -200,7 +200,7 @@ Lightning fires can smoulder for a long time before anyone reports them: across 
 "holdover" time ranges from 1.4 to 53.6 hours (Moris et al. 2023, Earth System Science Data 15: 1151), and
 fire services fly patrols after lightning storms to look for them (Government of Alberta). Patrols are not in
 the comparison because no source gives how often or when they fly; an Alberta review puts aerial patrols at
-12% of detections for $9.6 million a year (Spring 2019 Wildfire Review, table 12).
+12% of detections for CAD 9.6 million a year, about USD 6.9 million (Spring 2019 Wildfire Review, table 12).
 
 **How the alerts compare with Japan's.** Japan's evacuation information has five levels; since 20 May 2021,
 Level 3 tells older people and others who need time to leave, Level 4 tells everyone to leave, and Level 5
