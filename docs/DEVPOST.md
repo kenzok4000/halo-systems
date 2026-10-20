@@ -131,7 +131,7 @@ Answers to the five questions the organisers ask, with the numbers behind them i
 
 Eight images for the Devpost gallery, in this order. Dashboard screenshots are taken at 1920 × 1080; the charts are used as saved.
 
-1. The wildfire sweep from above with the hotspots lit orange (a frame from `docs/wildfire.gif`).
+1. The wildfire valley in the dashboard's 3D view: Fire 1's forecast head arrow, the crew update and the Level 4 alerts (a frame from `docs/valley.webp`).
 2. `results/wildfire_valley/map.png`: one held-out valley flight (seed 4012, 16 drones, all five fires found), with the true spread against the forecast, the fires located by thermal camera and by smoke, the twelve evacuation zones and the simulated phones coloured by the alert level they received.
 3. `results/wildfire_valley/detection.png`: when each of the 100 fires was reported and how big it was, by sixteen drones and by today's methods as modelled (a fire a method missed is not shown; sixteen drones found 86).
 4. The dashboard in the forest trail with Nemotron's directives in the decision log.
