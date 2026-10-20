@@ -63,6 +63,35 @@ class Controller:
         if getattr(self.world, "terrain", None) is not None:
             self.plan.surface = self.world.terrain
 
+    def reset_squads(self, squads, directive: Directive, n: int, swath: float) -> None:
+        """Fly several squads, each its own formation over its own area (control/squads.py)."""
+        from .squads import SquadPlan
+        self.plan = SquadPlan(squads, directive, n, reassign=self.reassign, blend=self.blend, pace=self.pace,
+                              swath=swath)
+        if getattr(self.world, "terrain", None) is not None:
+            self.plan.surface = self.world.terrain
+
+    @property
+    def squad_of(self):
+        """Squad of each drone (-1: in transit or in reserve), or None when the swarm flies as one formation."""
+        return getattr(self.plan, "squad_of", None)
+
+    def pace_errors(self, obs: Observation):
+        """What the plan's pace slows for: the shape error, or one per squad (each squad's own common offset
+        removed) when the swarm flies in squads."""
+        if self.squad_of is None:
+            return self.shape_error_estimate(obs)
+        pos, _ = self.plan.slots()
+        out = []
+        for m in self.plan.part_masks():
+            a = m & obs.active
+            if not a.any():
+                out.append(0.0)
+                continue
+            rel = (obs.p_est[a] - obs.p_est[a].mean(axis=0)) - (pos[a] - pos[a].mean(axis=0))
+            out.append(float(np.sqrt(np.mean(np.sum(rel ** 2, axis=1)))))
+        return out
+
     def floor_under(self, p: np.ndarray):
         """Lowest safe height under each drone: ``floor_z`` above the ground (a scalar on flat ground)."""
         terrain = getattr(self.world, "terrain", None)

@@ -64,21 +64,22 @@ def split_config(config: str) -> tuple[str, str]:
 
 def run_one(scenario: str, seed: int, config: str, n: int | None = None, record_hz: float = 0.0,
             keep_result: bool = False, supervisor_kw: dict | None = None, gps_scale: float | None = None,
-            **overrides):
+            options: dict | None = None, **overrides):
     """Fly one scenario with one configuration and return its row of metrics.
 
     The row is a flat dict: scenario, seed, config, controller, supervisor and n,
     then ``wall_s`` and every key from ``compute_metrics``. With ``keep_result`` the
     return value is ``(row, RunResult)``. ``gps_scale`` multiplies the scenario's
-    GPS noise and bias (the navigation-error sweep), and ``overrides`` replace
-    ``Scenario`` fields (see ``scenarios.make``); both are recorded in the row
-    when given.
+    GPS noise and bias (the navigation-error sweep), ``options`` go to the
+    scenario's builder (such as the wildfire valley's squads) and ``overrides``
+    replace ``Scenario`` fields (see ``scenarios.make``); all are recorded in
+    the row when given.
     Nemotron runs default to ``strict=True``: an error every later call would hit
     too (no key, key rejected, budget cap) fails the run, so a flight the rule
     fallback really flew is never reported as a Nemotron result.
     """
     ctrl_spec, sup_spec = split_config(config)
-    sc = make(scenario, seed, n=n, **overrides)
+    sc = make(scenario, seed, n=n, options=options, **overrides)
     if gps_scale is not None:
         sc = dataclasses.replace(sc, sensing=dataclasses.replace(
             sc.sensing, gps_sigma_m=sc.sensing.gps_sigma_m * gps_scale,
@@ -97,6 +98,8 @@ def run_one(scenario: str, seed: int, config: str, n: int | None = None, record_
     }
     if gps_scale is not None:
         row["gps_scale"] = gps_scale
+    if options:
+        row["options"] = {k: (v if isinstance(v, (int, float, str, bool, type(None))) else repr(v)) for k, v in options.items()}
     if overrides:
         row["overrides"] = {k: (v if isinstance(v, (int, float, str, bool)) else repr(v)) for k, v in overrides.items()}
     return (row, result) if keep_result else row

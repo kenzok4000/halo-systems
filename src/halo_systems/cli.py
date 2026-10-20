@@ -52,13 +52,36 @@ def cmd_run(args) -> int:
     kw = {}
     if args.cache or args.ai_log:
         kw["supervisor_kw"] = {"cache_path": args.cache, "cache_mode": args.cache_mode, "log_path": args.ai_log}
+    opts = _valley_options(args)
+    if opts and args.scenario != "wildfire_valley":
+        raise SystemExit("--squads, --patrol-min, --squad-script, --station, --report-v2 and --alert-rule are for "
+                         "wildfire_valley")
     row, result = run_one(args.scenario, args.seed, args.config, n=args.n, record_hz=args.record_hz,
-                          keep_result=True, **kw)
+                          keep_result=True, options=opts or None, **kw)
     if args.out:
         with open(args.out, "w") as fh:
             json.dump({"row": row, **result.to_dict(include_frames=args.record_hz > 0, include_series=args.series)}, fh)
     print(json.dumps(row, indent=2))
     return 0
+
+
+def _valley_options(args) -> dict:
+    """The wildfire valley's squad and station options given on the command line (only those set)."""
+    opts = {}
+    if args.squads is not None:
+        opts["squads"] = args.squads
+    if args.patrol_min is not None:
+        opts["patrol_s"] = 60.0 * args.patrol_min
+    if args.squad_script:
+        from .control.squads import parse_script
+        opts["squad_script"] = parse_script(args.squad_script)
+    if args.station is not None:
+        opts["station"] = args.station
+    if args.report_v2:
+        opts["report_v2"] = True
+    if args.alert_rule is not None:
+        opts["alert_rule"] = args.alert_rule
+    return opts
 
 
 def cmd_bench(args) -> int:
@@ -126,6 +149,94 @@ def cmd_mission_eval(args) -> int:
     if args.out:
         with open(args.out, "w") as fh:
             json.dump(out, fh, indent=1)
+    return 0
+
+
+def cmd_valley_eval(args) -> int:
+    """Score the valley compiler (plain words plus the night's strike list) against its regex baseline."""
+    import time as _time
+    from .ai.cache import CallCache
+    from .ai.client import NebiusClient, NebiusError
+    from .ai.valley import compile_with_model, flatten, gold_spec, load_set, plan, regex_baseline, score
+    from .eval.scenarios import valley_strikes
+    cache = CallCache(args.cache, mode="replay" if args.replay else "record") if args.cache else None
+    client = None
+    if args.model and not args.replay:
+        client = NebiusClient(timeout_s=90.0, max_retries=3, log_path=args.ai_log)
+        if not client.configured:
+            print("NEBIUS_API_KEY is not set: scoring the baseline only")
+            client = None
+    use_model = bool(args.model and (client or args.replay))
+    out = {"sets": {}, "model": args.model if use_model else None, "reasoning": bool(args.think) if use_model else None}
+    for name in args.sets.split(","):
+        rows = []
+        for it in load_set(name):
+            strikes = valley_strikes(it["seed"])
+            gold = gold_spec(it)
+            row = {"id": it["id"], "seed": it["seed"], "text": it["text"], "gold": flatten(gold, strikes),
+                   "gold_plan": {k: v for k, v in plan(gold, strikes).items() if k != "options"}}
+            b = regex_baseline(it["text"])
+            row["baseline"] = {"spec": flatten(b, strikes), **score(b, gold, strikes)}
+            if use_model:
+                t0 = _time.perf_counter()
+                try:
+                    spec, problems, rec, how = compile_with_model(it["text"], client, args.model,
+                                                                  think=args.think, cache=cache)
+                    row["nemotron"] = {"spec": flatten(spec, strikes), "notes": spec.get("notes", ""), "problems": problems,
+                                       "record": rec, "how": how, **score(spec, gold, strikes)}
+                except NebiusError as exc:
+                    if exc.fatal:
+                        print(f"stopping: {exc.reason}", file=sys.stderr)
+                        return 3
+                    row["nemotron"] = {"error": exc.reason, "correct": 0, "total": 1, "exact": False,
+                                       "plan_same": False}
+                row["nemotron"]["wall_s"] = round(_time.perf_counter() - t0, 2)
+            rows.append(row)
+        summary = {}
+        for who in ("baseline", "nemotron"):
+            got = [r[who] for r in rows if who in r]
+            if not got:
+                continue
+            st = [g["strikes"] for g in got if "strikes" in g]
+            summary[who] = {
+                "requests": len(got), "plan_same": sum(1 for g in got if g.get("plan_same")),
+                "exact": sum(1 for g in got if g["exact"]),
+                "field_accuracy_pct": round(100 * sum(g["correct"] for g in got) / max(1, sum(g["total"] for g in got)), 1),
+                "strike_sets_right": sum(1 for g in got if g.get("fields", {}).get("strike_ids")
+                                         and "strikes" in g),
+                "strike_requests": len(st),
+                "strike_ids_tp_fp_fn": [sum(x["tp"] for x in st), sum(x["fp"] for x in st), sum(x["fn"] for x in st)],
+                "refusals_right": sum(1 for r in rows if r["gold"]["refused"] and r.get(who, {}).get("fields", {}).get("refused")),
+                "refusals_total": sum(1 for r in rows if r["gold"]["refused"]),
+                "errors": sum(1 for g in got if "error" in g)}
+            if who == "nemotron":
+                lat = sorted(g["record"]["latency_s"] for g in got if g.get("record"))
+                summary[who]["latency_s_median"] = lat[len(lat) // 2] if lat else None
+                summary[who]["cost_usd"] = round(sum(g["record"].get("cost_usd", 0.0) for g in got if g.get("record")), 6)
+        out["sets"][name] = {"summary": summary, "rows": rows}
+        print(name, json.dumps(summary))
+    if args.out:
+        with open(args.out, "w") as fh:
+            json.dump(out, fh, indent=1)
+    return 0
+
+
+def cmd_valley_compile(args) -> int:
+    from .ai.client import NebiusClient
+    from .ai.valley import compile_with_model, plan, regex_baseline
+    from .eval.scenarios import valley_strikes
+    strikes = valley_strikes(args.seed)
+    if args.model:
+        from .ai.cache import CallCache
+        cache = CallCache(args.cache, mode="replay" if args.replay else "record") if args.cache else None
+        client = None if args.replay else NebiusClient(log_path=args.ai_log)
+        spec, problems, rec, how = compile_with_model(args.text, client, args.model, think=args.think, cache=cache)
+        print(json.dumps({"spec": spec, "problems": problems, "how": how, "call": rec, "plan": plan(spec, strikes)},
+                         indent=2))
+    else:
+        spec = regex_baseline(args.text)
+        print(json.dumps({"spec": spec, "plan": plan(spec, strikes),
+                          "note": "regex baseline (pass --model for Nemotron)"}, indent=2))
     return 0
 
 
@@ -269,6 +380,16 @@ def main(argv=None) -> int:
     s.add_argument("--cache", help="model-call cache (JSON lines) for nemotron supervisors")
     s.add_argument("--cache-mode", default="record", choices=("record", "replay", "off"))
     s.add_argument("--ai-log", default=None, help="append model calls to this JSON-lines log")
+    s.add_argument("--squads", default=None,
+                   help="wildfire_valley: fly squads, 'auto' or drones per area such as F10-N7-S7 (R: reserve)")
+    s.add_argument("--patrol-min", type=float, default=None, help="wildfire_valley squads: patrol length (default 12)")
+    s.add_argument("--squad-script", default=None, help="wildfire_valley squads: orders, e.g. '300:move F N 4'")
+    s.add_argument("--station", default=None, choices=("legacy", "tight"),
+                   help="wildfire_valley: when a thermal find counts as a fire already located by smoke")
+    s.add_argument("--report-v2", action="store_true", help="wildfire_valley: add own-evidence and alert scoring keys")
+    s.add_argument("--alert-rule", default=None, choices=("forecast", "presigned", "distance"),
+                   help="wildfire_valley: how public alerts are decided (presigned: spreading fires only, under "
+                        "trigger rules signed in advance; smoulders go to fire dispatch)")
     s.set_defaults(fn=cmd_run)
 
     s = sub.add_parser("bench", help="run a benchmark grid")
@@ -348,6 +469,26 @@ def main(argv=None) -> int:
     s.add_argument("--out", default=None)
     s.add_argument("--ai-log", default=None)
     s.set_defaults(fn=cmd_mission_eval)
+
+    s = sub.add_parser("valley-eval", help="score the valley compiler (words plus strike list) against its baseline")
+    s.add_argument("--sets", default="tuning,heldout")
+    s.add_argument("--model", default=None, help="Nemotron model id (needs NEBIUS_API_KEY, or --replay)")
+    s.add_argument("--think", action="store_true", help="turn on the model's reasoning mode")
+    s.add_argument("--cache", default=None, help="record calls here (or answer from it with --replay)")
+    s.add_argument("--replay", action="store_true", help="answer only from --cache; never call the API")
+    s.add_argument("--out", default=None)
+    s.add_argument("--ai-log", default=None)
+    s.set_defaults(fn=cmd_valley_eval)
+
+    s = sub.add_parser("valley-compile", help="turn plain words plus the night's strike list into a valley patrol")
+    s.add_argument("text")
+    s.add_argument("--seed", type=int, default=0, help="the valley (and its strike list)")
+    s.add_argument("--model", default=None)
+    s.add_argument("--think", action="store_true")
+    s.add_argument("--cache", default=None)
+    s.add_argument("--replay", action="store_true")
+    s.add_argument("--ai-log", default=None)
+    s.set_defaults(fn=cmd_valley_compile)
 
     s = sub.add_parser("compile", help="turn a plain-language mission into a mission plan")
     s.add_argument("text")

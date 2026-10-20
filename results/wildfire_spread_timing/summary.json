@@ -1,0 +1,291 @@
+{
+ "post_hoc": true,
+ "sets": {
+  "4000-4019": {
+   "1": [
+    {
+     "bin": "already spreading at take-off",
+     "fires": 30,
+     "drones_found": 20,
+     "drones_first": 0,
+     "first_today_never": 0,
+     "lead_median_min": null,
+     "today_after_spread_median_min": 3.9999999999999996
+    },
+    {
+     "bin": "0 to 20 min after take-off",
+     "fires": 9,
+     "drones_found": 0,
+     "drones_first": 0,
+     "first_today_never": 0,
+     "lead_median_min": null,
+     "today_after_spread_median_min": 4.0
+    },
+    {
+     "bin": "20 to 60 min",
+     "fires": 19,
+     "drones_found": 7,
+     "drones_first": 7,
+     "first_today_never": 0,
+     "lead_median_min": 42.98666666666667,
+     "today_after_spread_median_min": 3.3700000000000045
+    },
+    {
+     "bin": "60 to 120 min",
+     "fires": 22,
+     "drones_found": 13,
+     "drones_first": 13,
+     "first_today_never": 0,
+     "lead_median_min": 81.37166666666666,
+     "today_after_spread_median_min": 4.0
+    },
+    {
+     "bin": "after 120 min",
+     "fires": 20,
+     "drones_found": 20,
+     "drones_first": 20,
+     "first_today_never": 0,
+     "lead_median_min": 139.95999999999998,
+     "today_after_spread_median_min": 3.6000000000000085
+    }
+   ],
+   "4": [
+    {
+     "bin": "already spreading at take-off",
+     "fires": 30,
+     "drones_found": 22,
+     "drones_first": 0,
+     "first_today_never": 0,
+     "lead_median_min": null,
+     "today_after_spread_median_min": 3.9999999999999996
+    },
+    {
+     "bin": "0 to 20 min after take-off",
+     "fires": 9,
+     "drones_found": 4,
+     "drones_first": 4,
+     "first_today_never": 0,
+     "lead_median_min": 11.315,
+     "today_after_spread_median_min": 4.0
+    },
+    {
+     "bin": "20 to 60 min",
+     "fires": 19,
+     "drones_found": 15,
+     "drones_first": 15,
+     "first_today_never": 0,
+     "lead_median_min": 41.085,
+     "today_after_spread_median_min": 3.3700000000000045
+    },
+    {
+     "bin": "60 to 120 min",
+     "fires": 22,
+     "drones_found": 16,
+     "drones_first": 16,
+     "first_today_never": 0,
+     "lead_median_min": 74.14750000000001,
+     "today_after_spread_median_min": 4.0
+    },
+    {
+     "bin": "after 120 min",
+     "fires": 20,
+     "drones_found": 20,
+     "drones_first": 20,
+     "first_today_never": 0,
+     "lead_median_min": 141.02666666666664,
+     "today_after_spread_median_min": 3.6000000000000085
+    }
+   ],
+   "16": [
+    {
+     "bin": "already spreading at take-off",
+     "fires": 30,
+     "drones_found": 27,
+     "drones_first": 1,
+     "first_today_never": 0,
+     "lead_median_min": 2.5900000000000003,
+     "today_after_spread_median_min": 3.9999999999999996
+    },
+    {
+     "bin": "0 to 20 min after take-off",
+     "fires": 9,
+     "drones_found": 8,
+     "drones_first": 8,
+     "first_today_never": 0,
+     "lead_median_min": 17.16166666666667,
+     "today_after_spread_median_min": 4.0
+    },
+    {
+     "bin": "20 to 60 min",
+     "fires": 19,
+     "drones_found": 17,
+     "drones_first": 17,
+     "first_today_never": 0,
+     "lead_median_min": 42.83666666666667,
+     "today_after_spread_median_min": 3.3700000000000045
+    },
+    {
+     "bin": "60 to 120 min",
+     "fires": 22,
+     "drones_found": 17,
+     "drones_first": 17,
+     "first_today_never": 0,
+     "lead_median_min": 79.56333333333332,
+     "today_after_spread_median_min": 4.0
+    },
+    {
+     "bin": "after 120 min",
+     "fires": 20,
+     "drones_found": 17,
+     "drones_first": 17,
+     "first_today_never": 0,
+     "lead_median_min": 143.25,
+     "today_after_spread_median_min": 3.6000000000000085
+    }
+   ]
+  },
+  "7000-7019": {
+   "1": [
+    {
+     "bin": "already spreading at take-off",
+     "fires": 27,
+     "drones_found": 20,
+     "drones_first": 0,
+     "first_today_never": 0,
+     "lead_median_min": null,
+     "today_after_spread_median_min": 3.9999999999999982
+    },
+    {
+     "bin": "0 to 20 min after take-off",
+     "fires": 12,
+     "drones_found": 0,
+     "drones_first": 0,
+     "first_today_never": 0,
+     "lead_median_min": null,
+     "today_after_spread_median_min": 4.0
+    },
+    {
+     "bin": "20 to 60 min",
+     "fires": 27,
+     "drones_found": 12,
+     "drones_first": 12,
+     "first_today_never": 0,
+     "lead_median_min": 31.504166666666666,
+     "today_after_spread_median_min": 4.0
+    },
+    {
+     "bin": "60 to 120 min",
+     "fires": 18,
+     "drones_found": 10,
+     "drones_first": 10,
+     "first_today_never": 0,
+     "lead_median_min": 76.63499999999999,
+     "today_after_spread_median_min": 2.21916666666667
+    },
+    {
+     "bin": "after 120 min",
+     "fires": 16,
+     "drones_found": 16,
+     "drones_first": 16,
+     "first_today_never": 1,
+     "lead_median_min": 147.5883333333333,
+     "today_after_spread_median_min": 4.0
+    }
+   ],
+   "4": [
+    {
+     "bin": "already spreading at take-off",
+     "fires": 27,
+     "drones_found": 20,
+     "drones_first": 0,
+     "first_today_never": 0,
+     "lead_median_min": null,
+     "today_after_spread_median_min": 3.9999999999999982
+    },
+    {
+     "bin": "0 to 20 min after take-off",
+     "fires": 12,
+     "drones_found": 5,
+     "drones_first": 4,
+     "first_today_never": 0,
+     "lead_median_min": 14.184166666666666,
+     "today_after_spread_median_min": 4.0
+    },
+    {
+     "bin": "20 to 60 min",
+     "fires": 27,
+     "drones_found": 21,
+     "drones_first": 21,
+     "first_today_never": 0,
+     "lead_median_min": 36.395,
+     "today_after_spread_median_min": 4.0
+    },
+    {
+     "bin": "60 to 120 min",
+     "fires": 18,
+     "drones_found": 14,
+     "drones_first": 14,
+     "first_today_never": 0,
+     "lead_median_min": 74.60499999999999,
+     "today_after_spread_median_min": 2.21916666666667
+    },
+    {
+     "bin": "after 120 min",
+     "fires": 16,
+     "drones_found": 15,
+     "drones_first": 15,
+     "first_today_never": 1,
+     "lead_median_min": 150.345,
+     "today_after_spread_median_min": 4.0
+    }
+   ],
+   "16": [
+    {
+     "bin": "already spreading at take-off",
+     "fires": 27,
+     "drones_found": 24,
+     "drones_first": 0,
+     "first_today_never": 0,
+     "lead_median_min": null,
+     "today_after_spread_median_min": 3.9999999999999982
+    },
+    {
+     "bin": "0 to 20 min after take-off",
+     "fires": 12,
+     "drones_found": 9,
+     "drones_first": 9,
+     "first_today_never": 0,
+     "lead_median_min": 13.408333333333333,
+     "today_after_spread_median_min": 4.0
+    },
+    {
+     "bin": "20 to 60 min",
+     "fires": 27,
+     "drones_found": 23,
+     "drones_first": 23,
+     "first_today_never": 0,
+     "lead_median_min": 35.76166666666667,
+     "today_after_spread_median_min": 4.0
+    },
+    {
+     "bin": "60 to 120 min",
+     "fires": 18,
+     "drones_found": 14,
+     "drones_first": 14,
+     "first_today_never": 0,
+     "lead_median_min": 76.59166666666667,
+     "today_after_spread_median_min": 2.21916666666667
+    },
+    {
+     "bin": "after 120 min",
+     "fires": 16,
+     "drones_found": 16,
+     "drones_first": 16,
+     "first_today_never": 1,
+     "lead_median_min": 150.42166666666665,
+     "today_after_spread_median_min": 4.0
+    }
+   ]
+  }
+ }
+}

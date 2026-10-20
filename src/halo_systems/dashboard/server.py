@@ -291,7 +291,8 @@ class State:
             if name not in SCENARIOS:
                 raise ValueError(f"unknown scenario {name!r}")
             n = body.get("n")
-            scenario = make(name, seed, n=int(n)) if n else make(name, seed)
+            opts = _valley_options(body) if name == "wildfire_valley" else {}
+            scenario = make(name, seed, n=int(n) if n else None, options=opts or None)
             if scenario.wildfire is not None and body.get("approval") in ("auto", "manual", "modelled"):
                 # "auto": the station's fixed rules send each checked alert at once; "manual": alerts wait for
                 # the incident commander's tap on the page.
@@ -316,6 +317,36 @@ class State:
         return run
 
 
+def _valley_options(body: dict) -> dict:
+    """The wildfire valley's options from a POST /api/runs body: alert_rule ("forecast", "presigned" or
+    "distance"), squads ("auto" or e.g. "F10-N7-S7"), patrol_min, squad_script (a list of orders, or text such
+    as "300:move F N 4"), and strikes (strike ids to cue on, or "all" to show the night's list; the plan from
+    POST /api/valley/compile gives all of these)."""
+    from ..control.squads import parse_script
+    opts = {}
+    if body.get("alert_rule") in ("forecast", "presigned", "distance"):
+        opts["alert_rule"] = body["alert_rule"]
+    strikes = body.get("strikes")
+    if strikes == "all":
+        opts["strikes"] = "all"
+    elif isinstance(strikes, list):
+        opts["strikes"] = [int(i) for i in strikes][:200]
+    if body.get("squads") not in (None, "", "none"):
+        opts["squads"] = str(body["squads"])
+        if body.get("patrol_min") is not None:
+            patrol = float(body["patrol_min"])
+            if not 1.0 <= patrol <= 15.0:
+                raise ValueError("patrol_min must be between 1 and 15 (one battery)")
+            opts["patrol_s"] = 60.0 * patrol
+        script = body.get("squad_script")
+        if isinstance(script, str):
+            opts["squad_script"] = parse_script(script)
+        elif isinstance(script, list):
+            opts["squad_script"] = [{"t": float(o["t"]), "op": "move", "from": str(o["from"]), "to": str(o["to"]),
+                                     "k": int(o["k"])} for o in script]
+    return opts
+
+
 LOCAL_HOSTS = {"127.0.0.1", "localhost", "::1"}
 
 
@@ -331,14 +362,23 @@ def make_handler(state: State, host: str = "127.0.0.1"):
     GET  /api/evidence                 the ``halo doctor`` check in the evidence folder (the committed one by default)
     GET  /api/runs/<id>/stream         Server-Sent Events: hello, frame, event, directive, ai, end
     GET  /api/runs/<id>/export         the run's result with its time series
+    GET  /api/runs/<id>/crew.geojson   the wildfire valley's latest crew briefs as a map file (also crew.kml);
+                                       simulated, placed at 0 N 0 E unless ?lat=&lon= give the valley's anchor
     POST /api/runs                     {scenario, n} or {mission, mission_text}, with config, seed, speed;
-                                       the wildfire valley also takes approval: "auto", "manual" or "modelled"
-    POST /api/runs/<id>/inject         {kind, ...}: motor_failure, gust, blackout or directive
+                                       the wildfire valley also takes approval: "auto", "manual" or "modelled",
+                                       alert_rule ("forecast", "presigned" or "distance"), and squads
+                                       ("auto" or e.g. "F10-N7-S7"), patrol_min and squad_script
+    POST /api/runs/<id>/inject         {kind, ...}: motor_failure, gust, blackout, directive or squad
+                                       ({from, to, k, at_s}: move k drones between squads)
     POST /api/runs/<id>/control        {speed, paused, stop}
     POST /api/runs/<id>/approve        {alert}: approve a checked evacuation alert (simulated phones only)
     POST /api/runs/<id>/cancel         {alert}: cancel a sent evacuation alert (simulated phones only)
     POST /api/runs/<id>/allclear       {zone}: give a zone (its code, or index) the all-clear (simulated phones only)
     POST /api/compile                  {text}: the mission compiler
+    GET  /api/valley/strikes?seed=     the lightning strikes reported over that valley overnight
+    POST /api/valley/compile           {text, seed}: the valley compiler (Nemotron with reasoning, or the call
+                                       recorded for this request when there is no key, or the regex baseline);
+                                       its plan's "options" go straight into POST /api/runs
 
     Every POST must be JSON from the dashboard's own page (see ``_not_from_this_page``).
     """
@@ -427,12 +467,46 @@ def make_handler(state: State, host: str = "127.0.0.1"):
                     return self._json(_results(state.results_dir))
                 if parts[:2] == ["api", "evidence"]:
                     return self._json(_evidence(state.evidence_dir))
+                if parts == ["api", "valley", "strikes"]:
+                    from ..eval.scenarios import valley_strikes
+                    try:
+                        seed = int(parse_qs(url.query).get("seed", ["0"])[0])
+                    except ValueError:
+                        return self._error("seed must be a whole number")
+                    return self._json({"seed": seed, "strikes": valley_strikes(seed)})
                 if parts[:2] == ["api", "runs"] and len(parts) == 4:
                     run = state.runs.get(parts[2])
                     if run is None:
                         return self._error("no such run", HTTPStatus.NOT_FOUND)
                     if parts[3] == "stream":
                         return self._stream(run)
+                    if parts[3] in ("crew.geojson", "crew.kml"):
+                        # The latest crew briefs as a map file (simulated; placed at 0 N 0 E unless ?lat=&lon=).
+                        from ..sim import crew_export
+                        wf = run.sim.wildfire
+                        if wf is None or not wf.forecasts:
+                            return self._error("no crew briefs yet", HTTPStatus.NOT_FOUND)
+                        q = parse_qs(url.query)
+                        try:
+                            anchor = (float(q.get("lat", ["0"])[0]), float(q.get("lon", ["0"])[0]))
+                        except ValueError:
+                            return self._error("lat and lon must be numbers")
+                        if not (-80.0 <= anchor[0] <= 80.0 and -180.0 <= anchor[1] <= 180.0):
+                            return self._error("lat must be within 80 degrees of the equator, lon within 180")
+                        with run.lock:
+                            fc = wf.forecasts[-1]
+                            places = wf.cfg.places
+                            body = (crew_export.dumps_geojson(fc, anchor, places) if parts[3] == "crew.geojson"
+                                    else crew_export.kml(fc, anchor, places))
+                        kind = "application/geo+json" if parts[3] == "crew.geojson" else \
+                            "application/vnd.google-earth.kml+xml"
+                        data = body.encode("utf-8")
+                        self.send_response(HTTPStatus.OK)
+                        self.send_header("Content-Type", kind)
+                        self.send_header("Content-Length", str(len(data)))
+                        self.end_headers()
+                        self.wfile.write(data)
+                        return None
                     if parts[3] == "export":
                         return self._json(run.export())
                 return self._error("not found", HTTPStatus.NOT_FOUND)
@@ -497,6 +571,8 @@ def make_handler(state: State, host: str = "127.0.0.1"):
                         return self._json({"speed": run.speed, "paused": run.paused})
                 if parts == ["api", "compile"]:
                     return self._json(_compile(state, str(body.get("text", ""))[:2000]))
+                if parts == ["api", "valley", "compile"]:
+                    return self._json(_valley_compile(state, str(body.get("text", ""))[:2000], int(body.get("seed", 0))))
                 return self._error("not found", HTTPStatus.NOT_FOUND)
             except ValueError as exc:
                 return self._error(str(exc))
@@ -571,6 +647,54 @@ def _compile(state: State, text: str) -> dict:
     else:
         note = "Nemotron is not configured here (no key or model), so the regex baseline parsed this."
     return {"source": "regex-baseline", "spec": spec, "problems": [note] if not harmful(text) else []}
+
+
+VALLEY_CACHE = "valley_compile_cache.jsonl"
+
+
+def _valley_compile(state: State, text: str, seed: int) -> dict:
+    """The valley compiler for the page: the spec, the checked plan, the strikes it chose, and how it was compiled.
+
+    With a key, Nemotron is called live (reasoning on, as scored in ``results/valley_eval``) and the call is recorded
+    in ``results/valley_compile_cache.jsonl``. Without a key, a request recorded there (the scored held-out requests
+    and the filmed ones) is answered from the record, marked as replayed; any other request falls back to the regex
+    baseline, and the page says so."""
+    from ..ai.cache import CallCache
+    from ..ai.mission import harmful
+    from ..ai.valley import compile_with_model, plan, regex_baseline
+    from ..eval.scenarios import valley_strikes
+    if not text.strip():
+        raise ValueError("type a request first")
+    strikes = valley_strikes(seed)
+    status = state.ai_status()
+    model_id = (state.model or "").partition(":")[2] if (state.model or "").startswith("nemotron") else (state.model or "")
+    cache_path = state.results_dir / VALLEY_CACHE
+    out = {"seed": seed}
+    note = None
+    if status["ai_available"] and model_id:
+        from ..ai.client import NebiusClient, NebiusError
+        live = status["mode"] == "live"
+        cache = CallCache(cache_path, mode="record" if live else "replay")
+        client = NebiusClient(timeout_s=60.0, max_retries=2,
+                              log_path=state.evidence_dir / "dashboard_calls.jsonl") if live else None
+        try:
+            spec, problems, rec, how = compile_with_model(text, client, model_id, think=True, cache=cache)
+            out.update(source="guard" if how == "guard" else "nemotron", how=how, model=model_id, call=rec)
+        except NebiusError as exc:
+            spec, problems = regex_baseline(text), []
+            note = ("This request was not recorded, and without a key the page cannot call Nemotron: the regex "
+                    "baseline parsed it." if not live else f"Nemotron call failed ({exc.reason}): the regex baseline "
+                    "parsed it.")
+            out.update(source="regex-baseline")
+    else:
+        spec, problems = regex_baseline(text), []
+        note = "Nemotron is not configured here (no key or model), so the regex baseline parsed this."
+        out.update(source="regex-baseline")
+    p = plan(spec, strikes)
+    chosen = set(p.get("strike_ids") or [])
+    out.update(spec=spec, plan=p, problems=problems + ([note] if note and not harmful(text) else []),
+               strikes=[{**k, "chosen": k["id"] in chosen} for k in strikes])
+    return out
 
 
 def _results(results_dir: Path) -> dict:

@@ -31,7 +31,9 @@ bootstrap intervals over seeds. Full tables: [REPORT.md](../results/wildfire_val
   geostationary satellite after 55 minutes, at 1.6 ha; polar satellites after 128 minutes, at 7.3 ha. As
   deployed in California in 2024, cameras saw 22% of fires. The sixteen drones reported 60 of the 100 fires
   before the earliest of today's four methods, by a median of 69 minutes. That lead comes mostly from the
-  smouldering phase, whose length the scenario sets (see "Assumptions and sources").
+  smouldering phase, whose length the scenario sets (see "Assumptions and sources"). Split by when each fire
+  starts to spread (post-hoc), the drones were first on 1 of 57 fires already spreading at take-off and on 17
+  of 21 that started to spread within 20 minutes, by a median of 13 to 17 minutes.
 - **Forecast.** With sixteen drones, the forecast's median matched the true spread of the fires the station
   knew were spreading with a Sorensen overlap of 0.71 [0.63, 0.78] at 1 hour and 0.83 [0.79, 0.86] at 3 hours.
   One drone scores 0.77 and 0.89, because it finishes later and forecasts with more of the fire mapped.
@@ -200,7 +202,18 @@ Lightning fires can smoulder for a long time before anyone reports them: across 
 "holdover" time ranges from 1.4 to 53.6 hours (Moris et al. 2023, Earth System Science Data 15: 1151), and
 fire services fly patrols after lightning storms to look for them (Government of Alberta). Patrols are not in
 the comparison because no source gives how often or when they fly; an Alberta review puts aerial patrols at
-12% of detections for CAD 9.6 million a year, about USD 6.9 million (Spring 2019 Wildfire Review, table 12).
+12% of detections for an average of CAD 9.6 million a year over 2015 to 2019, about USD 6.9 million (Spring 2019
+Wildfire Review, table 12).
+
+**The lead, by when each fire starts to spread.** Because the lead comes mostly from the smouldering phase,
+[a breakdown of the committed rows](../results/wildfire_spread_timing/REPORT.md) splits it by when each fire
+starts to spread. It is post-hoc: nothing was flown for it and the bins were picked after the results were
+known. On fires already spreading at take-off the sixteen drones were first on 1 of 30 (seeds 4000 to 4019)
+and 0 of 27 (seeds 7000 to 7019); a satellite or camera usually has those first. On fires that start to spread
+within 20 minutes of take-off they were first on 8 of 9 and 9 of 12, by a median of 17 and 13 minutes. After
+that the lead is close to the time left before the fire spreads plus today's detection delay
+([timing.png](../results/wildfire_spread_timing/timing.png)), so the median of 69 minutes is a property of the
+smoulder times the scenario draws.
 
 **How the alerts compare with Japan's.** Japan's evacuation information has five levels; since 20 May 2021,
 Level 3 tells older people and others who need time to leave, Level 4 tells everyone to leave, and Level 5
