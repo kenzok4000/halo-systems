@@ -46,6 +46,12 @@ bootstrap intervals over seeds. Full tables: [REPORT.md](../results/wildfire_val
   on. On a second held-out set (seeds 7000 to 7019, flown once), sixteen drones' briefs were a median 14
   degrees [9, 20] off the true head, against 22 [16, 28] for running straight downwind of the measured wind
   (see "Which way the fire runs" below).
+- **The first crew, while the fire still smoulders.** On a third held-out set (seeds 9000 to 9039, 40 valleys,
+  197 fires, flown once), with the drones' cards to fire dispatch the first crew reached 79 fires (40%) while
+  they still smouldered, against none with today's reports. In a simple containment model with one engine per
+  fire, 95 fires escaped initial attack against 150: the drones prevented 55, 37% of today's escapes. The valley's
+  day is dry and windy by design, so the escape rates themselves are far above real ones; the share prevented is
+  the result (see "Getting the first crew there" below).
 
 ![When each fire was reported and how big it was, by the drones and by today's methods](../results/wildfire_valley/detection.png)
 
@@ -141,6 +147,70 @@ degrees, hour-to-hour errors and a fuel moisture error).
    least) or give a zone the all-clear (for 30 minutes, only a level above the one it had goes out); both
    messages pass a check too. A manual mode, where each alert waits for a tap and the zone is raised only once
    it is sent, is kept for drills.
+
+## Squads, jobs in plain words, and alerts under pre-signed rules
+
+These are options. The results above use none of them (one sweep, today's alert rule), except the first
+crew's, which uses pre-signed rules (their cards to fire dispatch are the drones' reports).
+
+**Squads.** `squads` flies the drones as squads over the valley's three areas, the valley floor (F, the survey
+block), the north slopes (N) and the south slopes (S), each squad patrolling its own area on a circuit, line
+abreast, until the patrol time ends (12 minutes by default, one battery). `"auto"` splits the drones
+(`control.squads.allocate`): each area first gets the smallest squad that flies its whole circuit within the
+patrol, in the order floor, north, south, while drones are left; further drones go to the area whose circuit is
+slowest, in steps that save a lane; an area stops at the widest line that fits across it (21 on the floor, 22 on
+each slope), and drones left over wait in reserve. `"F6-N5-S5"` sets the counts by hand. An operator can move
+drones between squads during the flight; every order passes the validator (a squad keeps at least one drone), and
+the moved drones fly across and join. With a strike list, each squad starts on the lane nearest the night's
+strikes in its area. Results by squad size, on held-out seeds 8000 to 8019:
+[results/wildfire_valley_squads/REPORT.md](../results/wildfire_valley_squads/REPORT.md).
+<!-- RESULTS: squads -->
+
+**A job in plain words (Nemotron).** The operator types the job, for example "We had dry lightning last night.
+Put 16 drones over the whole valley for 12 minutes and check last night's strikes." Nemotron 3 Nano, with
+reasoning, reads it into a short spec: how many drones, which areas, how long, and which strikes to check (by when
+and where). Code, not the model, turns the spec into the patrol: the squad split, the lane each squad starts on,
+and the chosen strikes outside every patrolled area, which are listed rather than flown. A keyword guard refuses
+non-civilian requests before any call, and the plan goes through the same validator as any order. On 48 held-out
+requests, Nemotron with reasoning gave the same patrol as the hand-written reading in 47, against 20 for
+hand-written rules and 39 with reasoning off (median 4.7 s and USD 0.016 for the 47 calls; the keyword guard
+refused the other request before any call):
+[results/valley_eval/REPORT.md](../results/valley_eval/REPORT.md). Without a key, the page replays recorded calls,
+and any other request falls back to the hand-written rules, saying so.
+
+**Public alerts under pre-signed rules.** With `alert_rule="presigned"`, a public alert goes out only for fires
+the station believes are spreading, each under a trigger rule the alerting authority signed in advance: Level 3
+at 30% or more within 3 hours, Level 4 at 30% or more within an hour, Level 5 at even odds within 15 minutes. A
+fire found smouldering goes to fire dispatch as a card instead (simulated), with its position, size and status,
+and gets a new card when the station comes to believe it is spreading or its fix moves more than 30 m (or twice
+its error) from where the last card put it; once a card has said spreading, later ones do too. An official's
+one-tap approval (`approval="modelled"`, a median 90 s) can be added. Results against today's rule, on held-out
+seeds 9000 to 9019: [results/wildfire_alerts/REPORT.md](../results/wildfire_alerts/REPORT.md).
+Over 20 valleys, pre-signed rules sent 141 public alerts against 148, 9 against 11 while every fire behind them
+still smouldered, and warned 336 phones the fire did not reach within 3 h, against 360; 3 of the 660 phones the
+fire reached got no warning in time, against none. All three were hikers reached hours later by a fire the drones
+had found smouldering and carded to fire dispatch, which took off after the swarm had landed. The median lead was
+the same (128 minutes).
+
+**Getting the first crew there (modelled).** `tools/wildfire_initial_attack.py` takes each true fire's report
+time, today's (the earliest of today's methods as deployed) and with the drones' card to fire dispatch added,
+adds a response time drawn once per fire (lognormal, median 30 minutes), and races the line one Type 3 engine
+builds (NWCG initial-action rates by fuel) against the true fire's perimeter, run on to 12 hours. A fire escapes
+if it is not contained, or is larger than 10 acres (4.05 ha, CAL FIRE's initial-attack goal) when it is. Every
+number is fixed in the tool's docstring with its source; the plan was written before the run
+([PREREG.md](../results/wildfire_initial_attack/PREREG.md)). On held-out seeds 9000 to 9039 (the pre-signed arm of
+the alert sweep plus 20 more valleys): the first crew was on scene while the fire still smouldered for 79 of 197
+fires with the drones and none with today's reports (34 to 46 percentage points more, 95% bootstrap over
+valleys); 150 fires escaped with today's reports and 95 with the drones' (55 prevented, 22 to 34 points), 53 of
+them fires the crew reached before they took off. With the response fixed at 60 minutes the drones prevented 36;
+with line built at 8 times one engine's rate, 33 of today's 59. Today with a camera that sees every fire: 147
+escapes. Full table and caveats: [results/wildfire_initial_attack/REPORT.md](../results/wildfire_initial_attack/REPORT.md).
+
+**Crew outputs.** The latest briefs download as map files (`/api/runs/<id>/crew.geojson` or `crew.kml`): each
+fire's position and error, the head's arrow for the next hour, its direction cone and the named places it reaches,
+placed at 0 N 0 E unless an anchor is given, so a simulated file cannot be taken for a real place. Each brief is
+also written as a short message in the order of the size-up report in the NWCG Incident Response Pocket Guide
+(`sim/crew_export.py`).
 
 ## How results are scored
 

@@ -285,7 +285,11 @@ class State:
             spec = self.model if self.model.startswith("nemotron") else f"nemotron:{self.model}"
             config = f"{split_config(config)[0]}+{spec}"
         if body.get("mission"):
-            scenario = from_mission(body["mission"], seed, body.get("mission_text", ""))
+            person = body.get("missing_person")
+            text = body.get("mission_text")
+            # Anything but a string is ignored, as if no text had been sent.
+            scenario = from_mission(body["mission"], seed, text if isinstance(text, str) else "",
+                                    person=person if isinstance(person, bool) else None)
         else:
             name = body.get("scenario", "forest_trail")
             if name not in SCENARIOS:
@@ -364,7 +368,9 @@ def make_handler(state: State, host: str = "127.0.0.1"):
     GET  /api/runs/<id>/export         the run's result with its time series
     GET  /api/runs/<id>/crew.geojson   the wildfire valley's latest crew briefs as a map file (also crew.kml);
                                        simulated, placed at 0 N 0 E unless ?lat=&lon= give the valley's anchor
-    POST /api/runs                     {scenario, n} or {mission, mission_text}, with config, seed, speed;
+    POST /api/runs                     {scenario, n} or {mission, mission_text}, with config, seed, speed; a
+                                       survey for a missing person (missing_person true, or by its words when
+                                       left out) also places a person-sized heat signature to find;
                                        the wildfire valley also takes approval: "auto", "manual" or "modelled",
                                        alert_rule ("forecast", "presigned" or "distance"), and squads
                                        ("auto" or e.g. "F10-N7-S7"), patrol_min and squad_script

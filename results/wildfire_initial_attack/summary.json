@@ -1,0 +1,458 @@
+{
+ "seeds": [
+  9000,
+  9039
+ ],
+ "base": {
+  "fires": 197,
+  "valleys": 40,
+  "fires_left_out_never_spreading": 3,
+  "merged_today": 37,
+  "merged_with_drones": 17,
+  "escaped_today": 150,
+  "escaped_with_drones": 95,
+  "escaped_today_pct": 76.1,
+  "escaped_with_drones_pct": 48.2,
+  "prevented": 55,
+  "prevented_pct_points_ci95": [
+   21.8,
+   34.2
+  ],
+  "crew_on_smoulder_today": 0,
+  "crew_on_smoulder_with_drones": 79,
+  "crew_on_smoulder_pct_points_ci95": [
+   34.0,
+   46.2
+  ],
+  "area_on_arrival_ha_today_median": 0.62,
+  "area_on_arrival_ha_drones_median": 0.07,
+  "caused": 0,
+  "contained_today": 19,
+  "contained_with_drones": 92,
+  "contained_ha_today_median": 3.04,
+  "contained_ha_drones_median": 0.0,
+  "drones_reported_first": 121
+ },
+ "sensitivity": {
+  "response fixed 15 min": {
+   "fires": 197,
+   "valleys": 40,
+   "fires_left_out_never_spreading": 3,
+   "merged_today": 37,
+   "merged_with_drones": 12,
+   "escaped_today": 146,
+   "escaped_with_drones": 77,
+   "escaped_today_pct": 74.1,
+   "escaped_with_drones_pct": 39.1,
+   "prevented": 69,
+   "prevented_pct_points_ci95": [
+    29.3,
+    41.1
+   ],
+   "crew_on_smoulder_today": 0,
+   "crew_on_smoulder_with_drones": 103,
+   "crew_on_smoulder_pct_points_ci95": [
+    46.7,
+    57.7
+   ],
+   "area_on_arrival_ha_today_median": 0.26,
+   "area_on_arrival_ha_drones_median": 0.001,
+   "caused": 0,
+   "contained_today": 22,
+   "contained_with_drones": 114,
+   "contained_ha_today_median": 0.71,
+   "contained_ha_drones_median": 0.0,
+   "drones_reported_first": 121
+  },
+  "response fixed 30 min": {
+   "fires": 197,
+   "valleys": 40,
+   "fires_left_out_never_spreading": 3,
+   "merged_today": 37,
+   "merged_with_drones": 16,
+   "escaped_today": 154,
+   "escaped_with_drones": 92,
+   "escaped_today_pct": 78.2,
+   "escaped_with_drones_pct": 46.7,
+   "prevented": 62,
+   "prevented_pct_points_ci95": [
+    24.7,
+    37.9
+   ],
+   "crew_on_smoulder_today": 0,
+   "crew_on_smoulder_with_drones": 80,
+   "crew_on_smoulder_pct_points_ci95": [
+    35.9,
+    45.2
+   ],
+   "area_on_arrival_ha_today_median": 0.78,
+   "area_on_arrival_ha_drones_median": 0.06,
+   "caused": 0,
+   "contained_today": 14,
+   "contained_with_drones": 95,
+   "contained_ha_today_median": 4.935,
+   "contained_ha_drones_median": 0.0,
+   "drones_reported_first": 121
+  },
+  "response fixed 60 min": {
+   "fires": 197,
+   "valleys": 40,
+   "fires_left_out_never_spreading": 3,
+   "merged_today": 37,
+   "merged_with_drones": 22,
+   "escaped_today": 156,
+   "escaped_with_drones": 120,
+   "escaped_today_pct": 79.2,
+   "escaped_with_drones_pct": 60.9,
+   "prevented": 36,
+   "prevented_pct_points_ci95": [
+    14.1,
+    22.8
+   ],
+   "crew_on_smoulder_today": 0,
+   "crew_on_smoulder_with_drones": 46,
+   "crew_on_smoulder_pct_points_ci95": [
+    18.4,
+    28.2
+   ],
+   "area_on_arrival_ha_today_median": 2.78,
+   "area_on_arrival_ha_drones_median": 0.4,
+   "caused": 0,
+   "contained_today": 12,
+   "contained_with_drones": 64,
+   "contained_ha_today_median": 5.15,
+   "contained_ha_drones_median": 0.0,
+   "drones_reported_first": 121
+  },
+  "response fixed 120 min": {
+   "fires": 197,
+   "valleys": 40,
+   "fires_left_out_never_spreading": 3,
+   "merged_today": 37,
+   "merged_with_drones": 32,
+   "escaped_today": 156,
+   "escaped_with_drones": 143,
+   "escaped_today_pct": 79.2,
+   "escaped_with_drones_pct": 72.6,
+   "prevented": 13,
+   "prevented_pct_points_ci95": [
+    3.6,
+    9.6
+   ],
+   "crew_on_smoulder_today": 0,
+   "crew_on_smoulder_with_drones": 15,
+   "crew_on_smoulder_pct_points_ci95": [
+    4.5,
+    11.1
+   ],
+   "area_on_arrival_ha_today_median": 10.97,
+   "area_on_arrival_ha_drones_median": 4.75,
+   "caused": 0,
+   "contained_today": 11,
+   "contained_with_drones": 30,
+   "contained_ha_today_median": 5.15,
+   "contained_ha_drones_median": 0.005,
+   "drones_reported_first": 121
+  },
+  "crew: Type 6 engine, 2 people": {
+   "fires": 197,
+   "valleys": 40,
+   "fires_left_out_never_spreading": 3,
+   "merged_today": 37,
+   "merged_with_drones": 17,
+   "escaped_today": 155,
+   "escaped_with_drones": 100,
+   "escaped_today_pct": 78.7,
+   "escaped_with_drones_pct": 50.8,
+   "prevented": 55,
+   "prevented_pct_points_ci95": [
+    21.2,
+    34.7
+   ],
+   "crew_on_smoulder_today": 0,
+   "crew_on_smoulder_with_drones": 79,
+   "crew_on_smoulder_pct_points_ci95": [
+    33.8,
+    46.4
+   ],
+   "area_on_arrival_ha_today_median": 0.62,
+   "area_on_arrival_ha_drones_median": 0.07,
+   "caused": 0,
+   "contained_today": 7,
+   "contained_with_drones": 82,
+   "contained_ha_today_median": 0.34,
+   "contained_ha_drones_median": 0.0,
+   "drones_reported_first": 121
+  },
+  "crew: Helitack crew, 5 people": {
+   "fires": 197,
+   "valleys": 40,
+   "fires_left_out_never_spreading": 3,
+   "merged_today": 37,
+   "merged_with_drones": 17,
+   "escaped_today": 155,
+   "escaped_with_drones": 102,
+   "escaped_today_pct": 78.7,
+   "escaped_with_drones_pct": 51.8,
+   "prevented": 53,
+   "prevented_pct_points_ci95": [
+    20.7,
+    33.0
+   ],
+   "crew_on_smoulder_today": 0,
+   "crew_on_smoulder_with_drones": 79,
+   "crew_on_smoulder_pct_points_ci95": [
+    33.8,
+    46.4
+   ],
+   "area_on_arrival_ha_today_median": 0.62,
+   "area_on_arrival_ha_drones_median": 0.07,
+   "caused": 0,
+   "contained_today": 8,
+   "contained_with_drones": 81,
+   "contained_ha_today_median": 1.395,
+   "contained_ha_drones_median": 0.0,
+   "drones_reported_first": 121
+  },
+  "crew: 20-person Type 2 crew, sustained": {
+   "fires": 197,
+   "valleys": 40,
+   "fires_left_out_never_spreading": 3,
+   "merged_today": 37,
+   "merged_with_drones": 17,
+   "escaped_today": 155,
+   "escaped_with_drones": 100,
+   "escaped_today_pct": 78.7,
+   "escaped_with_drones_pct": 50.8,
+   "prevented": 55,
+   "prevented_pct_points_ci95": [
+    21.6,
+    34.2
+   ],
+   "crew_on_smoulder_today": 0,
+   "crew_on_smoulder_with_drones": 79,
+   "crew_on_smoulder_pct_points_ci95": [
+    33.8,
+    46.4
+   ],
+   "area_on_arrival_ha_today_median": 0.62,
+   "area_on_arrival_ha_drones_median": 0.07,
+   "caused": 0,
+   "contained_today": 6,
+   "contained_with_drones": 81,
+   "contained_ha_today_median": 0.265,
+   "contained_ha_drones_median": 0.0,
+   "drones_reported_first": 121
+  },
+  "line rate halved": {
+   "fires": 197,
+   "valleys": 40,
+   "fires_left_out_never_spreading": 3,
+   "merged_today": 37,
+   "merged_with_drones": 17,
+   "escaped_today": 156,
+   "escaped_with_drones": 101,
+   "escaped_today_pct": 79.2,
+   "escaped_with_drones_pct": 51.3,
+   "prevented": 55,
+   "prevented_pct_points_ci95": [
+    21.6,
+    34.2
+   ],
+   "crew_on_smoulder_today": 0,
+   "crew_on_smoulder_with_drones": 79,
+   "crew_on_smoulder_pct_points_ci95": [
+    33.8,
+    46.4
+   ],
+   "area_on_arrival_ha_today_median": 0.62,
+   "area_on_arrival_ha_drones_median": 0.07,
+   "caused": 0,
+   "contained_today": 6,
+   "contained_with_drones": 81,
+   "contained_ha_today_median": 1.39,
+   "contained_ha_drones_median": 0.0,
+   "drones_reported_first": 121
+  },
+  "line 2 times one engine's (more crews arriving together)": {
+   "fires": 197,
+   "valleys": 40,
+   "fires_left_out_never_spreading": 3,
+   "merged_today": 37,
+   "merged_with_drones": 17,
+   "escaped_today": 132,
+   "escaped_with_drones": 85,
+   "escaped_today_pct": 67.0,
+   "escaped_with_drones_pct": 43.1,
+   "prevented": 47,
+   "prevented_pct_points_ci95": [
+    18.1,
+    29.9
+   ],
+   "crew_on_smoulder_today": 0,
+   "crew_on_smoulder_with_drones": 79,
+   "crew_on_smoulder_pct_points_ci95": [
+    33.8,
+    46.4
+   ],
+   "area_on_arrival_ha_today_median": 0.62,
+   "area_on_arrival_ha_drones_median": 0.07,
+   "caused": 0,
+   "contained_today": 79,
+   "contained_with_drones": 131,
+   "contained_ha_today_median": 32.27,
+   "contained_ha_drones_median": 0.0,
+   "drones_reported_first": 121
+  },
+  "line 4 times one engine's (more crews arriving together)": {
+   "fires": 197,
+   "valleys": 40,
+   "fires_left_out_never_spreading": 3,
+   "merged_today": 33,
+   "merged_with_drones": 16,
+   "escaped_today": 100,
+   "escaped_with_drones": 50,
+   "escaped_today_pct": 50.8,
+   "escaped_with_drones_pct": 25.4,
+   "prevented": 50,
+   "prevented_pct_points_ci95": [
+    20.1,
+    31.0
+   ],
+   "crew_on_smoulder_today": 0,
+   "crew_on_smoulder_with_drones": 79,
+   "crew_on_smoulder_pct_points_ci95": [
+    33.8,
+    46.4
+   ],
+   "area_on_arrival_ha_today_median": 0.62,
+   "area_on_arrival_ha_drones_median": 0.07,
+   "caused": 0,
+   "contained_today": 162,
+   "contained_with_drones": 179,
+   "contained_ha_today_median": 10.925,
+   "contained_ha_drones_median": 0.09,
+   "drones_reported_first": 121
+  },
+  "line 8 times one engine's (more crews arriving together)": {
+   "fires": 197,
+   "valleys": 40,
+   "fires_left_out_never_spreading": 3,
+   "merged_today": 20,
+   "merged_with_drones": 8,
+   "escaped_today": 59,
+   "escaped_with_drones": 26,
+   "escaped_today_pct": 29.9,
+   "escaped_with_drones_pct": 13.2,
+   "prevented": 33,
+   "prevented_pct_points_ci95": [
+    12.6,
+    21.1
+   ],
+   "crew_on_smoulder_today": 0,
+   "crew_on_smoulder_with_drones": 81,
+   "crew_on_smoulder_pct_points_ci95": [
+    34.8,
+    47.4
+   ],
+   "area_on_arrival_ha_today_median": 0.62,
+   "area_on_arrival_ha_drones_median": 0.07,
+   "caused": 0,
+   "contained_today": 177,
+   "contained_with_drones": 189,
+   "contained_ha_today_median": 1.44,
+   "contained_ha_drones_median": 0.07,
+   "drones_reported_first": 121
+  },
+  "escape above 2 ha": {
+   "fires": 197,
+   "valleys": 40,
+   "fires_left_out_never_spreading": 3,
+   "merged_today": 37,
+   "merged_with_drones": 17,
+   "escaped_today": 152,
+   "escaped_with_drones": 97,
+   "escaped_today_pct": 77.2,
+   "escaped_with_drones_pct": 49.2,
+   "prevented": 55,
+   "prevented_pct_points_ci95": [
+    21.6,
+    34.4
+   ],
+   "crew_on_smoulder_today": 0,
+   "crew_on_smoulder_with_drones": 79,
+   "crew_on_smoulder_pct_points_ci95": [
+    33.8,
+    46.4
+   ],
+   "area_on_arrival_ha_today_median": 0.62,
+   "area_on_arrival_ha_drones_median": 0.07,
+   "caused": 0,
+   "contained_today": 19,
+   "contained_with_drones": 92,
+   "contained_ha_today_median": 3.04,
+   "contained_ha_drones_median": 0.0,
+   "drones_reported_first": 121
+  },
+  "escape above 20 ha": {
+   "fires": 197,
+   "valleys": 40,
+   "fires_left_out_never_spreading": 3,
+   "merged_today": 37,
+   "merged_with_drones": 17,
+   "escaped_today": 143,
+   "escaped_with_drones": 89,
+   "escaped_today_pct": 72.6,
+   "escaped_with_drones_pct": 45.2,
+   "prevented": 54,
+   "prevented_pct_points_ci95": [
+    21.4,
+    33.5
+   ],
+   "crew_on_smoulder_today": 0,
+   "crew_on_smoulder_with_drones": 79,
+   "crew_on_smoulder_pct_points_ci95": [
+    33.8,
+    46.4
+   ],
+   "area_on_arrival_ha_today_median": 0.62,
+   "area_on_arrival_ha_drones_median": 0.07,
+   "caused": 0,
+   "contained_today": 19,
+   "contained_with_drones": 92,
+   "contained_ha_today_median": 3.04,
+   "contained_ha_drones_median": 0.0,
+   "drones_reported_first": 121
+  },
+  "today with a camera that sees every fire": {
+   "fires": 197,
+   "valleys": 40,
+   "fires_left_out_never_spreading": 3,
+   "merged_today": 37,
+   "merged_with_drones": 17,
+   "escaped_today": 147,
+   "escaped_with_drones": 94,
+   "escaped_today_pct": 74.6,
+   "escaped_with_drones_pct": 47.7,
+   "prevented": 53,
+   "prevented_pct_points_ci95": [
+    21.2,
+    33.2
+   ],
+   "crew_on_smoulder_today": 0,
+   "crew_on_smoulder_with_drones": 79,
+   "crew_on_smoulder_pct_points_ci95": [
+    33.8,
+    46.4
+   ],
+   "area_on_arrival_ha_today_median": 0.44,
+   "area_on_arrival_ha_drones_median": 0.06,
+   "caused": 0,
+   "contained_today": 22,
+   "contained_with_drones": 93,
+   "contained_ha_today_median": 1.985,
+   "contained_ha_drones_median": 0.0,
+   "drones_reported_first": 118
+  }
+ }
+}

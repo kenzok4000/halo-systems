@@ -19,6 +19,7 @@ from __future__ import annotations
 
 import dataclasses
 import math
+import re
 
 import numpy as np
 
@@ -261,6 +262,117 @@ def wildfire_scout(seed: int = 0, n: int = 16, block_m: tuple = (300.0, 200.0), 
         wind=_wind_from(rng, rng.uniform(3.0, 6.0), sigma=1.0, local=0.4),
         targets=targets, sensor=sensor,
         use_case="wildfire scouting: finding ignitions before they grow", tags=("survey", "scouting"),
+    )
+
+
+PERSON_RADIUS_M = 0.4         # a person lying down, seen from above: about half a square metre
+# Words for a missing person. A trigger and a noun may have up to three words between them ("missing 12-year-old
+# boy", "a hiker is overdue"), but not a preposition or conjunction, and no punctuation. Generic nouns (person,
+# people, man) and "hunter" take at most two words from the trigger, none of them an article ("missing elderly
+# man"), or just "is", "went" or "who" before it ("a hunter is missing"), so "lost vines; people walk there" or
+# "injured deer the hunter shot" are not searches. "Survivors" counts after a search word ("locate survivors").
+_TRIGGER = r"missing|lost|overdue|stranded|injured"
+_NOUN = (r"hikers?|walkers?|climbers?|mountaineers?|skiers?|runners?|campers?|kayakers?|canoeists?|swimmers?|"
+         r"survivors?|child|children|kids?|boys?|girls?|teens?|teenagers?|woman|women|men|pilots?|paragliders?|"
+         r"bikers?|cyclists?|anglers?|fisherman|fishermen|patients?")
+_GENERIC = r"person|persons|people|man|hunters?"
+_NOT_BACK = (r"(?:(?:has|have|had|did)(?:\s+not|n't)|never|not\s+yet)\s+"
+             r"(?:returned|return|come\s+back|came\s+back|made\s+it\s+back)")
+_SEP = (r"(?:near|by|at|in|on|of|for|with|from|to|into|over|under|around|behind|before|after|and|or|but|if|when|"
+        r"while|where|as|so|than|because)\b")
+_DET = r"(?:the|a|an|this|that|these|those|his|her|their|our|my|your|its)\b"
+_GAP_AFTER = rf"(?:\s+(?!{_SEP})[\w'-]+)?(?:\s+(?!{_SEP}|{_DET})[\w'-]+){{0,2}}?\s+"   # an article only first
+_GAP_BEFORE = rf"(?:\s+(?!{_SEP}|{_DET})[\w'-]+){{0,3}}?\s+"
+_GAP_GENERIC = rf"(?:\s+(?!{_SEP}|{_DET})[\w'-]+){{0,2}}?\s+"
+_END = r"\b(?!-)"   # "man" in "man-made" is not a man
+_MISSING = re.compile(
+    rf"\b(?:{_TRIGGER}){_GAP_AFTER}(?:{_NOUN}){_END}"
+    rf"|\b(?:{_NOUN}){_GAP_BEFORE}(?:missing|lost|overdue|stranded|{_NOT_BACK})\b"
+    rf"|\b(?:{_TRIGGER}){_GAP_GENERIC}(?:{_GENERIC}){_END}"
+    rf"|\b(?:{_GENERIC})\s+(?:(?:is|are|was|were|went|has\s+gone|have\s+gone|who)\s+)?"
+    rf"(?:missing|lost|overdue|stranded|{_NOT_BACK})\b"
+    rf"|\b(?:search|look|locate|find|rescue)\w*(?:\s+[\w'-]+){{0,3}}?\s+survivors?{_END}(?!\s+trees?\b)")
+_NEGATION = re.compile(r"\b(?:no|not|none|nobody|neither|nor|no-one|no\s+one)\b")
+# Words a negation may reach across to the match ("none of the hikers are missing"); any other word between them,
+# a verb say, means it negates something else ("we have not found the missing hiker").
+_FILLER = {"of", "the", "a", "an", "any", "these", "those", "our", "your", "their", "his", "her", "my", "its", "more"}
+# A person who went missing at another time, or a habit, is not today's search ("where hikers often get lost",
+# "where swimmers went missing last summer", "an injured runner was rescued last week").
+_NOT_NOW = re.compile(r"\b(?:often|usually|sometimes|frequently|every\s+(?:year|summer|winter|season)|in\s+the\s+past|"
+                      r"last\s+(?:week|month|year|summer|winter|spring|autumn|fall|season)|(?:days|weeks|months|years)\s+"
+                      r"ago|(?:was|were|been)\s+(?:rescued|found|recovered))\b")
+
+
+def missing_person(text: str) -> bool:
+    """Whether a mission request is a search for a missing person, from its words (no model involved). The
+    dashboard can also say so outright (``missing_person`` in the request); this is the fallback.
+
+    A match is dropped when it is negated: "no", "not", "none" or "nobody" in it, or among the three words before
+    it in the same clause with only words like "of the" between ("no hikers are missing", "none of the hikers");
+    "has not returned" is not a negation. It is also dropped when its clause places the loss at another time or
+    makes it a habit ("often get lost", "last summer", "was rescued"), and when the trigger is capitalised in the
+    middle of a sentence, as in a name ("the Lost Boys trail").
+    """
+    if not isinstance(text, str):
+        return False
+    text = text[:2000]                   # as the compiler reads it; also bounds the work
+    low = text.lower()
+    for m in _MISSING.finditer(low):
+        lo, hi = max(0, m.start() - 300), min(len(low), m.end() + 300)
+        clause_start = max([lo] + [i + 1 for i in (low.rfind(c, lo, m.start()) for c in ".;:!?,\n") if i >= 0])
+        clause_end = min([hi] + [i for i in (low.find(c, m.end(), hi) for c in ".;:!?\n") if i >= 0])
+        before = low[clause_start:m.start()].split()[-3:]
+        neg = [i for i, w in enumerate(before) if _NEGATION.fullmatch(w) or w in ("no-one", "nobody", "none")]
+        said = re.sub(_NOT_BACK, " ", m.group(0))
+        if _NEGATION.search(said):
+            continue
+        if neg and all(w in _FILLER for w in before[neg[-1] + 1:]):
+            continue
+        if _NOT_NOW.search(low[clause_start:clause_end]):
+            continue
+        first = text[m.start():m.start() + 1]
+        if first.isupper() and text[:m.start()].strip() and text[:m.start()].rstrip()[-1] not in ".!?":
+            continue                     # a capitalised trigger mid-sentence is a name
+        return True
+    return False
+
+
+def _person(rng: np.random.Generator, x0: float, y0: float, w: float, h: float, margin: float = 10.0) -> Target:
+    """Where a missing person lies, and how much tree crown hides them from a camera looking down: half the
+    time in the open, half at the forest edge under 30 to 80% cover (found more slowly, as for a partly hidden
+    hotspot; the engine never confirms a target with less than 15% of it visible)."""
+    x = float(rng.uniform(x0 + margin, x0 + w - margin))
+    y = float(rng.uniform(y0 + margin, y0 + h - margin))
+    cover = 0.0 if rng.random() < 0.5 else float(rng.uniform(0.3, 0.8))
+    return Target(x, y, PERSON_RADIUS_M, "person", cover=cover)
+
+
+def hiker_search(seed: int = 0, n: int = 16, block_m: tuple = (400.0, 250.0)) -> Scenario:
+    """Search a meadow and its forest edge for a missing hiker: one person-sized heat signature.
+
+    The swarm sweeps the block line abreast with thermal cameras looking down, as ``wildfire_scout`` does: on the
+    400 x 250 m block one drone flies sixteen lanes, four fly five and sixteen fly two. The person lies in the open half the time and under tree crowns
+    otherwise (``_person``). What it measures is how soon the person is found against swarm size; the search
+    stops when the sweep ends, found or not.
+    """
+    rng = _rng(seed, 12)
+    w, h = float(block_m[0]), float(block_m[1])
+    sensor = SensorConfig(fov_deg=SCOUT_FOV_DEG, dwell_s=0.5, cell_m=5.0, area=(0.0, 0.0, w, h))
+    swath = 2.0 * float(sensor.footprint_radius(SCOUT_ALTITUDE_M))
+    lane = (max(n, 1) - 1) * SCOUT_SPACING_M + swath
+    path = lawnmower(0.0, 0.0, w, h, lane)
+    person = _person(rng, 0.0, 0.0, w, h)
+    length = sum(math.dist(a, b) for a, b in zip(path, path[1:]))
+    return Scenario(
+        name="hiker_search",
+        title="Missing hiker",
+        description=f"Thermal sweep of a {w:.0f} x {h:.0f} m meadow and forest edge for a missing hiker, line abreast at "
+                    f"{SCOUT_ALTITUDE_M:.0f} m; the person may be lying under tree crowns.",
+        n=n, duration_s=float(min(1800.0, 60.0 + 1.6 * length / SCOUT_SPEED_MPS)), waypoints=path,
+        directive=Directive("line", SCOUT_SPACING_M, SCOUT_SPEED_MPS, SCOUT_ALTITUDE_M, 1.0, source="mission"),
+        wind=_wind_from(rng, rng.uniform(2.0, 5.0), sigma=0.8, local=0.3),
+        targets=[person], sensor=sensor, end_when_done=True,
+        use_case="search and rescue: finding a missing person", tags=("survey", "search and rescue"),
     )
 
 
@@ -556,7 +668,8 @@ def _valley_squads(n, spec, sensor, swath, patrol_s, script, cue=()) -> dict:
 
 SCENARIOS = {
     f.__name__: f for f in (open_transit, formation_changes, forest_trail, gusty_day, comms_degraded,
-                            motor_failures, low_battery, field_survey, urban_canyon, wildfire_scout, wildfire_valley)
+                            motor_failures, low_battery, field_survey, urban_canyon, wildfire_scout, wildfire_valley,
+                            hiker_search)
 }
 
 # Scenarios where the swarm has to change its plan to do well (supervisor benchmark).
@@ -575,12 +688,17 @@ def make(name: str, seed: int = 0, n: int | None = None, options: dict | None = 
     return dataclasses.replace(sc, **overrides) if overrides else sc
 
 
-def from_mission(spec: dict, seed: int = 0, text: str = "") -> Scenario:
+def from_mission(spec: dict, seed: int = 0, text: str = "", person: bool | None = None) -> Scenario:
     """Build a flyable scenario from a compiled ``MissionSpec`` (open ground, light wind).
 
     Unstated values take the defaults in ``ai.mission.DEFAULTS``. Values outside
     the flight envelope are left for the safety validator to clamp at take-off,
     so the clamp shows up in the directive log.
+
+    A survey that searches for a missing person (``person``, or when None, the request's words as read by
+    ``missing_person``) also gets thermal cameras looking down and one person-sized heat signature somewhere in
+    the survey area, placed by the seed (``_person``), so the flight shows whether and when it is found. Other
+    missions are unchanged.
     """
     from ..ai.mission import DEFAULTS
     if spec.get("refused"):
@@ -609,11 +727,19 @@ def from_mission(spec: dict, seed: int = 0, text: str = "") -> Scenario:
     ceiling = (spec.get("constraints") or {}).get("altitude_max_m") or 120.0
     altitude = d["altitude_m"] if (spec.get("directive") or {}).get("altitude_m") is not None else min(DEFAULTS["altitude_m"], ceiling - 2.0)
     path_len = sum(math.dist(a, b) for a, b in zip(waypoints, waypoints[1:]))
+    search = {}
+    if kind == "survey" and (missing_person(text) if person is None else person):
+        sw, sh = min(w, 1500.0), min(h, 1500.0)
+        # Drawn after the wind, from its own stream, so the flight is otherwise the one without a person.
+        search = dict(targets=[_person(_rng(seed, 13), 0.0, 0.0, sw, sh)],
+                      sensor=SensorConfig(fov_deg=SCOUT_FOV_DEG, dwell_s=0.5, cell_m=5.0, area=(0.0, 0.0, sw, sh)),
+                      use_case="search and rescue: finding a missing person")
+    wind = _wind_from(rng, rng.uniform(1.0, 3.0))
     return Scenario(
         name="custom_mission", title="Operator mission", description=text or "Mission compiled from the operator's request.",
         n=n, duration_s=float(min(900.0, 60.0 + 1.6 * path_len / max(d["speed_mps"], 0.5))) if not loop else 180.0,
         waypoints=waypoints, loop=loop,
         directive=Directive(d["formation"], d["spacing_m"], d["speed_mps"], altitude, d["safety_margin_m"], source="mission"),
-        wind=_wind_from(rng, rng.uniform(1.0, 3.0)), altitude_max_m=float(ceiling), end_when_done=not loop,
-        use_case="operator mission", tags=("custom",),
+        wind=wind, altitude_max_m=float(ceiling), end_when_done=not loop,
+        **({"use_case": "operator mission"} | search), tags=("custom",),
     )
