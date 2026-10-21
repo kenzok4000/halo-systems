@@ -68,8 +68,10 @@ let valley = null;   // the wildfire valley's station state for the panel: locat
 const APPROVAL = new URLSearchParams(location.search).get("approval") === "manual" ? "manual" : "auto";
 // A valley patrol from the Mission tab sends its alerts by the district's pre-signed rules: Level 3 and up only for
 // a fire believed spreading, and each smouldering find goes to fire dispatch instead (simulated). ?alerts=forecast
-// flies it with the forecast rule of the other valley runs.
-const VALLEY_ALERT_RULE = new URLSearchParams(location.search).get("alerts") === "forecast" ? "forecast" : "presigned";
+// flies it with the forecast rule of the other valley runs. ?alert_rule=forecast|presigned|distance (the recorder's
+// --alert-rule) flies every valley run under that rule, from the Fly tab too, whose runs otherwise use the forecast rule.
+const ALERT_RULE = ((r) => (["forecast", "presigned", "distance"].includes(r) ? r : null))(new URLSearchParams(location.search).get("alert_rule"));
+const VALLEY_ALERT_RULE = ALERT_RULE || (new URLSearchParams(location.search).get("alerts") === "forecast" ? "forecast" : "presigned");
 // The valley's patrol areas (eval/scenarios.py valley_areas), for a plan before any patrol flies.
 const AREA_NAME = { F: "Valley floor", N: "North slopes", S: "South slopes" };
 
@@ -233,10 +235,16 @@ function onValleyEvent(e) {
       drawValley();
       return true;
     }
-    case "alert_approved":
-      if (valley.alerts.get(e.alert)) valley.alerts.get(e.alert).by = e.by || "";
-      logItem("station", `<span class="chip station">station</span> ${t} alert ${e.alert + 1} ${/^automatic/.test(e.by || "") ? "sent at once by the station's fixed rules" : `approved by ${esc(e.by)}`}`);
+    case "alert_approved": {
+      const a = valley.alerts.get(e.alert);
+      if (a) a.by = e.by || "";
+      // Under the pre-signed rules an automatic alert at level L goes out under trigger rule TL (the alert check
+      // refuses one without it).
+      const how = valley.rule === "presigned" && a && typeof a.level === "number"
+        ? `sent at once under pre-signed rule T${a.level}, signed in advance (simulated)` : "sent at once by the station's fixed rules";
+      logItem("station", `<span class="chip station">station</span> ${t} alert ${e.alert + 1} ${/^automatic/.test(e.by || "") ? how : `approved by ${esc(e.by)}`}`);
       return true;
+    }
     case "alert_delivered": {
       const a = valley.alerts.get(e.alert);
       if (a) { a.state = "delivered"; a.delivered = e.phones; a.of = e.of; }
@@ -251,7 +259,7 @@ function onValleyEvent(e) {
         const lvl = typeof a.level === "number" ? `Level ${a.level}` : levelName(a.level);
         const where = d.zones.length > 1 ? `s: zones ${d.zones.slice(0, -1).join(", ")} and ${d.zones[d.zones.length - 1]}` : a.zone ? `: zone ${a.zone}${z && z.name ? ` ${z.name}` : ""}` : "";
         cine.notice("alert", `${lvl} alert${where}`,
-          `${lv && lv.head ? `${lv.head.charAt(0)}${lv.head.slice(1).toLowerCase()} · ` : ""}${auto ? "sent automatically" : `approved by ${a.by || "the incident commander"}, sent`} to ${d.phones} of ${plural(d.of, "simulated phone")}`, key, d);
+          `${lv && lv.head ? `${lv.head.charAt(0)}${lv.head.slice(1).toLowerCase()} · ` : ""}${auto ? (valley.rule === "presigned" && typeof a.level === "number" ? `sent automatically under pre-signed rule T${a.level}` : "sent automatically") : `approved by ${a.by || "the incident commander"}, sent`} to ${d.phones} of ${plural(d.of, "simulated phone")}`, key, d);
       }
       drawValley();
       return true;
@@ -490,8 +498,10 @@ async function start(extra = {}) {
   const speed = Number($("#speed .active").dataset.speed);
   try {
     const drones = Number($("#drones").value) || undefined;   // blank = the scenario's own swarm size
-    run = await api("/api/runs", { scenario: $("#scenario").value, config: $("#config").value, seed: Number($("#seed").value), speed, n: drones,
-      approval: APPROVAL, ...extra });
+    const body = { scenario: $("#scenario").value, config: $("#config").value, seed: Number($("#seed").value), speed, n: drones,
+      approval: APPROVAL, ...(ALERT_RULE ? { alert_rule: ALERT_RULE } : {}), ...extra };
+    run = await api("/api/runs", body);
+    run.alertRule = body.alert_rule || "forecast";   // the rule the valley's alerts go out under (the server's default)
   } catch (err) { alert(err.message); return; }
   view.build(run);
   // What is flying, above the run controls: the lab controls that chose it may be folded away.
@@ -523,7 +533,7 @@ async function start(extra = {}) {
     view.setMode("follow");
     $$("#viewbtns button").forEach((b) => b.classList.toggle("active", b.id === "view-reset"));
   }
-  valley = run.wildfire ? { located: 0, smoke: 0, warned: 0, brief: [], briefT: null, alerts: new Map(), approval: APPROVAL,
+  valley = run.wildfire ? { located: 0, smoke: 0, warned: 0, brief: [], briefT: null, alerts: new Map(), approval: APPROVAL, rule: run.alertRule,
     zones: run.wildfire.zones || [], levels: run.wildfire.levels || {}, zonesLevel: [], told: {}, dispatch: [],
     squadRun: squads.length ? { names: Object.fromEntries([...(run.scenario.squad_areas || []), ...squads].map((a) => [a.code, a.name])),
       defs: new Map(squads.map((s) => [s.code, { code: s.code, name: s.name, n: s.n, lanes: s.lanes }])), laps: {}, now: null,

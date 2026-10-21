@@ -172,7 +172,7 @@ export class Cinema {
     this.cards.key = "";
     this.$(".cine-cards").innerHTML = "";
     this.$(".cine-scn").textContent = run.scenario.title;
-    this.$(".cine-sub").textContent = `${run.n} drones · ${supervisor}${run.wildfire ? " · alerts to simulated phones only" : ""}`;
+    this.$(".cine-sub").textContent = `${run.n} drones · ${supervisor}${run.wildfire ? (run.alertRule === "presigned" ? " · public alerts under pre-signed rules, to simulated phones only" : " · alerts to simulated phones only") : ""}`;
     this.$(".cine-note").textContent = note;
   }
 

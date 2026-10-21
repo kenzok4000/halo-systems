@@ -50,6 +50,10 @@
 // page's Move drones action; the run carries each out at its first step at or after that second, and the safety
 // check may refuse it (both show as events). --squad-focus F|N|S frames that squad in the follow, orbit, chase, ride
 // and close-up views from the start of the flight (window.haloView.squadFocus).
+// --alert-rule presigned|forecast|distance flies a wildfire valley run (--scenario wildfire_valley or --valley) with its
+// alerts under that rule: presigned sends smouldering finds to fire dispatch as cards and public alerts only for fires
+// believed spreading, each under its trigger rule; forecast is today's rule, the scenario's default (a --valley
+// patrol defaults to presigned).
 // Needs Playwright (`npm install playwright && npx playwright install chromium`, or a global install
 // with NODE_PATH set).
 const { chromium } = require("playwright");
@@ -65,6 +69,9 @@ const url = args.url || "http://127.0.0.1:8765";
 // Squad codes are the areas' letters, F, N and S, in either case.
 if (args["squad-focus"]) args["squad-focus"] = args["squad-focus"].toUpperCase();
 if (args["squad-move"]) args["squad-move"] = args["squad-move"].toUpperCase();
+if (args["alert-rule"] && !["forecast", "presigned", "distance"].includes(args["alert-rule"])) throw new Error("--alert-rule takes presigned, forecast or distance");
+// Page options carried in the URL: how alerts are approved, and the rule they go out under.
+const pageOpts = `${args.approval ? `&approval=${encodeURIComponent(args.approval)}` : ""}${args["alert-rule"] ? `&alert_rule=${args["alert-rule"]}` : ""}`;
 const out = args.out || (args.film ? "video/shot.mp4" : "video/shot.webm");
 const seconds = Number(args.seconds || 15);
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
@@ -82,7 +89,7 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
   page.on("pageerror", (e) => console.error("page error:", e.message));
   // lab=1 opens the page's lab controls, which Playwright's clicks need visible; start=0 stops the page from
   // starting its own wildfire valley flight, so the one picked here is the only one.
-  await page.goto(`${url}/?lab=1&start=0${args.approval ? `&approval=${encodeURIComponent(args.approval)}` : ""}`);
+  await page.goto(`${url}/?lab=1&start=0${pageOpts}`);
   await page.waitForFunction(() => document.querySelectorAll("#scenario option").length > 0);
   await page.waitForFunction(() => !/checking/.test(document.querySelector("#ai-pill").textContent));
 
@@ -188,7 +195,7 @@ async function film() {
   }
   injects.sort((a, b) => a.at - b.at);
   if (args["squad-focus"] && !["F", "N", "S"].includes(args["squad-focus"])) throw new Error("--squad-focus takes a squad: F, N or S");
-  await page.goto(`${url}/?film=1${args.cinema ? "&cinema=1" : ""}${args.approval ? `&approval=${encodeURIComponent(args.approval)}` : ""}`);
+  await page.goto(`${url}/?film=1${args.cinema ? "&cinema=1" : ""}${pageOpts}`);
   await page.waitForFunction(() => document.querySelectorAll("#scenario option").length > 0);
   await page.waitForFunction(() => !/checking/.test(document.querySelector("#ai-pill").textContent));
   // The page's controls are worked by script, since the cinema layout hides the side panel they sit in.
