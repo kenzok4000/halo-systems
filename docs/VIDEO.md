@@ -86,7 +86,7 @@ Where the spoken numbers come from:
 | "but did no better in the wildfire valley" | results/valley_stress/: the valley test engineer on held-out seeds 9100-9119 and 9150-9169 did no better than random or corner search (11 failures, against 10 and 13) |
 | "about eight hundred and forty dollars a day", "about thirty lightning strikes" | docs/PATROL_COST.md: about USD 840 a patrol day (USD 837), about 29 strikes checked (estimate) |
 | "can cost millions to put out" | docs/PATROL_COST.md: USD 2.2 million (CAD 3.1 million) for a fire in Alberta attacked on time that still escaped, at moderate hazard; the review's difference of "$1 million and $3 million" |
-| "forty fresh simulated valleys", "over a third of today's escapes" | results/wildfire_initial_attack/REPORT.md: seeds 9000-9039, 40 valleys; 55 of today's 150 escapes prevented (37%) |
+| "forty fresh simulated valleys", "over a third of today's escapes" | results/wildfire_initial_attack/REPORT.md: seeds 9000-9039, 40 valleys; 37% of today's escapes prevented |
 
 ## Shot list
 

@@ -146,19 +146,18 @@ Nobody fights the fires during the flights. Afterwards, [tools/wildfire_initial_
 
 | | Today's reports | With the drones' reports |
 |---|---|---|
-| First crew on scene while the fire still smoulders | 0 of 197 | 79 |
+| First crew on scene while the fire still smoulders | none | 40% of the fires |
 | Median size when the first crew arrives (ha) | 0.62 | 0.07 |
-| Fires escaped, one Type 3 engine | 150 | 95 |
-| Share of today's escapes prevented | | 55 of 150 (37%) |
+| Share of today's escapes prevented, one Type 3 engine | | 37% |
 
-| Sensitivity | Escapes prevented | First crew on a smoulder, with the drones |
+| Sensitivity | Share of today's escapes prevented | First crew on a smoulder, with the drones |
 |---|---|---|
-| Response drawn per fire, median 30 min (as above) | 55 | 79 |
-| Response fixed at 15 / 60 / 120 min | 69 / 36 / 13 | 103 / 46 / 15 |
-| Line built at 2 / 4 / 8 times one engine's rate | 47 / 50 / 33 | 79 / 79 / 81 |
-| Today's methods with a camera that sees every fire | 53 | 79 |
+| Response drawn per fire, median 30 min (as above) | 37% | 40% |
+| Response fixed at 15 / 60 / 120 min | 47% / 23% / 8% | 52% / 23% / 8% |
+| Line built at 2 / 4 / 8 times one engine's rate | 36% / 50% / 56% | 40% / 40% / 41% |
+| Today's methods with a camera that sees every fire | 36% | 40% |
 
-With the drones, the first crew reached 79 of 197 fires (40%) while they still smouldered, 34.0 to 46.2 percentage points more than with today's reports (95% bootstrap over valleys), and 77 of those were held. 53 of the 55 escapes prevented are fires the crew reached before they took off: on this dry, windy day, a fire that has taken off grows faster than one crew builds line. Giving today's methods a camera that sees every fire changes their escapes only from 150 to 147, so the gain is about seeing fires before they spread, not camera coverage. One prediction written before the run missed: today's escapes came out lower than predicted.
+With the drones, the first crew reached 40% of the fires while they still smouldered, 34.0 to 46.2 percentage points more than with today's reports (95% bootstrap over valleys), and nearly all of those were held. The drones' reports prevented 37% of today's escapes (22 to 34 percentage points of all fires, 95% bootstrap over valleys), nearly all of them fires the crew reached before they took off: on this dry, windy day, a fire that has taken off grows faster than one crew builds line. Giving today's methods a camera that sees every fire cuts their escapes by only 2%, so the gain is about seeing fires before they spread, not camera coverage. One prediction written before the run missed: today's escape rate came out lower than predicted.
 
 **Caveat.** The valley is a dry, windy day by design, so its escape rates are far above real ones (CAL FIRE's goal is to contain 95% of fires at 10 acres or less), and they do not transfer. The share of escapes prevented is the result to carry over (37% here, 23% with a fixed 60-minute response, 36 to 56% with stronger first crews), and only to fires the drones would find while they smoulder. The race lets a fire burn freely until it is contained, which overstates sizes in both columns.
 
