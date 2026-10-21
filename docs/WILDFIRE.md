@@ -40,8 +40,9 @@ bootstrap intervals over seeds. Full tables: [REPORT.md](../results/wildfire_val
   deployed in California in 2024, cameras saw 22% of fires. The sixteen drones reported 60 of the 100 fires
   before the earliest of today's four methods, by a median of 69 minutes. That lead comes mostly from the
   smouldering phase, whose length the scenario sets (see "Assumptions and sources"). Split by when each fire
-  starts to spread (post-hoc), the drones were first on 1 of 57 fires already spreading at take-off and on 17
-  of 21 that started to spread within 20 minutes, by a median of 13 to 17 minutes.
+  starts to spread (post-hoc, pooling these seeds and 7000 to 7019), the drones were first on 1 of 57 fires
+  already spreading at take-off and on 17 of 21 that started to spread within 20 minutes, by a median of 13 to
+  17 minutes.
 - **Forecast.** With sixteen drones, the forecast's median matched the true spread of the fires the station
   knew were spreading with a Sorensen overlap of 0.71 [0.63, 0.78] at 1 hour and 0.83 [0.79, 0.86] at 3 hours.
   One drone scores 0.77 and 0.89, because it finishes later and forecasts with more of the fire mapped.
@@ -57,13 +58,14 @@ bootstrap intervals over seeds. Full tables: [REPORT.md](../results/wildfire_val
 - **The first crew, while the fire still smoulders.** On a third held-out set (seeds 9000 to 9039, 40 valleys,
   197 fires, flown once), with the drones' cards to fire dispatch the first crew reached 79 fires (40%) while
   they still smouldered, against none with today's reports. In a simple containment model with one engine per
-  fire, 95 fires escaped initial attack against 150: the drones prevented 55, 37% of today's escapes. The valley's
-  day is dry and windy by design, so the escape rates themselves are far above real ones; the share prevented is
-  the result (see "Getting the first crew there" below).
+  fire, the drones' reports prevented 37% of the fires that escaped initial attack with today's reports. The
+  valley's day is dry and windy by design, so the escape rates themselves are far above real ones; the share
+  prevented is the result (see "Getting the first crew there" below).
 - **Squads per area.** On another held-out set (seeds 8000 to 8019, 300 flights, flown once), splitting the
   drones into squads over the valley floor and both slopes found 88% of fires with 16 drones, against 80% for one
-  squad on the floor and 84% for today's single sweep, and the fire across the valley in every valley. The cost
-  was about one false fire per flight against 0.35 (see "Squads" below).
+  squad on the floor and 84% for today's single sweep (within the noise; the squads beat the single sweep clearly
+  only at 8 drones, 84% against 76%), and the fire across the valley in every valley. The cost was about one
+  false fire per flight against 0.35 (see "Squads" below).
 
 ![When each fire was reported and how big it was, by the drones and by today's methods](../results/wildfire_valley/detection.png)
 
@@ -264,12 +266,13 @@ builds (NWCG initial-action rates by fuel) against the true fire's perimeter, ru
 if it is not contained, or is larger than 10 acres (4.05 ha, CAL FIRE's initial-attack goal) when it is. Every
 number is fixed in the tool's docstring with its source; the plan was written before the run
 ([PREREG.md](../results/wildfire_initial_attack/PREREG.md)). On held-out seeds 9000 to 9039 (the pre-signed arm of
-the alert sweep plus 20 more valleys): the first crew was on scene while the fire still smouldered for 79 of 197
-fires with the drones and none with today's reports (34 to 46 percentage points more, 95% bootstrap over
-valleys); 150 fires escaped with today's reports and 95 with the drones' (55 prevented, 22 to 34 points), 53 of
-them fires the crew reached before they took off. With the response fixed at 60 minutes the drones prevented 36;
-with line built at 8 times one engine's rate, 33 of today's 59. Today with a camera that sees every fire: 147
-escapes. Full table and caveats: [results/wildfire_initial_attack/REPORT.md](../results/wildfire_initial_attack/REPORT.md).
+the alert sweep plus 20 more valleys): the first crew was on scene while the fire still smouldered for 40% of
+the fires with the drones and none with today's reports (34 to 46 percentage points more, 95% bootstrap over
+valleys). The drones' reports prevented 37% of the escapes with today's reports (22 to 34 percentage points of
+all fires), nearly all of them fires the crew reached before they took off. With the response fixed at 60
+minutes they prevented 23%; with line built at 8 times one engine's rate, 56%. Giving today's methods a camera
+that sees every fire cut their escapes by 2%. Because the valley's day is dry and windy by design, only these
+shares carry over, not the escape rates. Full table and caveats: [results/wildfire_initial_attack/REPORT.md](../results/wildfire_initial_attack/REPORT.md).
 
 **Crew outputs.** The latest briefs download as map files (`/api/runs/<id>/crew.geojson` or `crew.kml`): each
 fire's position and error, the head's arrow for the next hour, its direction cone and the named places it reaches,

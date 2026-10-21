@@ -19,7 +19,7 @@ Row "1, speed held (no supervisor)": the sweep was not finished in 20 of 20 flig
 
 The plan (`PREREG.md`) set no threshold; these notes read the table above.
 
-- **Four drones or more found everyone.** With 4 and with 16 drones the person was found in all 20 searches,
+- **Four and sixteen drones found everyone.** With 4 and with 16 drones the person was found in all 20 searches,
   including the 11 under 30 to 80% tree crown: a median 3.9 minutes in with 4 drones (90% within 4.6) and 0.8
   minutes with 16 (90% within 2.4). The meadow took one sweep of 6.2 and 3.1 minutes.
 - **One drone has to choose between speed and coverage.** With the rule supervisor, the lone drone sped up to

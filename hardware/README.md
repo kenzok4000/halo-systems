@@ -36,7 +36,7 @@ This folder is its hardware design: parametric CAD, exports, renders, a costed b
 | [renders/](renders/) | 4 PNGs, 105 to 126 kB | Three-quarter, top, exploded and side views, 1600 x 1000 |
 | [renders/render.html](renders/render.html), [render.cjs](renders/render.cjs) | 15 kB, 2 kB | The page and script that draw the PNGs from the GLB in headless Chromium |
 | [bom.csv](bom.csv) | 11.9 kB | The parts list with prices, masses, power, sources and the date checked. The single source for everything below |
-| [budget.py](budget.py) | 28.8 kB | Reads the CSV and the CAD masses, runs the simulator's own endurance formula, writes the three files below |
+| [budget.py](budget.py) | 26.7 kB | Reads the CSV and the CAD masses, runs the simulator's own endurance formula, writes the three files below |
 | [BOM.md](BOM.md) | 16.9 kB | Bill of materials and the mass, power and endurance budget against the simulator |
 | [COSTS.md](COSTS.md) | 4.1 kB | Cost per flight hour and per hectare |
 | [budget.json](budget.json) | 6.7 kB | Every computed number, for other tools |

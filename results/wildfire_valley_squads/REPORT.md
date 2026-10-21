@@ -64,7 +64,7 @@ Safety and energy, every flight: 4 drones: 0 crashes, 0 drones retired; 8 drones
   has crossed the floor once (about 10 minutes at 4 drones, 4 at 16, under 2 at 32 and 64). Part of D's gain
   over A is that it keeps looking for longer.
 - **Phones warned in time did not change**: 26.9 per flight in every arm and size. The fires that reach phones were
-  found in time by all three flights; the squads' gain is in fires found earlier and on the slopes.
+  found in time by all three flights; the squads' extra finds are fires that never reached a phone.
 - No crashes and no drones retired in any of the 300 flights.
 
 The table and the paired differences above come from the report tool unchanged; the alert counts in this section
