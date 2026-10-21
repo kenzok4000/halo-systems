@@ -234,6 +234,10 @@ PYTHONPATH=src python3 tools/airspace_hold_demo.py --out results/airspace_hold
 PYTHONPATH=src python3 tools/compute_table.py --out results/compute
 ```
 
+## Patrol cost (an estimate)
+
+`patrol_cost/` holds what a patrol day would cost by squad size, against Alberta's patrol flights and the suppression cost of an escaped fire: `model.json` and `TABLES.md`, written by `python3 tools/patrol_cost.py` (no key needed; `--charts` also draws `docs/figures/patrol-*.png`). Its inputs are the scout's build sheet (`hardware/`), the wildfire scout's scan rate and the valley rows above, and the cited figures explained in [docs/PATROL_COST.md](../docs/PATROL_COST.md). It flies nothing, and every cost in it is an estimate.
+
 ## Stress-test search
 
 `STRESS.md` compares the searchers. `stress/` holds every search (5 seeds × 40 flights per searcher) with each test's conditions, reason and outcome; `stress/no_safety_filter/` holds the same 1,000 tests re-flown without the safety filter. The system under test is the improved controller with the rule supervisor, unchanged since commit 3a65405, where the random and CEM searches ran. The Nemotron searches ran while commits 955869f to 0456945 landed, which changed the supervisor and mission prompts and the report but not the controller, the rules or the test engineer. The corner search and the re-flights ran later on the same controller and rules.

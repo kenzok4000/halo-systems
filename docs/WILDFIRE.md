@@ -198,7 +198,7 @@ are refused until the resume. The ground station, smoke watch and alerts keep ru
 back and carries on the sweep where it stopped. A demonstration on development seed 3000 with 16 drones (a
 5-minute hold 42% of the way along the sweep): every drone was stopped at the hold altitude 6.1 s after the order, the
 hold cost 28.7% of a battery, the sweep finished 305 s later and found the same 5 fires
-([results/airspace_hold/REPORT.md](../results/airspace_hold/REPORT.md)). Runs without an order are unchanged.
+([results/airspace_hold/REPORT.md](../results/airspace_hold/REPORT.md)). Runs without an order are unchanged. What flying it for real would need is in the README's [Flying it legally](../README.md#flying-it-legally).
 
 **A job in plain words (Nemotron).** The operator types the job, for example "We had dry lightning last night.
 Put 16 drones over the whole valley for 12 minutes and check last night's strikes." Nemotron 3 Nano, with
@@ -337,8 +337,8 @@ Lightning fires can smoulder for a long time before anyone reports them: across 
 "holdover" time ranges from 1.4 to 53.6 hours (Moris et al. 2023, Earth System Science Data 15: 1151), and
 fire services fly patrols after lightning storms to look for them (Government of Alberta). Patrols are not in
 the comparison because no source gives how often or when they fly; an Alberta review puts aerial patrols at
-12% of detections for an average of CAD 9.6 million a year over 2015 to 2019 (Spring 2019 Wildfire Review,
-table 12).
+12% of detections for an average of CAD 9.6 million a year over 2015 to 2019, about USD 6.9 million (Spring 2019
+Wildfire Review, table 12).
 
 **The lead, by when each fire starts to spread.** Because the lead comes mostly from the smouldering phase,
 [a breakdown of the committed rows](../results/wildfire_spread_timing/REPORT.md) splits it by when each fire

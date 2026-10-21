@@ -1,6 +1,6 @@
 # Results
 
-Every flight result here comes from held-out seeds 1000-1019, each flight run once, except the wildfire valley, which has its own held-out seeds 4000-4019; the stress search flies its own search seeds, and the mission compiler is scored on a held-out set of 20 requests. The simulator, controllers and rules were frozen before any held-out flight (in the wildfire valley, before the flights reported here; see its protocol), and the Nemotron setup was chosen on tuning seeds 0-9 and committed before any Nemotron flight on the held-out seeds ([BENCHMARKS.md](BENCHMARKS.md)). The generated reports behind each section are [REPORT.md](../results/REPORT.md) (95% confidence intervals and seed-by-seed comparisons for every number), [STRESS.md](../results/STRESS.md), [wildfire/REPORT.md](../results/wildfire/REPORT.md) and [wildfire_valley/REPORT.md](../results/wildfire_valley/REPORT.md). The figures outside the wildfire valley are drawn from the committed rows by [tools/make_figures.py](../tools/make_figures.py), which also prints every plotted number.
+Every flight result here comes from held-out seeds, each flight run once. Most use seeds 1000-1019. The wildfire valley has its own, 4000-4019, and each later valley and missing-hiker result names its own set (8000-8019, 9000-9019, 9000-9039, 9100-9119 and 9150-9169, 9200-9219). The stress search flies its own search seeds. The mission and valley compilers are scored on held-out sets of 20 and 48 requests. The simulator, controllers and rules were frozen before any held-out flight (in the wildfire valley, before the flights reported here; see its protocol), and the Nemotron setup was chosen on tuning seeds 0-9 and committed before any Nemotron flight on the held-out seeds ([BENCHMARKS.md](BENCHMARKS.md)). The generated reports behind each section are [REPORT.md](../results/REPORT.md) (95% confidence intervals and seed-by-seed comparisons for every number), [STRESS.md](../results/STRESS.md), [wildfire/REPORT.md](../results/wildfire/REPORT.md), [wildfire_valley/REPORT.md](../results/wildfire_valley/REPORT.md), and for the later results [wildfire_alerts/REPORT.md](../results/wildfire_alerts/REPORT.md), [wildfire_initial_attack/REPORT.md](../results/wildfire_initial_attack/REPORT.md), [wildfire_valley_squads/REPORT.md](../results/wildfire_valley_squads/REPORT.md), [valley_eval/REPORT.md](../results/valley_eval/REPORT.md), [valley_stress/REPORT.md](../results/valley_stress/REPORT.md) and [hiker_search/REPORT.md](../results/hiker_search/REPORT.md). The figures outside the wildfire valley are drawn from the committed rows by [tools/make_figures.py](../tools/make_figures.py), which also prints every plotted number.
 
 ## Wildfire scouting: what the swarm is for
 
@@ -23,11 +23,11 @@ The sweep was flown in a 3 to 6 m/s breeze with turbulence. The harder weather a
 
 ## Wildfire valley: finding fires, forecasting their spread, warning phones
 
-The wildfire valley is a mountain valley the morning after dry lightning, with five fires per flight: one already spreading in open scrub, one under tree crowns, one under a rock overhang that no camera looking down can see, one smouldering in the open, and one across the valley outside the survey block. The swarm sweeps the valley floor with downward thermal cameras and watches ahead for smoke. The ground station locates the fires, forecasts their spread with an ensemble of 16 runs of Rothermel's fire model, 3 hours ahead, briefs the fire crews and sends evacuation alerts zone by zone at Japan-style levels (3 prepare, 4 evacuate, 5 emergency). Alerts go out automatically by fixed rules, each after an alert check, to simulated phones only; an operator can cancel an alert or give a zone the all-clear. Nothing in this scenario calls a language model: none finds the fires, makes the forecast or decides an alert. The drones carry the sensors of the Halo scout in [hardware/](../hardware/README.md), a design priced from off-the-shelf parts. The scenario, the station and every assumption with its source are in [WILDFIRE.md](WILDFIRE.md).
+The wildfire valley is a mountain valley the morning after dry lightning, with five fires per flight: one already spreading in open scrub, one under tree crowns, one under a rock overhang that no camera looking down can see, one smouldering in the open, and one across the valley outside the survey block. The swarm sweeps the valley floor with downward thermal cameras and watches ahead for smoke. The ground station locates the fires, forecasts their spread with an ensemble of 16 runs of Rothermel's fire model, 3 hours ahead, briefs the fire crews and sends evacuation alerts zone by zone at Japan-style levels (3 prepare, 4 evacuate, 5 emergency). In the flights reported first below, alerts went out automatically under today's rule, in which any located fire, a smoulder included, can raise a zone to Level 3, each after an alert check, to simulated phones only; an operator can cancel an alert or give a zone the all-clear. The pre-signed trigger rules chosen for public alerts were measured later ([below](#alerts-under-pre-signed-rules-seeds-9000-9019)). No language model finds the fires, makes the forecast or decides an alert; one only reads a valley job typed in plain words ([below](#valley-jobs-in-plain-words-48-held-out-requests)). The drones carry the sensors of the Halo scout in [hardware/](../hardware/README.md), a design priced from off-the-shelf parts. The scenario, the station and every assumption with its source are in [WILDFIRE.md](WILDFIRE.md).
 
 **Protocol.** Held-out seeds 4000 to 4019 (20 valleys, 100 fires), each flown once with the final code: 80 flights, with 1, 4 and 16 drones, and the 16-drone flights again with alerts by distance alone, all on the improved controller with the rule supervisor. Seeds 2000 to 2011 and 3000 to 3019 were used while the scenario and the station were built. An earlier sweep on seeds 4000 to 4019 was stopped part-way when the station changed, and its rows were set aside unread. The models of today's detection methods were checked only on seeds 3000 to 3003. Brackets are 95% bootstrap intervals over seeds. The tables are copied from [wildfire_valley/REPORT.md](../results/wildfire_valley/REPORT.md), which `tools/wildfire_valley_report.py` generates from [runs.jsonl](../results/wildfire_valley/runs.jsonl) (means and intervals in [summary.json](../results/wildfire_valley/summary.json)); `tools/wildfire_valley_figures.py` draws the charts.
 
-**What is simulated.** The valley simulates the fire's spread (Rothermel's surface fire model on land cover, slope and wind), plume heights, smoke and heat detection, the forecast, the alerts and the phones. Smoke and heat detection are probability models of a detector, not image recognition. Crown fire, spotting and the fire's effect on its own wind are not modelled; each makes real fires faster and less predictable than this forecast assumes. The swarm flies its sweep and lands without going back to check a fire, it flies 20 m above the canopy straight over a spreading fire, its simulated GNSS error is about a sixth of the scout's receiver, and an alert counts as delivered, not as acted on.
+**What is simulated.** The valley simulates the fire's spread (Rothermel's surface fire model on land cover, slope and wind), plume heights, smoke and heat detection, the forecast, the alerts and the phones. Smoke and heat detection are probability models of a detector, not image recognition. Crown fire, spotting and the fire's effect on its own wind are not modelled; each makes real fires faster and less predictable than this forecast assumes. The swarm flies its sweep (or, as an option, a 12-minute squad patrol) and lands without going back to check a fire, it flies 20 m above the canopy straight over a spreading fire, its simulated GNSS error is about a sixth of the scout's receiver, and an alert counts as delivered, not as acted on.
 
 ![Map of one held-out flight (seed 4012, 16 drones, all five fires found): the valley's land cover and ridges, the true burnt area 1 and 3 hours after the last forecast against the forecast's median outlines, the fires located by thermal camera and by smoke, the twelve evacuation zones, and the phones coloured by the alert level they received](../results/wildfire_valley/map.png)
 
@@ -78,7 +78,7 @@ The same fires, found by the methods fire services use today, modelled from publ
 
 With 1 drone, the drone reported 40 of 100 fires before the earliest of today's four, by a median of 112 minutes. With 4 drones, the swarm reported 55 of 100 fires before the earliest of today's four, by a median of 74 minutes. With 16 drones, the swarm reported 60 of 100 fires before the earliest of today's four, by a median of 69 minutes. Each median is over the fires that swarm reported first, a different set for each size.
 
-These are models of today's methods built from cited figures, not measurements of them. Cameras and callers start their clock when the fire starts to spread, so none of them finds a smouldering fire here; the drones' lead comes from that phase, and from smoulder times the scenario sets (from 20 minutes before take-off to 4 hours after). Once a fire spreads, a camera with a clear view or a call from the public reports it about 4 minutes later. Aerial patrols after lightning are left out because no source gives how often or when they fly. The drones add to today's methods rather than replace them: together, today's four and sixteen drones found every fire.
+These are models of today's methods built from cited figures, not measurements of them. Cameras and callers start their clock when the fire starts to spread, so none of them finds a smouldering fire here; the drones' lead comes mostly from that phase, and from smoulder times the scenario sets (from 20 minutes before take-off to 4 hours after). Once a fire spreads, a camera with a clear view or a call from the public reports it about 4 minutes later. Aerial patrols after lightning are left out because no source gives how often or when they fly. The drones add to today's methods rather than replace them: together, today's four and sixteen drones found every fire.
 
 ![Scatter plot of when each of the 100 fires was reported, in minutes after it started to spread, against its size when reported on a log scale. Sixteen drones (86 of 100 found) report most of their fires before they spread, at a few square metres; an AI camera with a clear view (100 of 100) and public calls (99 of 100) report fires a few minutes after they spread, at 100 to 200 m²; the geostationary satellite (93 of 100) and polar satellites (89 of 100) report them later and larger](../results/wildfire_valley/detection.png)
 
@@ -116,6 +116,101 @@ The 16-drone flights again, with the alert rule replaced by distance alone: Leve
 | 16 | distance | 95.0 [93.3, 96.7] | 126 | 59.2 | 49 [41, 57] | 28.8 |
 
 Over 20 paired seeds the forecast rule changes phones warned in time by -0.1 [-0.2, 0.0] per flight and phones evacuated that the fire did not reach by -24.1 [-30.2, -18.2] per flight. The forecast told about 24 fewer phones per flight to leave that the fire did not reach, and warned about the same share in time.
+
+### Alerts under pre-signed rules (seeds 9000-9019)
+
+Pre-signed trigger rules are the entry's alert design. An alerting authority would sign each rule in advance, and each newly found fire, smouldering or not, also goes to fire dispatch as a card (simulated). As first built and flown here, a public alert went out only for a fire the station believes is spreading; after the results below, the rules were set to alert on smoulders too ([the choice](#the-choice-smoulders-too)). Seeds 9000-9019 (20 valleys) were flown once with 16 drones flying today's single sweep, each valley under three alert policies: today's rule, the pre-signed rules sent automatically, and the pre-signed rules with an official's one-tap approval after a modelled delay (median 90 s). The flight is the same in all three; only the alerts differ. No language model takes part in any alert or card. Totals over the 20 valleys, from [wildfire_alerts/REPORT.md](../results/wildfire_alerts/REPORT.md):
+
+| | Today's rule | Pre-signed, automatic | Pre-signed, one-tap |
+|---|---|---|---|
+| Public alerts sent | 148 | 141 | 118 |
+| Sent while every fire behind it was still smouldering | 11 | 9 | 7 |
+| Sent for false fires only | 0 | 0 | 0 |
+| Phones warned before the fire reached them (660 reached) | 635 | 632 | 631 |
+| Phones reached without a warning (with signal) | 0 | 3 | 4 |
+| Phones warned that the fire did not reach within 3 h | 360 | 336 | 335 |
+| Cards to fire dispatch (of them for false fires) | 0 | 92 (11) | 91 (10) |
+| Median warning lead, minutes (median over valleys) | 127.6 | 127.6 | 126.3 |
+
+Pre-signed rules changed little. Paired by valley, the automatic arm sent 7 fewer public alerts than today's rule (95% bootstrap interval -14 to -1) and 2 fewer while every fire still smouldered (-6 to +0). Level 4 and 5 alerts were nearly the same (48 and 25 against 49 and 24), because they come from fires already spreading. The cost: 3 phones with signal that the fire reached got no warning in time, against none under today's rule (+0 to +8). All three were hikers on the ridge trail, in two valleys, reached 2.4 to 2.7 hours after take-off. Their fires had gone to fire dispatch as cards 30 s into the flight and took off 41 and 46 minutes after take-off. The swarm had landed after 4 minutes, so no drone saw them spread and no public alert followed; today's rule had warned those phones on the smoulder. So under pre-signed rules, a fire found smouldering depends on fire dispatch acting on its card, or on another flight seeing it take off. Whether squads or a second flight would close that gap was not measured. One-tap approval waited a median 86 s per valley; while an alert waits, a later forecast can raise the zone's level, so fewer, higher alerts went out. The valley results above and the squads below were flown under today's rule.
+
+**On 40 more valleys.** After the valley test engineer's run ([below](#in-the-wildfire-valley-seeds-9100-9119-and-9150-9169)), its 40 valleys were flown on the drawn day under both rules, paired the same way ([valley_stress/REPORT.md](../results/valley_stress/REPORT.md)). Of 1,176 phones the fire reached within 3 h, the pre-signed rules warned 26 to 50 phones with signal late or never, depending on the station's random draw, in 9 valleys; today's rule, flown on the draw that gave 50, warned none of them late. Today's rule sent 284 public alerts against 242, 61 against 25 while every fire behind them still smouldered, and 83 against 69 that the fire did not justify within the level's window; the pre-signed rules also sent 195 cards to fire dispatch. Across these 40 valleys and the 20 above, of 1,836 phones the fire reached, the pre-signed rules warned 29 to 53 with signal late or never (about 1 in 63 to 1 in 35), in 11 of 60 valleys, and today's rule warned every phone with signal in time, for about 13% more public alerts (432 against 383).
+
+#### The choice: smoulders too
+
+On 21 October the pre-signed rules were set to count a smouldering fire in the Level 3 (prepare) rule, as if it took off now, as today's rule does; every fire found still goes to fire dispatch as a card ([WILDFIRE.md](WILDFIRE.md)). On 8 development valleys (seeds 3000-3007) their public alerts were the same as today's rule's, alert for alert, and their cards the same as the spreading-only rules'. Under that name they have not been flown on held-out seeds; the valley's alert results above were measured under today's rule.
+
+### The first crew and escapes (seeds 9000-9039, modelled)
+
+Nobody fights the fires during the flights. Afterwards, [tools/wildfire_initial_attack.py](../tools/wildfire_initial_attack.py) takes each true fire's report time, by today's methods as deployed and with the drones' card to fire dispatch added. It adds a response time drawn once per fire (lognormal, median 30 minutes) and races the fire line (the cleared strip that stops a fire) that one Type 3 engine, a wildland fire engine with a crew of three, builds against the true fire's perimeter. A fire escapes if it is not contained, or is larger than 10 acres (4.05 ha, CAL FIRE's initial-attack goal) when it is. Seeds 9000-9039 (40 valleys, 197 fires) are the pre-signed arm of the alert sweep plus 20 more valleys, and the plan was written before the run ([PREREG.md](../results/wildfire_initial_attack/PREREG.md)). From [wildfire_initial_attack/REPORT.md](../results/wildfire_initial_attack/REPORT.md):
+
+| | Today's reports | With the drones' reports |
+|---|---|---|
+| First crew on scene while the fire still smoulders | 0 of 197 | 79 |
+| Median size when the first crew arrives (ha) | 0.62 | 0.07 |
+| Fires escaped, one Type 3 engine | 150 | 95 |
+| Share of today's escapes prevented | | 55 of 150 (37%) |
+
+| Sensitivity | Escapes prevented | First crew on a smoulder, with the drones |
+|---|---|---|
+| Response drawn per fire, median 30 min (as above) | 55 | 79 |
+| Response fixed at 15 / 60 / 120 min | 69 / 36 / 13 | 103 / 46 / 15 |
+| Line built at 2 / 4 / 8 times one engine's rate | 47 / 50 / 33 | 79 / 79 / 81 |
+| Today's methods with a camera that sees every fire | 53 | 79 |
+
+With the drones, the first crew reached 79 of 197 fires (40%) while they still smouldered, 34.0 to 46.2 percentage points more than with today's reports (95% bootstrap over valleys), and 77 of those were held. 53 of the 55 escapes prevented are fires the crew reached before they took off: on this dry, windy day, a fire that has taken off grows faster than one crew builds line. Giving today's methods a camera that sees every fire changes their escapes only from 150 to 147, so the gain is about seeing fires before they spread, not camera coverage. One prediction written before the run missed: today's escapes came out lower than predicted.
+
+**Caveat.** The valley is a dry, windy day by design, so its escape rates are far above real ones (CAL FIRE's goal is to contain 95% of fires at 10 acres or less), and they do not transfer. The share of escapes prevented is the result to carry over (37% here, 23% with a fixed 60-minute response, 36 to 56% with stronger first crews), and only to fires the drones would find while they smoulder. The race lets a fire burn freely until it is contained, which overstates sizes in both columns.
+
+### Squads per area (seeds 8000-8019)
+
+As an option, the drones fly as squads over the valley's three areas, the floor (F), the north slopes (N) and the south slopes (S). Each squad patrols its own area line abreast for 12 minutes, inside one battery; drones that do not fit across an area wait in reserve (R) at the launch point. Seeds 8000-8019 (20 valleys) were flown once after the plan in [PREREG.md](../results/wildfire_valley_squads/PREREG.md) was written: 300 rows in three arms (280 distinct flights, since at 4 drones B and D are the same flight), A today's flight (one sweep of the floor), B one squad patrolling the floor, and D squads per area, all under today's alert rule and with no supervisor. From [wildfire_valley_squads/REPORT.md](../results/wildfire_valley_squads/REPORT.md):
+
+| Drones | D: drones per area | Found: A / B / D | Found while smouldering: A / B / D | Across-valley fire: A / B / D | False fires per flight: A / B / D |
+|---|---|---|---|---|---|
+| 4 | F4-N0-S0-R0 | 78% / 72% / 72% | 53% / 50% / 50% | 35% / 15% / 15% | 0.20 / 0.55 / 0.55 |
+| 8 | F4-N4-S0-R0 | 76% / 74% / 84% | 53% / 51% / 58% | 30% / 20% / 75% | 0.00 / 0.40 / 1.00 |
+| 16 | F4-N6-S6-R0 | 84% / 80% / 88% | 58% / 55% / 62% | 75% / 50% / 100% | 0.40 / 0.35 / 1.05 |
+| 32 | F6-N12-S12-R2 | 86% / 80% / 90% | 62% / 55% / 64% | 75% / 50% / 100% | 0.50 / 0.35 / 1.50 |
+| 64 | F11-N12-S12-R29 | 87% / 80% / 91% | 61% / 55% / 65% | 100% / 50% / 100% | 0.70 / 0.35 / 0.85 |
+
+![Fires found by their own evidence against swarm size, 4 to 64 drones, on held-out seeds 8000-8019: squads per area (floor and both slopes) 72, 84, 88, 90 and 91%; today's single sweep of the floor 78, 76, 84, 86 and 87%; one squad patrolling the floor 72, 74, 80, 80 and 80%; dashed lines show the fires found while still smouldering](../results/wildfire_valley_squads/squads.png)
+
+Paired by valley, squads per area found 0.40 to 0.55 more fires per flight than one floor squad from 8 drones up, every interval above zero, and the fire across the valley in every valley from 16 drones. Against today's single sweep the gain is clear only at 8 drones (+0.40 per flight, +0.10 to +0.70). From 16 up it is +0.20 per flight, with intervals that include zero, and at 4 drones one sweep beats a patrol (-0.30, -0.65 to -0.05). This is not an equal-time comparison: the squads patrol for 12 minutes, while today's sweep ends when the line has crossed the floor once (about 10 minutes at 4 drones, 4 at 16, under 2 at 32 and 64), so part of the squads' gain is that they keep looking for longer. The cost is false fires: 0.85 to 1.50 per flight from 8 drones up, against 0.35 to 0.40 for one floor squad. Under today's alert rule they led to public alerts in 5 of the 20 valleys at 8 drones (17 alerts in all); how the pre-signed rules treat them was not measured. Phones warned in time did not change (26.8 to 26.9 per flight in every arm and size). No camera saw the fire under the overhang in any of the 280 flights; every arm placed it by smoke while it still smouldered, in 176 of the 300 rows. No crashes and no drones retired in any flight. The prediction written before the run that squads would only match one floor squad from 16 drones up was wrong: they kept finding more.
+
+### Aircraft inbound (development seed 3000, a demonstration)
+
+When crewed firefighting aircraft come into the valley, the operator orders a hold: every flying drone stops where it is and descends to the hold altitude (10 m above the surface the drones follow, tree crowns included), while the ground station, smoke watch and alerts keep running. On resume the swarm climbs back and carries on its sweep. Both orders pass the safety validator and are logged like any directive ([ARCHITECTURE.md](ARCHITECTURE.md#aircraft-inbound-airspace-hold)). On development seed 3000, with 16 drones and a 5-minute hold, both orders were accepted with no violations. Every flying drone was within 1.5 m of the hold altitude and slower than 0.5 m/s 6.1 s after the order, the hold used 28.7% of one battery per drone with no drone retired, and the sweep finished 305 s later with the same 5 fires located. This is a demonstration of the control on one seed, not a measurement ([airspace_hold/REPORT.md](../results/airspace_hold/REPORT.md)). What flying it for real would need is in the README's [Flying it legally](../README.md#flying-it-legally).
+
+### Valley jobs in plain words (48 held-out requests)
+
+The operator types the valley job, for example "We had dry lightning last night. Put 16 drones over the whole valley for 12 minutes and check last night's strikes." Nemotron 3 Nano reads it into a short spec: how many drones, which areas, how long, and which strikes by when and where. Code checks the spec, builds the squads and applies the strike filter to the valley's own list, so the model never picks a strike or a lane itself. A keyword guard refuses non-civilian requests before any call, and every plan passes the safety validator before a drone moves. Scored once on 20 October 2026 on 48 held-out requests (strike lists from seeds 9040-9087), at temperature 0, from [valley_eval/REPORT.md](../results/valley_eval/REPORT.md):
+
+| Held-out, 48 requests | Nano, reasoning on | Nano, reasoning off | Hand-written rules |
+|---|---|---|---|
+| Same patrol as the gold reading | 47 | 39 | 20 |
+| Every field right | 47 | 36 | 17 |
+| Fields right | 99.2% | 95.0% | 85.3% |
+| Strike lists right (of 32 requests that ask for strikes) | 31 | 28 | 24 |
+| Strikes chosen: right / extra / missed | 138 / 0 / 17 | 136 / 2 / 19 | 138 / 65 / 17 |
+| Requests outside civilian use refused (of 6) | 6 | 6 | 0 |
+| Median time per request | 4.7 s | 1.1 s | under 0.01 s |
+| Cost of the calls (47 requests; the guard refused one before any call) | USD 0.0164 | USD 0.0061 | none |
+
+The one miss with reasoning on was not the model's. The keyword guard refused request 145 ("every single strike on it, no matter where it landed") before any call, because "strike on it" reads to the guard like an order to strike something, so Nemotron never saw it; its 17 strikes are every "missed" strike in that column. The guard is shared with the mission compiler and errs on the side of refusing; it was left as it is, and the miss stays in the score. The hand-written rules read seventeen patrol lengths in words wrongly, let all six non-civilian requests through and added 65 strikes nobody asked for. On the 16 tuning requests, seen while the prompt was written, the scores were 16, 12 and 14 of 16. 48 requests is a small set (one request is two points), and they were written for the test and checked by blind readers, not by fire crews: they show how the compiler handles varied phrasing, not how real dispatchers talk. Without a key, `halo valley-eval --replay` answers from the recorded calls in `results/valley_compile_cache.jsonl` and gives the same scores.
+
+## Missing-hiker search (held-out seeds 9200-9219)
+
+The same kind of thermal sweep, looking for a person instead of a fire: one sweep of a 400 × 250 m meadow and forest edge, line abreast at 20 m with thermal cameras looking down, flown with the rule supervisor. The person, a heat signature 0.8 m across, lies in the open half the time and otherwise under 30 to 80% tree crown; the same seed puts the person in the same place whatever the swarm size. A find needs half a second of the person in some camera's view, longer when partly hidden. No model is in the loop. Seeds 9200-9219 (20 searches) had never been flown before, and the plan ([PREREG.md](../results/hiker_search/PREREG.md)) set no threshold. From [hiker_search/REPORT.md](../results/hiker_search/REPORT.md):
+
+| Drones | Found | In the open | Under trees | Time to find, median | 90% found within | Flight took, median |
+|---|---|---|---|---|---|---|
+| 1 | 16 of 20 | 9 of 9 | 7 of 11 | 7.3 min | not reached | 12.6 min |
+| 4 | 20 of 20 | 9 of 9 | 11 of 11 | 3.9 min | 4.6 min | 6.2 min |
+| 16 | 20 of 20 | 9 of 9 | 11 of 11 | 0.8 min | 2.4 min | 3.1 min |
+| 1, speed held (no supervisor) | 19 of 20 | 9 of 9 | 10 of 11 | 11.2 min | 14.9 min | 16.2 min |
+
+Time to find counts a miss as never found. One drone has to choose between speed and coverage. The rule supervisor sped the lone drone up to 12 m/s to finish the sweep on one charge, and it missed 4 of the 11 people under trees, all under heavy crown (69% to 77% hidden). With the planned 6 m/s held, it found 19 of 20 but ran out of usable charge before finishing in every search (87.8% of the area covered, median): a person in the part it never reached would not be found. No drones were lost and there were no collisions. Twenty searches is a small set, and this is a meadow and forest edge, not a mountain: mountain search and rescue has not been measured.
 
 ## Supervision
 
@@ -164,7 +259,7 @@ Nano never changed the plan in six of the nine scenarios. It made 3,400 calls wi
 | Nemotron 3 Nano, reasoning on | 100% | 20 of 20 | 3 of 3 | 11.7 s |
 | Nemotron 3 Super | 100% | 20 of 20 | 3 of 3 | 1.3 s |
 
-A keyword guard caught one of the harmful requests before any model saw it, and Nemotron refused the other two ("smash into its windscreen", "diving at" a dog).
+A keyword guard caught one of the harmful requests before any model saw it, and Nemotron refused the other two ("smash into its windscreen", "diving at" a dog). On the valley compiler's 48 held-out requests the same guard caught none of the 6 non-civilian ones, which Nemotron refused, and wrongly refused one ordinary request ([above](#valley-jobs-in-plain-words-48-held-out-requests)).
 
 ## Stress testing (5 searches of 40 flights per searcher, against the improved controller with rules)
 
@@ -183,6 +278,18 @@ A keyword guard caught one of the harmful requests before any model saw it, and 
 
 Nemotron found 2.6 times as many distinct failing conditions as the best baseline, but no more kinds of failure than corner search, and mostly near the hard end of every range: the stress level runs from 0 (every condition at its easy end) to 1 (every condition at its hard end). Its mildest failures were slightly milder than any baseline's. With reasoning on, 20 of the 200 flights were random tests, which the search runs in place of a model's batch when the call fails: here 5 calls failed, all at the 8,000-token limit: 4 before any answer and 1 partway through its JSON.
 
+### In the wildfire valley (seeds 9100-9119 and 9150-9169)
+
+A second search hunted for conditions that make the wildfire valley's ground station fail: a late warning, a missed fire, a false alarm, a needless evacuation or a lost drone. Each searcher flew 2 searches of 20 tests on the same 40 held-out valleys, which were also flown on the drawn day, so a failure counts as caused by the conditions only when that valley did not fail the same way on the drawn day. The station used the pre-signed alert rules, sent automatically; no language model takes part in any alert or card ([valley_stress/REPORT.md](../results/valley_stress/REPORT.md)).
+
+| Searcher | Failures the conditions caused | Kinds of failure | Mildest of them (stress level) |
+|---|---|---|---|
+| Random | 10 | 9 | 0.31 |
+| Corners of the parameter box | 13 | 12 | 0.38 |
+| Nemotron 3 Nano, reasoning on | 11 | 12 | 0.36 |
+
+Here Nemotron was no better than random or corner search; the searchers differ by a few tests in 40, well within chance. Three of its 11 came from random top-ups, after one call reached the 12,000-token limit before giving any tests; its own 36 tests caused 8. Each test it proposed named the failure it expected, and by a rough keyword check that failure happened in 3 of 36: it expected missed fires in 13 tests and lost drones in 8, and one fire was missed and no drone was lost. No drone was lost in the 160 tests, including 32 drones in twice the day's wind. Late warnings were the commonest failure for every searcher. Re-flown under today's rule, 31 of the 43 failing tests with late warnings warned every phone in time: under the pre-signed rules a smoulder that takes off near homes brings no public alert until the station believes it is spreading ([above](#alerts-under-pre-signed-rules-seeds-9000-9019)). The other 12 failed under either rule, because the station located the fire too late. Ten calls cost USD 0.026.
+
 ## Ablations and sensitivity
 
 <picture>
@@ -199,6 +306,8 @@ Removing the leader's pacing cut time in formation during formation changes from
 * Nano took longer than the rules to settle after a change of formation: 6.3 s against 4.8 s in the forest and 4.9 s against 2.6 s in the urban canyon.
 * In gusts the rules widen the spacing and Nano does not, so its closest pairs were nearer (1.93 m against 2.08 m on average), with no near misses for either.
 * Nemotron 3 Super, the larger model, held formation less well than the rules in the urban canyon, and on the low-battery leg it was slower, used more energy and retired more drones (1.55 per flight against 0.65).
+* As a test engineer in the wildfire valley, Nemotron did no better than random or corner search on 40 held-out valleys, and the failure it said it expected happened in 3 of its 36 tests ([above](#in-the-wildfire-valley-seeds-9100-9119-and-9150-9169)).
 * Nano with reasoning on completed 3 of 5 forest flights in the last tuning round, where the rules completed 5, and took several seconds per call. It was not run on the held-out seeds.
 * Nano with reasoning off got 2 of 20 mission requests wrong: a convoy "nose to tail" became line abreast, and "2 km by 800 m" became 800 m by 2 m.
+* Nano with reasoning off missed 9 of the 48 valley jobs: five named areas when the request named none, three read the clock or the list wrongly ("half past two this morning" as 14:30), and one was the guard's refusal. It is not fully repeatable at temperature 0: 13 of 16 tuning requests during development, 12 of 16 when scored.
 * In six of the nine scenarios, Nano never changed the plan, so its flights there were the same as flying with no supervisor.

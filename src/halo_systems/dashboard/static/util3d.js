@@ -44,7 +44,8 @@ export const smooth = (a, b, x) => { const t = Math.max(0, Math.min(1, (x - a) /
 // A conifer one unit tall and about two units across at the base: six whorls of branches with ragged,
 // drooping edges, lighter at the tips and dark underneath, on a short trunk. The vertex colours are
 // shading only; each tree's own colour comes from its instance colour, which multiplies them.
-export function conifer() {
+// Fewer whorls and branches make the cheaper versions drawn further away.
+export function conifer(TIERS = 6, SEG = 11) {
   const pos = [], nor = [], col = [];
   const n = new THREE.Vector3(), a = new THREE.Vector3(), b = new THREE.Vector3(), c = new THREE.Vector3();
   const tri = (p, q, r, cp, cq, cr, soften) => {
@@ -58,7 +59,6 @@ export function conifer() {
       nor.push(m.x, m.y, m.z);
     }
   };
-  const TIERS = 6, SEG = 11;
   for (let t = 0; t < TIERS; t++) {
     const f = t / (TIERS - 1), y0 = 0.15 + 0.64 * f, h = 0.3 - 0.1 * f, r = 1 - 0.76 * f, turn = hash(t, 3) * 6.283;
     const apex = [0, y0 + h, 0], under = [0, y0 + 0.07, 0];
@@ -86,4 +86,56 @@ export function conifer() {
   g.setAttribute("normal", new THREE.Float32BufferAttribute(nor, 3));
   g.setAttribute("color", new THREE.Float32BufferAttribute(col, 3));
   return g;
+}
+
+// The cheapest conifer, for trees a few pixels tall: two stacked open cones, with the same shading colours
+// (lit above, so an instance colour gives the same tree as the detailed one from afar).
+export function coniferFar() {
+  const g = mergeGeometries([new THREE.ConeGeometry(1, 0.62, 7, 1, true).translate(0, 0.31, 0),
+    new THREE.ConeGeometry(0.74, 0.55, 7, 1, true).translate(0, 0.66, 0)]);
+  g.computeVertexNormals();
+  const n = g.attributes.position.count, col = new Float32Array(n * 3);
+  for (let k = 0; k < n; k++) col.fill(0.62 + 0.4 * g.attributes.position.getY(k), k * 3, k * 3 + 3);
+  g.setAttribute("color", new THREE.BufferAttribute(col, 3));
+  return g;
+}
+
+// A bush about one unit across: a few lumpy blobs, shaded as one soft mass (its normals point out from the
+// bush's middle, so no facet edges show), dark underneath and lighter on top. One blob for the cheap
+// version drawn further away. The vertex colours are shading only, as for the conifers.
+export function shrub(blobs = 4) {
+  const parts = [];
+  for (let b = 0; b < blobs; b++) {
+    const a = b * 2.4, r = b ? 0.55 + 0.15 * hash(b, 1) : 0.8, d = b ? 0.45 : 0;
+    parts.push(new THREE.IcosahedronGeometry(r, 0).translate(Math.cos(a) * d, (b ? -0.12 : 0.05) + 0.1 * hash(b, 2), Math.sin(a) * d));
+  }
+  const g = mergeGeometries(parts), p = g.attributes.position, nor = g.attributes.normal;
+  const col = new Float32Array(p.count * 3), v = new THREE.Vector3();
+  for (let k = 0; k < p.count; k++) {
+    v.fromBufferAttribute(p, k);
+    // Lumps: push each corner in or out a little (the same corner, shared by its faces, moves the same way).
+    const s = 1 + 0.16 * (hash(v.x * 9.1 + v.z, v.y * 7.3) - 0.5);
+    p.setXYZ(k, v.x * s, v.y * s, v.z * s);
+    v.set(v.x, v.y + 0.35, v.z).normalize();
+    nor.setXYZ(k, v.x, v.y, v.z);
+    col.fill(0.5 + 0.6 * Math.max(0, Math.min(1, (p.getY(k) + 0.5) / 1.1)), k * 3, k * 3 + 3);
+  }
+  g.setAttribute("color", new THREE.BufferAttribute(col, 3));
+  return g;
+}
+
+// Mottled stone: darker and lighter patches and darker lower down, as vertex colours on a rock's geometry
+// (local units; seed varies the pattern between rocks).
+export function stoneColors(geo, seed = 0) {
+  const p = geo.attributes.position, col = new Float32Array(p.count * 3);
+  let lo = Infinity, hi = -Infinity;
+  for (let k = 0; k < p.count; k++) { lo = Math.min(lo, p.getY(k)); hi = Math.max(hi, p.getY(k)); }
+  for (let k = 0; k < p.count; k++) {
+    const x = p.getX(k), y = p.getY(k), z = p.getZ(k);
+    const n = fbm(x * 0.35 + seed * 3.1 + z * 0.21, z * 0.35 - y * 0.27 + seed);
+    const c = (0.72 + 0.5 * n) * (0.78 + 0.22 * (y - lo) / Math.max(1e-6, hi - lo));
+    col.set([c, c * 0.985, c * 0.96], k * 3);
+  }
+  geo.setAttribute("color", new THREE.BufferAttribute(col, 3));
+  return geo;
 }

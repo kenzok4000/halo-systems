@@ -10,6 +10,6 @@ Read in this order:
 6. [REPRODUCE.md](REPRODUCE.md): every command behind `results/`, and how to check a result against the committed rows.
 7. [CODE_TOUR.md](CODE_TOUR.md): the source in the order a flight runs.
 
-The scout drone's priced design (CAD model, parts list, running costs and build guide) is in [hardware/](../hardware/README.md).
+The scout drone's priced design (CAD model, parts list, running costs and build guide) is in [hardware/](../hardware/README.md). [PATROL_COST.md](PATROL_COST.md) prices a patrol day by squad size against what fire agencies spend today and what an escaped fire costs.
 
 Submission material: [DEVPOST.md](DEVPOST.md) is the Devpost text and [VIDEO.md](VIDEO.md) the demo video's script and shot list.

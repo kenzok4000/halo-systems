@@ -1,0 +1,868 @@
+{
+ "inputs": {
+  "build_sheet": {
+   "drone_usd": 1095.33,
+   "capital_per_drone_usd": 1038.35,
+   "battery_usd": 51.99,
+   "prop_set_usd": 4.99,
+   "ground_station_usd": 932.3,
+   "spares_per_drone_usd": 113.96000000000001,
+   "swarm16_total_usd": 20280.93,
+   "flight_min_per_charge": 22.4,
+   "hw_per_drone_hour_usd": {
+    "100 h life": 12.49,
+    "300 h life": 5.57,
+    "1000 h life": 3.15
+   },
+   "drone_life_h_base": "300 h life",
+   "ground_station_life_squad_h": 300,
+   "squad_size": 16,
+   "charger_watts_mains": 1000.0,
+   "battery_wh_usable": 41.51,
+   "packs_per_drone": 3,
+   "crew_wage_usd_h": 28.5,
+   "ground_station_per_squad_hour_usd": 3.1076666666666664
+  },
+  "measured": {
+   "scan_rate_ha_per_min": {
+    "1": 0.5,
+    "4": 1.6,
+    "16": 6.2
+   },
+   "valley_flight": {
+    "1": {
+     "duration_s": 846.5,
+     "energy_wh_total": 34.85,
+     "fires_located": 3.0,
+     "found_pct": 60,
+     "before_spread_pct": 40,
+     "first_before_todays_pct": 40,
+     "lead_over_today_min": 112,
+     "drones_retired_low_battery": 1.0
+    },
+    "4": {
+     "duration_s": 570.6,
+     "energy_wh_total": 85.92,
+     "fires_located": 3.85,
+     "found_pct": 77,
+     "before_spread_pct": 55,
+     "first_before_todays_pct": 55,
+     "lead_over_today_min": 74,
+     "drones_retired_low_battery": 0.0
+    },
+    "16": {
+     "duration_s": 250.9,
+     "energy_wh_total": 154.24,
+     "fires_located": 4.3,
+     "found_pct": 86,
+     "before_spread_pct": 59,
+     "first_before_todays_pct": 60,
+     "lead_over_today_min": 69,
+     "drones_retired_low_battery": 0.0
+    }
+   },
+   "valley_block_km2": 0.15,
+   "valley_km2": 1.3,
+   "fires_per_flight": 5,
+   "smoke_haze_limit_m": 2500.0
+  },
+  "assumptions": {
+   "patrol_window_h": {
+    "value": 8.0,
+    "reason": "one daylight shift, e.g. 08:00 to 16:00; the valley flights start at 08:00"
+   },
+   "airtime_share": {
+    "value": 0.5,
+    "reason": "each drone is airborne half the window: 22-minute flights and battery swaps. Charging sets the ceiling: the build sheet's two chargers give 1,000 W on mains, which with the three charged packs each drone starts with keeps a 16-drone squad airborne at most about 60 to 70% of an 8-hour shift (see max_airtime_share), so 0.5 leaves room for weather holds and checks; the 75% rows of the sensitivity would need a DC supply"
+   },
+   "scan_share": {
+    "value": 0.5,
+    "reason": "half of airborne time is scanning, the rest is launch, transit, turns and landing; the build sheet's own conservative case (COSTS.md)"
+   },
+   "scan_rate_per_drone_ha_min": {
+    "value": 0.3875,
+    "reason": "the 16-drone measured rate divided by 16 (0.39 ha/min); 4 drones measured 0.40 per drone, a single drone 0.50"
+   },
+   "crew_people_per_16_drones": {
+    "value": 2,
+    "reason": "a remote pilot and an observer or mission lead per 16 drones, as the build sheet costs its swarm; this needs an FAA one-to-many waiver (Part 107.35) or the proposed Part 108"
+   },
+   "smoke_watch_radius_km": {
+    "value": 2.5,
+    "reason": "the simulator's haze limit: a loitering drone's forward camera notices a spreading fire's plume anywhere within it (the valley flights found the fire across the valley this way); real cameras on towers see much further, so this is conservative"
+   },
+   "season_days": {
+    "value": 120,
+    "reason": "a four-month fire season of daily patrol, for the season totals"
+   },
+   "strike_site_block_km2": {
+    "value": 0.15,
+    "reason": "the valley's 500 x 300 m block, swept in the measured valley flight time"
+   },
+   "strike_blocks_per_site": {
+    "value": 2,
+    "reason": "each strike is checked as two blocks side by side, 500 x 600 m centred on the reported strike. The US lightning network's median location error is about 200 m (Nag et al. 2014); with errors spread evenly in all directions (a circular normal, sigma 170 m), one 500 x 300 m block holds about 54% of strikes and two about 79% (see block_holds_share)"
+   },
+   "site_cycle_min_drive_and_fly": {
+    "value": 15.0,
+    "reason": "drive-and-fly: the crew drives the squad to each site; launch, the measured flight, landing and a battery check, at least 15 minutes a site including a short drive, or the flight plus 8 minutes when that is longer"
+   },
+   "site_spacing_km_fly_between": {
+    "value": 1.0,
+    "reason": "fly-between: sites 1 km apart along a storm track, flown at the scout's 6 m/s"
+   },
+   "usable_sortie_min": {
+    "value": 20.0,
+    "reason": "a sortie of 17 to 22 minutes between battery swaps (hardware/README.md); 20 used"
+   }
+  }
+ },
+ "squad_day": [
+  {
+   "drones": 1,
+   "crew_people": 2,
+   "ground_stations": 1,
+   "flight_h_per_drone": 4.0,
+   "sorties_per_drone": 10.7,
+   "drone_hours": 4.0,
+   "hardware_usd": 22.28,
+   "ground_station_usd": 24.86,
+   "crew_usd": 456.0,
+   "total_usd_per_day": 503.14,
+   "km2_swept_per_day": 0.6,
+   "usd_per_km2_swept": 838.57,
+   "usd_per_km2_hardware_only": 78.57,
+   "capital_usd": 2141.59
+  },
+  {
+   "drones": 4,
+   "crew_people": 2,
+   "ground_stations": 1,
+   "flight_h_per_drone": 4.0,
+   "sorties_per_drone": 10.7,
+   "drone_hours": 16.0,
+   "hardware_usd": 89.12,
+   "ground_station_usd": 24.86,
+   "crew_usd": 456.0,
+   "total_usd_per_day": 569.98,
+   "km2_swept_per_day": 1.86,
+   "usd_per_km2_swept": 306.44,
+   "usd_per_km2_hardware_only": 61.28,
+   "capital_usd": 5769.46
+  },
+  {
+   "drones": 8,
+   "crew_people": 2,
+   "ground_stations": 1,
+   "flight_h_per_drone": 4.0,
+   "sorties_per_drone": 10.7,
+   "drone_hours": 32.0,
+   "hardware_usd": 178.24,
+   "ground_station_usd": 24.86,
+   "crew_usd": 456.0,
+   "total_usd_per_day": 659.1,
+   "km2_swept_per_day": 3.72,
+   "usd_per_km2_swept": 177.18,
+   "usd_per_km2_hardware_only": 54.6,
+   "capital_usd": 10606.62
+  },
+  {
+   "drones": 16,
+   "crew_people": 2,
+   "ground_stations": 1,
+   "flight_h_per_drone": 4.0,
+   "sorties_per_drone": 10.7,
+   "drone_hours": 64.0,
+   "hardware_usd": 356.48,
+   "ground_station_usd": 24.86,
+   "crew_usd": 456.0,
+   "total_usd_per_day": 837.34,
+   "km2_swept_per_day": 7.44,
+   "usd_per_km2_swept": 112.55,
+   "usd_per_km2_hardware_only": 51.26,
+   "capital_usd": 20280.94
+  },
+  {
+   "drones": 32,
+   "crew_people": 4,
+   "ground_stations": 2,
+   "flight_h_per_drone": 4.0,
+   "sorties_per_drone": 10.7,
+   "drone_hours": 128.0,
+   "hardware_usd": 712.96,
+   "ground_station_usd": 49.72,
+   "crew_usd": 912.0,
+   "total_usd_per_day": 1674.68,
+   "km2_swept_per_day": 14.88,
+   "usd_per_km2_swept": 112.55,
+   "usd_per_km2_hardware_only": 51.26,
+   "capital_usd": 40561.88
+  },
+  {
+   "drones": 64,
+   "crew_people": 8,
+   "ground_stations": 4,
+   "flight_h_per_drone": 4.0,
+   "sorties_per_drone": 10.7,
+   "drone_hours": 256.0,
+   "hardware_usd": 1425.92,
+   "ground_station_usd": 99.45,
+   "crew_usd": 1824.0,
+   "total_usd_per_day": 3349.37,
+   "km2_swept_per_day": 29.76,
+   "usd_per_km2_swept": 112.55,
+   "usd_per_km2_hardware_only": 51.26,
+   "capital_usd": 81123.76
+  }
+ ],
+ "valley_flight": [
+  {
+   "drones": 1,
+   "flight_min": 14.1,
+   "energy_wh": 34.85,
+   "hardware_usd": 1.31,
+   "crew_usd": 13.4,
+   "ground_station_usd": 0.73,
+   "total_usd": 15.44,
+   "fires_found_of_5": 3.0,
+   "found_pct": 60,
+   "found_before_spread_pct": 40,
+   "usd_per_fire_found": 5.15,
+   "usd_per_fire_found_before_spread": 7.72,
+   "first_before_todays_pct": 40,
+   "lead_over_today_min": 112,
+   "usd_per_km2_of_valley": 11.88
+  },
+  {
+   "drones": 4,
+   "flight_min": 9.5,
+   "energy_wh": 85.92,
+   "hardware_usd": 3.53,
+   "crew_usd": 9.03,
+   "ground_station_usd": 0.49,
+   "total_usd": 13.06,
+   "fires_found_of_5": 3.85,
+   "found_pct": 77,
+   "found_before_spread_pct": 55,
+   "usd_per_fire_found": 3.39,
+   "usd_per_fire_found_before_spread": 4.75,
+   "first_before_todays_pct": 55,
+   "lead_over_today_min": 74,
+   "usd_per_km2_of_valley": 10.04
+  },
+  {
+   "drones": 16,
+   "flight_min": 4.2,
+   "energy_wh": 154.24,
+   "hardware_usd": 6.21,
+   "crew_usd": 3.97,
+   "ground_station_usd": 0.22,
+   "total_usd": 10.4,
+   "fires_found_of_5": 4.3,
+   "found_pct": 86,
+   "found_before_spread_pct": 59,
+   "usd_per_fire_found": 2.42,
+   "usd_per_fire_found_before_spread": 3.53,
+   "first_before_todays_pct": 60,
+   "lead_over_today_min": 69,
+   "usd_per_km2_of_valley": 8.0
+  }
+ ],
+ "areas": [
+  {
+   "area": "the valley survey block (500 x 300 m)",
+   "km2": 0.15,
+   "by_squad": [
+    {
+     "drones": 1,
+     "days_to_sweep_once": 0.25,
+     "usd_to_sweep_once": 125.78,
+     "usd_per_day_if_swept_daily": 125.79
+    },
+    {
+     "drones": 4,
+     "days_to_sweep_once": 0.08,
+     "usd_to_sweep_once": 45.97,
+     "usd_per_day_if_swept_daily": 45.97
+    },
+    {
+     "drones": 8,
+     "days_to_sweep_once": 0.04,
+     "usd_to_sweep_once": 26.58,
+     "usd_per_day_if_swept_daily": 26.58
+    },
+    {
+     "drones": 16,
+     "days_to_sweep_once": 0.02,
+     "usd_to_sweep_once": 16.88,
+     "usd_per_day_if_swept_daily": 16.88
+    },
+    {
+     "drones": 32,
+     "days_to_sweep_once": 0.01,
+     "usd_to_sweep_once": 16.88,
+     "usd_per_day_if_swept_daily": 16.88
+    },
+    {
+     "drones": 64,
+     "days_to_sweep_once": 0.01,
+     "usd_to_sweep_once": 16.88,
+     "usd_per_day_if_swept_daily": 16.88
+    }
+   ],
+   "drones_to_sweep_daily": 1
+  },
+  {
+   "area": "the whole valley (1.3 x 1.0 km)",
+   "km2": 1.3,
+   "by_squad": [
+    {
+     "drones": 1,
+     "days_to_sweep_once": 2.17,
+     "usd_to_sweep_once": 1090.14,
+     "usd_per_day_if_swept_daily": 1090.14
+    },
+    {
+     "drones": 4,
+     "days_to_sweep_once": 0.7,
+     "usd_to_sweep_once": 398.37,
+     "usd_per_day_if_swept_daily": 398.37
+    },
+    {
+     "drones": 8,
+     "days_to_sweep_once": 0.35,
+     "usd_to_sweep_once": 230.33,
+     "usd_per_day_if_swept_daily": 230.33
+    },
+    {
+     "drones": 16,
+     "days_to_sweep_once": 0.17,
+     "usd_to_sweep_once": 146.31,
+     "usd_per_day_if_swept_daily": 146.31
+    },
+    {
+     "drones": 32,
+     "days_to_sweep_once": 0.09,
+     "usd_to_sweep_once": 146.31,
+     "usd_per_day_if_swept_daily": 146.31
+    },
+    {
+     "drones": 64,
+     "days_to_sweep_once": 0.04,
+     "usd_to_sweep_once": 146.31,
+     "usd_per_day_if_swept_daily": 146.31
+    }
+   ],
+   "drones_to_sweep_daily": 3
+  },
+  {
+   "area": "a 10 km2 lightning-strike block",
+   "km2": 10.0,
+   "by_squad": [
+    {
+     "drones": 1,
+     "days_to_sweep_once": 16.67,
+     "usd_to_sweep_once": 8385.67,
+     "usd_per_day_if_swept_daily": 8385.7
+    },
+    {
+     "drones": 4,
+     "days_to_sweep_once": 5.38,
+     "usd_to_sweep_once": 3064.41,
+     "usd_per_day_if_swept_daily": 3064.4
+    },
+    {
+     "drones": 8,
+     "days_to_sweep_once": 2.69,
+     "usd_to_sweep_once": 1771.77,
+     "usd_per_day_if_swept_daily": 1771.8
+    },
+    {
+     "drones": 16,
+     "days_to_sweep_once": 1.34,
+     "usd_to_sweep_once": 1125.46,
+     "usd_per_day_if_swept_daily": 1125.5
+    },
+    {
+     "drones": 32,
+     "days_to_sweep_once": 0.67,
+     "usd_to_sweep_once": 1125.46,
+     "usd_per_day_if_swept_daily": 1125.5
+    },
+    {
+     "drones": 64,
+     "days_to_sweep_once": 0.34,
+     "usd_to_sweep_once": 1125.46,
+     "usd_per_day_if_swept_daily": 1125.5
+    }
+   ],
+   "drones_to_sweep_daily": 22
+  },
+  {
+   "area": "a 100 km2 district",
+   "km2": 100.0,
+   "by_squad": [
+    {
+     "drones": 1,
+     "days_to_sweep_once": 166.67,
+     "usd_to_sweep_once": 83856.67,
+     "usd_per_day_if_swept_daily": 83857.0
+    },
+    {
+     "drones": 4,
+     "days_to_sweep_once": 53.76,
+     "usd_to_sweep_once": 30644.09,
+     "usd_per_day_if_swept_daily": 30644.0
+    },
+    {
+     "drones": 8,
+     "days_to_sweep_once": 26.88,
+     "usd_to_sweep_once": 17717.74,
+     "usd_per_day_if_swept_daily": 17718.0
+    },
+    {
+     "drones": 16,
+     "days_to_sweep_once": 13.44,
+     "usd_to_sweep_once": 11254.57,
+     "usd_per_day_if_swept_daily": 11255.0
+    },
+    {
+     "drones": 32,
+     "days_to_sweep_once": 6.72,
+     "usd_to_sweep_once": 11254.57,
+     "usd_per_day_if_swept_daily": 11255.0
+    },
+    {
+     "drones": 64,
+     "days_to_sweep_once": 3.36,
+     "usd_to_sweep_once": 11254.6,
+     "usd_per_day_if_swept_daily": 11255.0
+    }
+   ],
+   "drones_to_sweep_daily": 216
+  }
+ ],
+ "strike_sites": [
+  {
+   "drones": 4,
+   "squads_of_16": 1,
+   "blocks_per_site": 2,
+   "minutes_per_site_flight": 19.0,
+   "km2_swept_on_sites": 5.33,
+   "share_of_strikes_inside": 0.792,
+   "sites_per_day_drive_and_fly": 18,
+   "sites_per_day_fly_between": 11,
+   "sites_per_sortie_fly_between": 1,
+   "usd_per_site_drive_and_fly": 32.09,
+   "usd_per_site_hardware_only": 6.42
+  },
+  {
+   "drones": 16,
+   "squads_of_16": 1,
+   "blocks_per_site": 2,
+   "minutes_per_site_flight": 8.4,
+   "km2_swept_on_sites": 8.8,
+   "share_of_strikes_inside": 0.792,
+   "sites_per_day_drive_and_fly": 29,
+   "sites_per_day_fly_between": 21,
+   "sites_per_sortie_fly_between": 2,
+   "usd_per_site_drive_and_fly": 28.55,
+   "usd_per_site_hardware_only": 13.0
+  },
+  {
+   "drones": 32,
+   "squads_of_16": 2,
+   "blocks_per_site": 2,
+   "minutes_per_site_flight": 8.4,
+   "km2_swept_on_sites": 17.6,
+   "share_of_strikes_inside": 0.792,
+   "sites_per_day_drive_and_fly": 59,
+   "sites_per_day_fly_between": 43,
+   "sites_per_sortie_fly_between": 2,
+   "usd_per_site_drive_and_fly": 28.55,
+   "usd_per_site_hardware_only": 13.0
+  },
+  {
+   "drones": 64,
+   "squads_of_16": 4,
+   "blocks_per_site": 2,
+   "minutes_per_site_flight": 8.4,
+   "km2_swept_on_sites": 35.2,
+   "share_of_strikes_inside": 0.792,
+   "sites_per_day_drive_and_fly": 117,
+   "sites_per_day_fly_between": 86,
+   "sites_per_sortie_fly_between": 2,
+   "usd_per_site_drive_and_fly": 28.55,
+   "usd_per_site_hardware_only": 13.0
+  }
+ ],
+ "smoke_watch": [
+  {
+   "drones_aloft": 1,
+   "drones_in_squad": 2,
+   "crewed": true,
+   "km2_watched": 19.6,
+   "total_usd_per_day": 525.42,
+   "usd_per_km2_day": 26.76
+  },
+  {
+   "drones_aloft": 1,
+   "drones_in_squad": 2,
+   "crewed": false,
+   "km2_watched": 19.6,
+   "total_usd_per_day": 69.42,
+   "usd_per_km2_day": 3.54
+  },
+  {
+   "drones_aloft": 4,
+   "drones_in_squad": 8,
+   "crewed": true,
+   "km2_watched": 78.5,
+   "total_usd_per_day": 659.1,
+   "usd_per_km2_day": 8.39
+  },
+  {
+   "drones_aloft": 4,
+   "drones_in_squad": 8,
+   "crewed": false,
+   "km2_watched": 78.5,
+   "total_usd_per_day": 203.1,
+   "usd_per_km2_day": 2.59
+  }
+ ],
+ "sensitivity_16": [
+  {
+   "drone_life": "100 h life",
+   "crew": "2",
+   "airtime_share": 0.5,
+   "scan_share": 0.5,
+   "usd_per_day": 1280.22,
+   "km2_per_day": 7.44,
+   "usd_per_km2_swept": 172.07
+  },
+  {
+   "drone_life": "100 h life",
+   "crew": "2",
+   "airtime_share": 0.5,
+   "scan_share": 1.0,
+   "usd_per_day": 1280.22,
+   "km2_per_day": 14.88,
+   "usd_per_km2_swept": 86.04
+  },
+  {
+   "drone_life": "100 h life",
+   "crew": "2",
+   "airtime_share": 0.75,
+   "scan_share": 0.5,
+   "usd_per_day": 1679.9,
+   "km2_per_day": 11.16,
+   "usd_per_km2_swept": 150.53
+  },
+  {
+   "drone_life": "100 h life",
+   "crew": "2",
+   "airtime_share": 0.75,
+   "scan_share": 1.0,
+   "usd_per_day": 1679.9,
+   "km2_per_day": 22.32,
+   "usd_per_km2_swept": 75.26
+  },
+  {
+   "drone_life": "100 h life",
+   "crew": "none (automated docks)",
+   "airtime_share": 0.5,
+   "scan_share": 0.5,
+   "usd_per_day": 824.22,
+   "km2_per_day": 7.44,
+   "usd_per_km2_swept": 110.78
+  },
+  {
+   "drone_life": "100 h life",
+   "crew": "none (automated docks)",
+   "airtime_share": 0.5,
+   "scan_share": 1.0,
+   "usd_per_day": 824.22,
+   "km2_per_day": 14.88,
+   "usd_per_km2_swept": 55.39
+  },
+  {
+   "drone_life": "100 h life",
+   "crew": "none (automated docks)",
+   "airtime_share": 0.75,
+   "scan_share": 0.5,
+   "usd_per_day": 1223.9,
+   "km2_per_day": 11.16,
+   "usd_per_km2_swept": 109.67
+  },
+  {
+   "drone_life": "100 h life",
+   "crew": "none (automated docks)",
+   "airtime_share": 0.75,
+   "scan_share": 1.0,
+   "usd_per_day": 1223.9,
+   "km2_per_day": 22.32,
+   "usd_per_km2_swept": 54.83
+  },
+  {
+   "drone_life": "300 h life",
+   "crew": "2",
+   "airtime_share": 0.5,
+   "scan_share": 0.5,
+   "usd_per_day": 837.34,
+   "km2_per_day": 7.44,
+   "usd_per_km2_swept": 112.55
+  },
+  {
+   "drone_life": "300 h life",
+   "crew": "2",
+   "airtime_share": 0.5,
+   "scan_share": 1.0,
+   "usd_per_day": 837.34,
+   "km2_per_day": 14.88,
+   "usd_per_km2_swept": 56.27
+  },
+  {
+   "drone_life": "300 h life",
+   "crew": "2",
+   "airtime_share": 0.75,
+   "scan_share": 0.5,
+   "usd_per_day": 1015.58,
+   "km2_per_day": 11.16,
+   "usd_per_km2_swept": 91.0
+  },
+  {
+   "drone_life": "300 h life",
+   "crew": "2",
+   "airtime_share": 0.75,
+   "scan_share": 1.0,
+   "usd_per_day": 1015.58,
+   "km2_per_day": 22.32,
+   "usd_per_km2_swept": 45.5
+  },
+  {
+   "drone_life": "300 h life",
+   "crew": "none (automated docks)",
+   "airtime_share": 0.5,
+   "scan_share": 0.5,
+   "usd_per_day": 381.34,
+   "km2_per_day": 7.44,
+   "usd_per_km2_swept": 51.26
+  },
+  {
+   "drone_life": "300 h life",
+   "crew": "none (automated docks)",
+   "airtime_share": 0.5,
+   "scan_share": 1.0,
+   "usd_per_day": 381.34,
+   "km2_per_day": 14.88,
+   "usd_per_km2_swept": 25.63
+  },
+  {
+   "drone_life": "300 h life",
+   "crew": "none (automated docks)",
+   "airtime_share": 0.75,
+   "scan_share": 0.5,
+   "usd_per_day": 559.58,
+   "km2_per_day": 11.16,
+   "usd_per_km2_swept": 50.14
+  },
+  {
+   "drone_life": "300 h life",
+   "crew": "none (automated docks)",
+   "airtime_share": 0.75,
+   "scan_share": 1.0,
+   "usd_per_day": 559.58,
+   "km2_per_day": 22.32,
+   "usd_per_km2_swept": 25.07
+  },
+  {
+   "drone_life": "1000 h life",
+   "crew": "2",
+   "airtime_share": 0.5,
+   "scan_share": 0.5,
+   "usd_per_day": 682.46,
+   "km2_per_day": 7.44,
+   "usd_per_km2_swept": 91.73
+  },
+  {
+   "drone_life": "1000 h life",
+   "crew": "2",
+   "airtime_share": 0.5,
+   "scan_share": 1.0,
+   "usd_per_day": 682.46,
+   "km2_per_day": 14.88,
+   "usd_per_km2_swept": 45.86
+  },
+  {
+   "drone_life": "1000 h life",
+   "crew": "2",
+   "airtime_share": 0.75,
+   "scan_share": 0.5,
+   "usd_per_day": 783.26,
+   "km2_per_day": 11.16,
+   "usd_per_km2_swept": 70.18
+  },
+  {
+   "drone_life": "1000 h life",
+   "crew": "2",
+   "airtime_share": 0.75,
+   "scan_share": 1.0,
+   "usd_per_day": 783.26,
+   "km2_per_day": 22.32,
+   "usd_per_km2_swept": 35.09
+  },
+  {
+   "drone_life": "1000 h life",
+   "crew": "none (automated docks)",
+   "airtime_share": 0.5,
+   "scan_share": 0.5,
+   "usd_per_day": 226.46,
+   "km2_per_day": 7.44,
+   "usd_per_km2_swept": 30.44
+  },
+  {
+   "drone_life": "1000 h life",
+   "crew": "none (automated docks)",
+   "airtime_share": 0.5,
+   "scan_share": 1.0,
+   "usd_per_day": 226.46,
+   "km2_per_day": 14.88,
+   "usd_per_km2_swept": 15.22
+  },
+  {
+   "drone_life": "1000 h life",
+   "crew": "none (automated docks)",
+   "airtime_share": 0.75,
+   "scan_share": 0.5,
+   "usd_per_day": 327.26,
+   "km2_per_day": 11.16,
+   "usd_per_km2_swept": 29.32
+  },
+  {
+   "drone_life": "1000 h life",
+   "crew": "none (automated docks)",
+   "airtime_share": 0.75,
+   "scan_share": 1.0,
+   "usd_per_day": 327.26,
+   "km2_per_day": 22.32,
+   "usd_per_km2_swept": 14.66
+  }
+ ],
+ "sensitivity_16_range_usd_per_km2": [
+  14.66,
+  172.07
+ ],
+ "max_airtime_share_16_mains": 0.702,
+ "block_holds_share": {
+  "one block, 500 x 300 m": 0.535,
+  "two blocks, 500 x 600 m": 0.792
+ },
+ "season": {
+  "days": 120,
+  "by_squad": [
+   {
+    "drones": 1,
+    "usd_per_season": 60376.8,
+    "km2_sweeps_per_season": 72.0,
+    "capital_usd": 2141.59
+   },
+   {
+    "drones": 4,
+    "usd_per_season": 68397.6,
+    "km2_sweeps_per_season": 223.2,
+    "capital_usd": 5769.46
+   },
+   {
+    "drones": 8,
+    "usd_per_season": 79092.0,
+    "km2_sweeps_per_season": 446.4,
+    "capital_usd": 10606.62
+   },
+   {
+    "drones": 16,
+    "usd_per_season": 100480.8,
+    "km2_sweeps_per_season": 892.8,
+    "capital_usd": 20280.94
+   },
+   {
+    "drones": 32,
+    "usd_per_season": 200961.6,
+    "km2_sweeps_per_season": 1785.6,
+    "capital_usd": 40561.88
+   },
+   {
+    "drones": 64,
+    "usd_per_season": 401924.4,
+    "km2_sweeps_per_season": 3571.2,
+    "capital_usd": 81123.76
+   }
+  ]
+ },
+ "comparison": {
+  "squad16_usd_per_fire_found_if_one_site_in": {
+   "20": 838,
+   "100": 4192
+  },
+  "alberta_lookout_usd_per_km2_day": 0.054,
+  "alberta_patrol_usd_per_km2_day": 0.072,
+  "squad16_usd_per_km2_swept": 112.55,
+  "alberta_escaped_all_costs_usd_if_suppression_is_9pct": 24625968,
+  "squad16_usd_per_day": 837.34,
+  "squad16_usd_per_season": 100480.8,
+  "squad16_share_of_strikes_inside": 0.792,
+  "squad16_sites_per_day": 29,
+  "squad16_usd_per_site": 28.55,
+  "alberta_patrol_usd_per_year": 6895142,
+  "alberta_fires_found_by_patrol_per_year": 135,
+  "alberta_patrol_usd_per_fire_found": 51055,
+  "alberta_patrol_usd_per_season_day": 28143,
+  "squad16_days_per_alberta_patrol_day": 33.6,
+  "sites_per_day_for_alberta_patrol_money": 975,
+  "alberta_contained_on_time_usd": 14610,
+  "alberta_escaped_usd": 2216337,
+  "alberta_escaped_late_usd": 840804,
+  "us_federal_suppression_mean_usd": 2792867667,
+  "us_fires_mean": 62162,
+  "us_federal_suppression_per_escape_usd": [
+   673935,
+   1347871
+  ],
+  "breakeven": [
+   {
+    "against": "Alberta, the review's low end (CAD 1 million more than one contained on time)",
+    "usd_per_escape": 715410,
+    "escapes_avoided_per_season": 0.14,
+    "seasons_per_escape_avoided": 7.1,
+    "pays_for_itself_if_one_escape_avoided_every_n_seasons": 7
+   },
+   {
+    "against": "Alberta, attacked late and escaped, against attacked on time and held (table 16)",
+    "usd_per_escape": 826194,
+    "escapes_avoided_per_season": 0.122,
+    "seasons_per_escape_avoided": 8.2,
+    "pays_for_itself_if_one_escape_avoided_every_n_seasons": 8
+   },
+   {
+    "against": "Alberta, attacked on time and still escaped, against attacked on time and held (table 16)",
+    "usd_per_escape": 2201727,
+    "escapes_avoided_per_season": 0.046,
+    "seasons_per_escape_avoided": 21.9,
+    "pays_for_itself_if_one_escape_avoided_every_n_seasons": 21
+   },
+   {
+    "against": "US federal suppression per escaped fire, derived, low",
+    "usd_per_escape": 673935,
+    "escapes_avoided_per_season": 0.149,
+    "seasons_per_escape_avoided": 6.7,
+    "pays_for_itself_if_one_escape_avoided_every_n_seasons": 6
+   },
+   {
+    "against": "US federal suppression per escaped fire, derived, high",
+    "usd_per_escape": 1347871,
+    "escapes_avoided_per_season": 0.075,
+    "seasons_per_escape_avoided": 13.4,
+    "pays_for_itself_if_one_escape_avoided_every_n_seasons": 13
+   }
+  ]
+ }
+}
