@@ -8,7 +8,8 @@ which way each fire's head is running and why, and drafts evacuation alerts for 
 default (today's rule) alerts go out automatically by fixed rules, at levels modelled on Japan's evacuation scale,
 once each passes a check, and Level 3 also counts smouldering fires as if they took off now. The entry's alert
 design uses pre-signed rules instead: public alerts go out automatically only under trigger rules the alerting
-authority signed in advance, and each located fire also goes to fire dispatch as a card. Either way an operator
+authority signed in advance, with Level 3 still counting smouldering fires, and each located fire also goes to
+fire dispatch as a card. Either way an operator
 can cancel an alert or give the all-clear. Alerts go to simulated phones only, and cards to a simulated dispatch.
 
 This page describes the scenario (`wildfire_valley` in `src/halo_systems/eval/scenarios.py`), what the
@@ -163,7 +164,8 @@ degrees, hour-to-hour errors and a fuel moisture error).
 
 These are options in the scenario. Its defaults are one sweep and today's alert rule, and the headline results
 (seeds 4000 to 4019, and 7000 to 7019 for which way the fire runs) use them. Pre-signed rules are the entry's alert
-design, chosen by Kenzo, the entrant, on 20 October 2026. The first crew's results use the pre-signed rules' cards
+design, chosen by Kenzo, the entrant, on 20 October 2026; on 21 October, after T5b, Kenzo chose that their Level 3
+rule also counts smoulders (`smoulder_alerts`, below). The first crew's results use the pre-signed rules' cards
 to fire dispatch as the drones' reports, and the squads' results use squads.
 
 **Squads.** `squads` flies the drones as squads over the valley's three areas, the valley floor (F, the survey
@@ -249,7 +251,11 @@ smoulder as if it took off now, as today's rule does. Levels 4 and 5 still need 
 located fire still goes to fire dispatch as a card. On development seeds 3000 to 3007 (16 drones), its public
 alerts were exactly today's rule's, and its cards matched the pre-signed rules' in time, place and status; in two
 valleys two cards named a different head direction, because alert deliveries share a random stream with the
-forecast ensemble.
+forecast ensemble. On 21 October Kenzo, the entrant, chose this as the entry's alert design: the dashboard's
+pre-signed mode counts smoulders unless a run asks otherwise (`"smoulder_alerts": false`). It drafts public alerts
+exactly as today's rule does (identical on the development seeds above), so today's-rule alert results carry over,
+and its cards go out as in the first crew's study.
+`alert_rule="presigned"` on its own, in code and on the command line, is the rule as T3, T4 and T5b flew it.
 
 **Getting the first crew there (modelled).** `tools/wildfire_initial_attack.py` takes each true fire's report
 time, today's (the earliest of today's methods as deployed) and with the drones' card to fire dispatch added,

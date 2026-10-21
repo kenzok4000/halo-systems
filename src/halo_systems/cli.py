@@ -394,7 +394,8 @@ def main(argv=None) -> int:
                         "trigger rules signed in advance; smoulders go to fire dispatch)")
     s.add_argument("--smoulder-alerts", action="store_true",
                    help="wildfire_valley with --alert-rule presigned: the Level 3 rule also counts smoulders, so a "
-                        "smoulder near homes brings a public 'prepare' as well as its card to fire dispatch")
+                        "smoulder near homes brings a public 'prepare' as well as its card to fire dispatch (the "
+                        "entry's alert design; without it, the rule as T3, T4 and T5b flew it)")
     s.set_defaults(fn=cmd_run)
 
     s = sub.add_parser("bench", help="run a benchmark grid")

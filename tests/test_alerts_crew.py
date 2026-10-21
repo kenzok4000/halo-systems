@@ -137,10 +137,12 @@ class SmoulderAlertsTest(unittest.TestCase):
         with self.assertRaises(ValueError):
             self._station(alert_rule="forecast", smoulder_alerts=True)
 
-    def test_dashboard_passes_it_with_presigned_only(self):
+    def test_dashboard_presigned_counts_smoulders_unless_told_not_to(self):
+        self.assertTrue(_valley_options({"alert_rule": "presigned"})["smoulder_alerts"])        # the entry's design
         self.assertTrue(_valley_options({"alert_rule": "presigned", "smoulder_alerts": True})["smoulder_alerts"])
+        self.assertNotIn("smoulder_alerts", _valley_options({"alert_rule": "presigned", "smoulder_alerts": False}))
         self.assertNotIn("smoulder_alerts", _valley_options({"alert_rule": "forecast", "smoulder_alerts": True}))
-        self.assertNotIn("smoulder_alerts", _valley_options({"alert_rule": "presigned", "smoulder_alerts": "yes"}))
+        self.assertNotIn("smoulder_alerts", _valley_options({}))
 
 
 class CrewExportTest(unittest.TestCase):
