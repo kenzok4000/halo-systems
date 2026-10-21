@@ -16,7 +16,7 @@ Lightning fires are the hard ones to catch early. Across 42 datasets, the median
 
 **What Halo does.** In simulation, sixteen small drones sweep a 500 x 300 m block of a mountain valley floor, with thermal cameras looking down and cameras looking ahead for smoke. For each fire they find:
 * the crew gets its position, to within about 5 m (median), and which way its head will run, worked out from the wind the swarm measured, the slope and the fuel ahead;
-* the simulated phones in the evacuation zones in its path are warned automatically, and an operator can cancel an alert or give a zone the all-clear. In the design we chose for public alerts, an option in the simulator, a smouldering fire goes to fire dispatch as a card, and phones are warned only once the station believes the fire is spreading, under trigger rules an alerting authority would sign in advance. The headline flights and the dashboard's default use today's rule, which also alerts on smoulders.
+* the simulated phones in the evacuation zones in its path are warned automatically, and an operator can cancel an alert or give a zone the all-clear. With the pre-signed rules, an option in the simulator, a smouldering fire goes to fire dispatch as a card, and phones are warned only once the station believes the fire is spreading, under trigger rules an alerting authority would sign in advance. The headline flights and the dashboard's default use today's rule, which also alerts on smoulders.
 
 An operator can also type the job in plain words, fly squads over the floor and both slopes, and hold the swarm low for crewed firefighting aircraft (shown on one development seed, not measured). Mountain search and rescue is next.
 
