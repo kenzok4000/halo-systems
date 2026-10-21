@@ -323,15 +323,16 @@ class State:
 
 def _valley_options(body: dict) -> dict:
     """The wildfire valley's options from a POST /api/runs body: alert_rule ("forecast", "presigned" or
-    "distance"; with "presigned", smoulder_alerts true also counts smoulders in the Level 3 rule), squads ("auto" or e.g. "F10-N7-S7"), patrol_min, squad_script (a list of orders, or text such
+    "distance"; "presigned" is the entry's design, with smoulders counted in the Level 3 rule unless
+    smoulder_alerts is false, which gives the rule as T3, T4 and T5b flew it), squads ("auto" or e.g. "F10-N7-S7"), patrol_min, squad_script (a list of orders, or text such
     as "300:move F N 4"), and strikes (strike ids to cue on, or "all" to show the night's list; the plan from
     POST /api/valley/compile gives all of these)."""
     from ..control.squads import parse_script
     opts = {}
     if body.get("alert_rule") in ("forecast", "presigned", "distance"):
         opts["alert_rule"] = body["alert_rule"]
-        if body["alert_rule"] == "presigned" and body.get("smoulder_alerts") is True:
-            opts["smoulder_alerts"] = True
+        if body["alert_rule"] == "presigned" and body.get("smoulder_alerts") is not False:
+            opts["smoulder_alerts"] = True          # the entry's design (Kenzo's choice, 21 October 2026)
     strikes = body.get("strikes")
     if strikes == "all":
         opts["strikes"] = "all"
@@ -374,8 +375,8 @@ def make_handler(state: State, host: str = "127.0.0.1"):
                                        survey for a missing person (missing_person true, or by its words when
                                        left out) also places a person-sized heat signature to find;
                                        the wildfire valley also takes approval: "auto", "manual" or "modelled",
-                                       alert_rule ("forecast", "presigned" or "distance"; smoulder_alerts
-                                       true with "presigned"), and squads
+                                       alert_rule ("forecast", "presigned" or "distance"; "presigned"
+                                       counts smoulders at Level 3 unless smoulder_alerts is false), and squads
                                        ("auto" or e.g. "F10-N7-S7"), patrol_min and squad_script
     POST /api/runs/<id>/inject         {kind, ...}: motor_failure, gust, blackout, directive, squad
                                        ({from, to, k, at_s}: move k drones between squads) or aircraft
