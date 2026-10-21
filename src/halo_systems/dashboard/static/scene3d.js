@@ -1,10 +1,11 @@
 // Halo Systems dashboard: the 3D view. Draws what the run sends: terrain and land cover (the wildfire
-// valley), obstacles, path, drones (the scout's CAD model), hotspots, survey area, wind, camera
-// coverage and found events; wildfire3d.js adds the valley's fires, smoke, forecasts and alerts.
+// valley), obstacles, path, drones (the scout's CAD model), hotspots and missing people, survey area, wind,
+// camera coverage and found events; wildfire3d.js adds the valley's fires, smoke, forecasts and alerts.
 // Drawn for looks only, never touching the simulation: the scenery beyond the run (distant hills and
 // mountains, forests, and low shrubs under 1.5 m, also over the flight area where a run has no land
 // cover), the tree crowns above the simulated trunks, and each found hotspot's glow, embers and smoke
-// (the scorched patch marks every hotspot); the particles drift with the simulated wind.
+// (the scorched patch marks every hotspot); the particles drift with the simulated wind. A missing person
+// is a sitting hiker, under a clump of trees when the run hides them under tree crowns (their `cover`).
 import * as THREE from "three";
 import { OrbitControls } from "/static/vendor/OrbitControls.js";
 import { mergeGeometries, canvasTexture, hash, fbm, ridge, smooth, conifer, coniferFar, shrub, stoneColors } from "/static/util3d.js";
@@ -20,12 +21,29 @@ export const DRONE_SCALE = 4;   // drones are drawn up to this many times their 
 // DRONE_SCALE times beyond DRONE_FULL_M (evenly on a log scale in between).
 const DRONE_TRUE_M = 6, DRONE_FULL_M = 80;
 const droneSize = (dist) => Math.pow(DRONE_SCALE, smooth(0, 1, Math.log(Math.max(1, dist) / DRONE_TRUE_M) / Math.log(DRONE_FULL_M / DRONE_TRUE_M))) / DRONE_SCALE;
+// A missing person likewise: true size (about 1.7 m tall) within PERSON_TRUE_M, up to PERSON_SCALE times it
+// beyond PERSON_FULL_M, so the hiker still shows in the follow and top views.
+export const PERSON_SCALE = 2;
+const PERSON_TRUE_M = 12, PERSON_FULL_M = 150;
+const personSize = (dist) => Math.pow(PERSON_SCALE, smooth(0, 1, Math.log(Math.max(1, dist) / PERSON_TRUE_M) / Math.log(PERSON_FULL_M / PERSON_TRUE_M)));
 
 // Status codes from sim/engine.py: 0 active, 1 failed (motor out, falling), 2 crashed, 3 retired, 4 down.
 const STATUS_COLOR = { 0: new THREE.Color(0x3fe0c8), 1: new THREE.Color(0xff4d45), 2: new THREE.Color(0xff4d45),
   3: new THREE.Color(0xb5bcc4), 4: new THREE.Color(0xff4d45) };
 const SKY_ZENITH = new THREE.Color(0x3f78bd), SKY_HORIZON = new THREE.Color(0xdfe3e2), HAZE = new THREE.Color(0xc9d2d8);
 const SUN_DIR = new THREE.Vector3(-0.78, 0.5, 0.36).normalize();   // late-morning sun from the west-south-west
+const FOG_DENSITY = 0.00062;
+// Squads (wildfire valley runs flown as squads): one colour per patrol area, on each drone's slot ring and
+// far-away marker and on the area's lanes; a drone flying between squads is white. Other codes, if a run ever
+// has them, take the spare colours in turn.
+const SQUAD_HEX = { F: "#4fc3f7", N: "#9ccc65", S: "#ffd54f" }, SQUAD_SPARE = ["#f48fb1", "#ce93d8", "#80cbc4", "#ffab91"];
+const TRANSIT_COLOR = new THREE.Color(0xffffff);
+function squadStyle(code, id) {
+  const hex = SQUAD_HEX[code] || SQUAD_SPARE[Math.abs(id | 0) % SQUAD_SPARE.length], v = parseInt(hex.slice(1), 16);
+  return { col: new THREE.Color(hex), rgb: `${(v >> 16) & 255},${(v >> 8) & 255},${v & 255}` };   // col: linear; rgb: for the 2D overlay
+}
+// A lightning strike's glyph on the ground overlay, in units of its half-height (canvas y points south).
+const BOLT = [[0.16, -1], [-0.46, 0.14], [-0.04, 0.14], [-0.22, 1], [0.46, -0.22], [0.04, -0.22]];
 
 // ---------------------------------------------------------------- helpers
 // Fine ground detail without a repeating texture: value noise of the world position, a few metres
@@ -326,7 +344,7 @@ export class SwarmView {
     r.shadowMap.enabled = true;
     r.shadowMap.type = THREE.PCFSoftShadowMap;
     const scene = this.scene = new THREE.Scene();
-    scene.fog = new THREE.FogExp2(HAZE.clone(), 0.00062);
+    scene.fog = new THREE.FogExp2(HAZE.clone(), FOG_DENSITY);
     scene.background = SKY_HORIZON.clone();
     this.camera = new THREE.PerspectiveCamera(46, 1, 0.5, 9000);
     this.camera.position.set(-60, 55, 70);
@@ -350,6 +368,8 @@ export class SwarmView {
     this.film = false;        // film mode: the recorder calls renderFilm() once per video frame
     this.overlayDirty = false;
     this.overlayDrawnAt = -1;
+    this.squads = null;       // squad runs: each squad's latest layout {id, code, name, area, n, members, path, ...}
+    this._squadFocus = null;  // squadFocus: the squad code the follow, orbit, chase, ride and close views frame (null: all)
     this.focus = new THREE.Vector3();
     this.fade = { focus: { value: new THREE.Vector3(0, -1e4, 0) }, radius: { value: 0 }, cam: { value: new THREE.Vector3() }, ahead: { value: 0 } };
     this._textures();
@@ -785,6 +805,11 @@ export class SwarmView {
   // -- a new run ----------------------------------------------------------------------------------
   build(hello) {
     this.hello = hello;
+    // Squads and lightning strikes (wildfire valley options): null on every other run, which draws as it always has.
+    this._setSquads(hello);
+    const strikes = hello.scenario && hello.scenario.strikes;
+    this.strikes = Array.isArray(strikes) && strikes.length ? strikes : null;
+    this._setFog(FOG_DENSITY);   // a squad run thins the haze as the camera pulls back (_step); every run starts from the usual
     this.scene.remove(this.world);
     const shared = new Set([this.dotTex, this.puffTex, this.flameTex, this.markerTex, this.rotorTex, this.scorchTex]);
     this.droneGroup = null;
@@ -821,8 +846,87 @@ export class SwarmView {
     const g0 = this.groundAt(p0[0], p0[1]);
     this.focus.set(p0[0], g0 + hello.directive.altitude_m, -p0[1]);
     this.camera.position.set(p0[0] - 70, g0 + hello.directive.altitude_m + 40, -p0[1] + 80);
+    if (this.squads) this._squadStartView();
     this.controls.target.copy(this.focus);
     this.setMode(this.mode);
+  }
+
+  // -- squads ---------------------------------------------------------------------------------------
+  // The squads as the run starts (hello.scenario.squads), each with its colour, and which squad each drone is in.
+  _setSquads(hello) {
+    const list = hello.scenario && hello.scenario.squads;
+    this.squads = Array.isArray(list) && list.length ? list.map((s) => ({ ...s })) : null;
+    this.squadLive = null;   // the latest frame's squads (flying counts, centres, headings)
+    this.squadLabelAt = null;   // where each squad's name plate sits (_squadLabelY)
+    this.squadStyles = new Map();
+    for (const s of this.squads || []) this.squadStyles.set(s.id, squadStyle(s.code, s.id));
+    this._squadMembers(hello.n);
+  }
+
+  // A squad_changed (every squad, re-planned) or squad_joined (the squad a drone just joined) event: the squads'
+  // new members, lanes and circuits. A drone that has left its squad and not yet joined another is in none.
+  _updateSquads(list) {
+    for (const s of list || []) {
+      if (!s || s.id == null) continue;
+      const k = this.squads.findIndex((q) => q.id === s.id);
+      if (k >= 0) this.squads[k] = { ...this.squads[k], ...s };
+      else { this.squads.push({ ...s }); this.squadStyles.set(s.id, squadStyle(s.code, s.id)); this.squads.sort((p, q) => p.id - q.id); }
+    }
+    this._squadMembers(this.hello.n);
+    this.overlayDirty = true;
+  }
+
+  _squadMembers(n) {
+    // Each drone's squad id (-1: none), from the members lists; frames carry their own (f.sq), which wins.
+    this.squadOf = null;
+    if (!this.squads) return;
+    const of = this.squadOf = new Array(n || 0).fill(-1);
+    for (const s of this.squads) for (const d of s.members || []) if (d >= 0 && d < of.length) of[d] = s.id;
+  }
+
+  _squadColour(id) {
+    const st = id != null && id >= 0 ? this.squadStyles.get(id) : null;
+    return st ? st.col : TRANSIT_COLOR;
+  }
+
+  get squadFocus() { return this._squadFocus; }
+  // A squad code ("F", "N", "S") or null. The follow, orbit and chase views then frame that squad's flying drones
+  // (ride-along and close-up stay with one of them); a run without squads, or without that squad, ignores it.
+  set squadFocus(code) {
+    this._squadFocus = code == null || code === "" ? null : String(code).toUpperCase();
+    this._refocus();
+  }
+
+  _focusSquadId() {
+    if (!this.squads || this._squadFocus == null) return null;
+    const s = this.squads.find((q) => String(q.code).toUpperCase() === this._squadFocus);
+    return s ? s.id : null;
+  }
+
+  // Where the camera starts on a squad run: framing the squads at the start of their circuits (the focused
+  // squad's alone, when one is set), from the usual side, so the first frames do not pull back from one corner.
+  _squadStartView() {
+    const id = this._focusSquadId(), alt = this.hello.directive.altitude_m, pts = [];
+    for (const s of this.squads) {
+      if ((id != null && s.id !== id) || !s.path || !s.path.length) continue;
+      const [x, y] = s.path[0];
+      for (let k = 0; k < Math.max(1, s.n || 0); k++) pts.push([x, y]);
+    }
+    if (!pts.length) return;
+    const cx = pts.reduce((a, p) => a + p[0], 0) / pts.length, cy = pts.reduce((a, p) => a + p[1], 0) / pts.length;
+    const e = Math.max(20, ...pts.map((p) => Math.hypot(p[0] - cx, p[1] - cy))), dist = (e * 1.35 + 70) * this.zoom;
+    const g = this.groundAt(cx, cy);
+    this.focus.set(cx, g + alt, -cy);
+    this.extent = e;   // until the first frame: the top view (setMode) starts high enough too
+    const dir = new THREE.Vector3(-70, 0, 80).normalize();
+    this.camera.position.copy(this.focus).addScaledVector(dir, dist * 0.92).add(new THREE.Vector3(0, dist * 0.38, 0));
+  }
+
+  // Squad runs: the haze thins as the camera pulls back to take in squads hundreds of metres apart, so the far
+  // squads and their lanes stay clear (at the usual distances it is the usual haze).
+  _setFog(density) {
+    this.scene.fog.density = density;
+    for (const p of [this.smoke, this.flames]) if (p) p.points.material.uniforms.fogDensity.value = density;
   }
 
   _buildObstacles(hello) {
@@ -961,9 +1065,15 @@ export class SwarmView {
   _buildTargets(hello) {
     // Hotspots: a scorched patch; once found, a glow, embers and smoke, a ring, a beacon and a label.
     this.targets = [];
+    const people = (hello.targets || []).filter((t) => t.kind === "person").length;
+    let person = 0;
     for (const [i, t] of (hello.targets || []).entries()) {
       const g = this.groundAt(t.x, t.y);
       const r = Math.max(t.radius_m, 1.5);
+      if (t.kind === "person") {   // a missing person: drawn as a hiker, with no scorch, embers or smoke
+        this.targets.push(this._buildPerson(hello, t, g, r, people > 1 ? `Missing person ${++person}` : "Missing person"));
+        continue;
+      }
       const scorch = new THREE.Mesh(new THREE.CircleGeometry(r * 2.3, 32),
         new THREE.MeshLambertMaterial({ map: this.scorchTex, transparent: true, depthWrite: false, polygonOffset: true, polygonOffsetFactor: -2 }));
       scorch.rotation.x = -Math.PI / 2; scorch.rotation.z = hash(t.x, t.y) * 6.28; scorch.position.set(t.x, g + 0.05, -t.y);
@@ -981,6 +1091,136 @@ export class SwarmView {
       label.position.set(t.x, g + 7, -t.y); label.visible = false;
       this.world.add(scorch, glow, ring, beacon, label);
       this.targets.push({ t, g, r, glow, ring, beacon, label, found: false });
+    }
+  }
+
+  // A missing person: a hiker sitting on the ground (_hiker), with their back to a clump of trees and under the
+  // edge of its crowns when the run hides them under cover (_buildCopse). Once found: a warm heat-signature glow,
+  // a ring, a beacon that shows above the crowns, and a label (_drawPeople).
+  _buildPerson(hello, t, g, r, name) {
+    const a = hash(t.x, t.y) * 6.28;   // from the person toward the trees (simulated x/y, radians); they face away
+    const hiker = this._hiker();
+    hiker.position.set(t.x, g, -t.y); hiker.rotation.y = a + Math.PI;
+    this.world.add(hiker);
+    // Drawn larger, the hiker grows about the crowns' edge (edge m along their legs), so the share under them holds.
+    const edge = t.cover > 0 ? this._buildCopse(hello, t, a) : 0;
+    const at = hiker.position.clone(), legs = new THREE.Vector3(-Math.cos(a), 0, Math.sin(a));
+    // The heat signature: a soft orange patch with a hotter core.
+    const glow = new THREE.Group();
+    for (const [rad, color, blending] of [[1.6, 0xff6a1a, THREE.NormalBlending], [0.8, 0xffc070, THREE.AdditiveBlending]]) {
+      const m = new THREE.Mesh(new THREE.CircleGeometry(rad, 24),
+        new THREE.MeshBasicMaterial({ map: this.dotTex, color, transparent: true, opacity: 0, blending, depthWrite: false }));
+      m.rotation.x = -Math.PI / 2; glow.add(m);
+    }
+    glow.position.set(t.x, g + 0.06, -t.y);
+    const ring = new THREE.Mesh(new THREE.RingGeometry(r * 2.6, r * 2.6 + 0.6, 64),
+      new THREE.MeshBasicMaterial({ color: 0xffc94a, transparent: true, opacity: 0, side: THREE.DoubleSide, depthWrite: false }));
+    ring.rotation.x = -Math.PI / 2; ring.position.set(t.x, g + 0.12, -t.y);
+    const beacon = new THREE.Mesh(new THREE.CylinderGeometry(0.25, 0.25, 50, 8, 1, true),
+      new THREE.MeshBasicMaterial({ color: 0xffc060, transparent: true, opacity: 0, blending: THREE.AdditiveBlending, depthWrite: false }));
+    beacon.position.set(t.x, g + 25, -t.y);
+    const label = this._label(`${name} found`, "#ffc94a");
+    label.position.set(t.x, g + 4.5, -t.y); label.visible = false;
+    this.world.add(glow, ring, beacon, label);
+    return { t, g, r, person: true, name, hiker, at, legs, edge, glow, ring, beacon, label, found: false };
+  }
+
+  // A low-poly hiker about 1.7 m tall, sitting with the right leg out and the left knee up, leaning back on one
+  // hand: red jacket, blue backpack with a rolled mat, dark trousers, boots and a beanie. Legs along +x, y up. The
+  // left arm (userData.arm, pivoting at the shoulder) rests on the knee. The simulation models only the person's
+  // heat, not whether they respond, so the hiker does not move when found.
+  _hiker() {
+    const mat = (color) => new THREE.MeshLambertMaterial({ color, flatShading: true });
+    const jacket = mat(0xe3321f), trousers = mat(0x34404f), boots = mat(0x4a3424), skin = mat(0xd39a74),
+      pack = mat(0x2a4f9c), roll = mat(0xf0c22e), hat = mat(0x2c3038);
+    const box = (parent, m, w, h, d, x, y, z, rz = 0) => {
+      const b = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), m);
+      b.position.set(x, y, z); b.rotation.z = rz; parent.add(b);
+    };
+    const root = new THREE.Group();
+    box(root, trousers, 0.3, 0.18, 0.36, 0, 0.11, 0);                  // seat
+    box(root, trousers, 0.9, 0.15, 0.16, 0.5, 0.08, 0.1);              // right leg, stretched out
+    box(root, boots, 0.14, 0.22, 0.13, 0.99, 0.11, 0.1);
+    box(root, trousers, 0.48, 0.16, 0.17, 0.235, 0.27, -0.1, 0.68);    // left thigh and shin, knee up
+    box(root, trousers, 0.47, 0.14, 0.15, 0.57, 0.24, -0.1, -0.876);
+    box(root, boots, 0.26, 0.12, 0.13, 0.79, 0.06, -0.1);
+    const torso = new THREE.Group();   // the upper body, leaning back a little
+    torso.position.set(0, 0.17, 0); torso.rotation.z = 0.22; root.add(torso);
+    box(torso, jacket, 0.27, 0.52, 0.42, 0, 0.27, 0);
+    box(torso, jacket, 0.14, 0.12, 0.3, -0.07, 0.53, 0);               // the hood, down
+    box(torso, pack, 0.2, 0.46, 0.34, -0.23, 0.28, 0);
+    box(torso, pack, 0.22, 0.08, 0.32, -0.22, 0.53, 0);
+    const mat2 = new THREE.Mesh(new THREE.CylinderGeometry(0.07, 0.07, 0.4, 8), roll);
+    mat2.rotation.x = Math.PI / 2; mat2.position.set(-0.25, 0.04, 0); torso.add(mat2);
+    const head = new THREE.Mesh(new THREE.IcosahedronGeometry(0.105, 1), skin);
+    head.position.set(0.02, 0.68, 0); torso.add(head);
+    const beanie = new THREE.Mesh(new THREE.SphereGeometry(0.112, 8, 4, 0, Math.PI * 2, 0, Math.PI / 2), hat);
+    beanie.position.set(0.01, 0.7, 0); torso.add(beanie);
+    const arm = (z, rz, rx) => {
+      const p = new THREE.Group();
+      p.position.set(0, 0.48, z); p.rotation.set(rx, 0, rz); torso.add(p);
+      box(p, jacket, 0.09, 0.5, 0.1, 0, -0.25, 0);
+      box(p, skin, 0.07, 0.09, 0.08, 0, -0.54, 0);
+      return p;
+    };
+    arm(0.25, -0.45, -0.15);                 // right hand on the ground behind
+    root.userData.arm = arm(-0.25, 0.95, 0); // left hand on the knee
+    root.traverse((m) => { if (m.isMesh) m.castShadow = m.receiveShadow = true; });
+    return root;
+  }
+
+  // The clump of trees over a person under cover, in direction `a` from them: the first tree's crown reaches over
+  // their back so that about `cover` of them (backpack first) is under it seen from straight above; the others
+  // stand behind it, none over the person. All top out well below the flight level. Looks only: the run has no
+  // trees here. Returns how far along the hiker's legs from the seat that crown's edge lies.
+  _buildCopse(hello, t, a) {
+    const alt = (hello.directive && hello.directive.altitude_m) || 30;
+    const top = Math.max(Math.min(7, alt - 4), Math.min(15, alt - 9));   // at least 4 m below the drones
+    const c = Math.min(0.9, t.cover), R0 = 4.2 + 0.8 * hash(t.y, t.x);
+    const D = 0.85 * R0 + 0.35 - 1.4 * c;   // seat to trunk; a crown's edge is about 0.85 R out, the hiker 1.4 m long
+    const trees = [[t.x + Math.cos(a) * D, t.y + Math.sin(a) * D, R0, top]];
+    for (let k = 1; k <= 14 && trees.length < 7; k++) {
+      const [px, py] = trees[Math.floor(hash(k, t.y) * trees.length)];
+      const b = a + (hash(k, t.x) - 0.5) * 3.2, d = 5 + 3.5 * hash(t.y, k);
+      const x = px + Math.cos(b) * d, y = py + Math.sin(b) * d, R = 3 + 1.4 * hash(x, y);
+      if (Math.hypot(x - t.x, y - t.y) < 0.85 * R + 2.5 || trees.some(([qx, qy]) => Math.hypot(x - qx, y - qy) < 4)) continue;
+      trees.push([x, y, R, top * (0.72 + 0.28 * hash(y, x))]);
+    }
+    const trunkGeo = new THREE.CylinderGeometry(1, 1.15, 1, 7, 1); trunkGeo.translate(0, 0.5, 0);
+    const leaf = new THREE.MeshLambertMaterial({ color: 0xffffff, vertexColors: true });
+    addSway(leaf, this.swayT);
+    const trunks = new THREE.InstancedMesh(trunkGeo, new THREE.MeshLambertMaterial({ color: 0x5a4636 }), trees.length);
+    const crowns = new THREE.InstancedMesh(conifer(), leaf, trees.length);
+    const m = new THREE.Object3D(), col = new THREE.Color();
+    trees.forEach(([x, y, R, h], i) => {
+      const gz = this.groundAt(x, y), base = Math.min(4.8, Math.max(3.4, h * 0.3)), ch = h - base, w = 0.16 + 0.03 * R;
+      m.rotation.set(0, hash(x, 7) * 6.28, 0);
+      m.position.set(x, gz, -y); m.scale.set(w, base + 0.3 * ch, w); m.updateMatrix(); trunks.setMatrixAt(i, m.matrix);
+      m.position.set(x, gz + base - 0.13 * ch, -y); m.scale.set(R, ch * 1.13, R); m.updateMatrix(); crowns.setMatrixAt(i, m.matrix);
+      col.setHSL(0.22 + 0.07 * hash(x, 3), 0.3 + 0.18 * hash(y, 5), 0.17 + 0.09 * hash(x, y));
+      crowns.setColorAt(i, col);
+    });
+    for (const im of [trunks, crowns]) { im.castShadow = im.receiveShadow = true; this.world.add(im); }
+    return 0.85 * R0 - D;
+  }
+
+  // Each missing person: drawn larger the further the camera is (personSize); once found, the glow, ring and
+  // beacon fade in. Timed by the view clock alone, so film frames are the same every take.
+  _drawPeople() {
+    for (const tg of this.targets || []) {
+      if (!tg.person) continue;
+      const s = personSize(this.camera.position.distanceTo(tg.at)), arm = tg.hiker.userData.arm;
+      tg.hiker.scale.setScalar(s);
+      tg.hiker.position.copy(tg.at).addScaledVector(tg.legs, tg.edge * (1 - s));
+      const [halo, core] = tg.glow.children;
+      arm.rotation.set(0, 0, 0.95);
+      if (!tg.found) { halo.material.opacity = core.material.opacity = 0; continue; }
+      const t = this.vt, age = t - tg.foundAt, heat = Math.min(1, age * 1.5) * (0.85 + 0.15 * Math.sin(t * 2.4));
+      tg.glow.scale.setScalar(s);
+      halo.material.opacity = 0.6 * heat; core.material.opacity = 0.9 * heat;
+      tg.ring.material.opacity = Math.min(1, age * 2) * (0.6 + 0.3 * Math.sin(t * 3));
+      tg.ring.scale.setScalar(1 + 0.06 * Math.sin(t * 3));
+      tg.beacon.material.opacity = Math.min(0.32, age * 0.4);
     }
   }
 
@@ -1088,7 +1328,8 @@ export class SwarmView {
         g.strokeStyle = "rgba(184,247,255,.6)"; g.stroke();
       }
     }
-    if (o.area) {
+    if (this.squads) this._drawSquads(g);   // each squad's lanes and area replace the one survey box
+    else if (o.area) {
       const [a, b] = this._toPx(o.area[0], o.area[3]), [c, d] = this._toPx(o.area[2], o.area[1]);
       g.strokeStyle = "rgba(255,196,96,.9)"; g.lineWidth = Math.max(1.5, 0.45 * o.px);
       g.setLineDash([4 * o.px, 3 * o.px]);
@@ -1099,11 +1340,118 @@ export class SwarmView {
         g.beginPath(); g.moveTo(u + su * L, v); g.lineTo(u, v); g.lineTo(u, v + sv * L); g.stroke();
       }
     }
+    if (this.strikes) this._drawStrikes(g);   // under the zones, alerts and located fires drawn next
     if (this.wildfire) this.wildfire.drawOver(g);
     o.tex.needsUpdate = true;
   }
 
+  // Squad runs, on the ground overlay: each squad's patrol circuit (its lanes, dashed, over a faint dark edge so they
+  // show on pale grass) and a faint outline of its area in the squad's colour, named on a small plate just outside
+  // the area's west edge, halfway up, with the drones flying in it now. Redrawn as squads change (squad_changed,
+  // squad_joined) and with each overlay redraw.
+  _drawSquads(g) {
+    const o = this.overlay, px = o.px;
+    const live = new Map((this.squadLive || []).map((s) => [s.id, s]));
+    g.save();
+    g.lineJoin = "round";
+    for (const s of this.squads) {
+      const rgb = (this.squadStyles.get(s.id) || squadStyle(s.code, s.id)).rgb;
+      if (Array.isArray(s.area) && s.area.length === 4) {
+        const [a, b] = this._toPx(s.area[0], s.area[3]), [c, d] = this._toPx(s.area[2], s.area[1]);
+        g.lineWidth = Math.max(1, 0.45 * px); g.strokeStyle = `rgba(${rgb},.32)`;
+        g.strokeRect(a, b, c - a, d - b);
+      }
+      if (Array.isArray(s.path) && s.path.length > 1) {
+        g.beginPath();
+        s.path.forEach((p, k) => { const [u, w] = this._toPx(p[0], p[1]); k ? g.lineTo(u, w) : g.moveTo(u, w); });
+        g.closePath();   // a closed circuit: the last lane comes back along the west edge to the first
+        g.setLineDash([8 * px, 5 * px]);
+        g.lineWidth = Math.max(2.5, 2.2 * px); g.strokeStyle = "rgba(16,20,24,.22)"; g.stroke();
+        g.lineWidth = Math.max(1.5, 1.2 * px); g.strokeStyle = `rgba(${rgb},.7)`; g.stroke();
+        g.setLineDash([]);
+      }
+      if (Array.isArray(s.area) && s.area.length === 4 && s.name) {
+        const k = live.has(s.id) && live.get(s.id).flying != null ? live.get(s.id).flying : s.n;
+        const text = k == null ? s.name : `${s.name} · ${k} drone${k === 1 ? "" : "s"}`;
+        const fs = Math.round(11 * px);
+        g.font = `600 ${fs}px Inter, system-ui, sans-serif`; g.textAlign = "right"; g.textBaseline = "middle";
+        const tw = g.measureText(text).width, padX = 0.45 * fs, padY = 0.32 * fs;
+        // The plate's place along the edge, from its widest text, so it stays put as the count changes.
+        const wide = (g.measureText(`${s.name} · 00 drones`).width + 2 * padX) / px, high = (fs + 2 * padY) / px;
+        const [u, w] = this._toPx(s.area[0] - 8, this._squadLabelY(s.area, s.name, wide, high));
+        g.fillStyle = "rgba(16,20,24,.6)";
+        g.beginPath(); g.roundRect(u - tw - 2 * padX, w - fs / 2 - padY, tw + 2 * padX, fs + 2 * padY, 0.35 * fs); g.fill();
+        g.fillStyle = `rgba(${rgb},1)`; g.fillText(text, u - padX, w + 0.04 * fs);
+      }
+    }
+    g.restore();
+  }
+
+  // Where (y, metres north) a squad's name plate sits just west of its area: the trees stand over the ground
+  // overlay and would hide it, so the stretch of the edge with the fewest trees under a plate wide x high metres,
+  // nearest halfway up on a tie. Worked out once per area, so the plate never moves.
+  _squadLabelY(area, name, wide, high) {
+    const key = `${area.join(",")}|${name}`, memo = this.squadLabelAt || (this.squadLabelAt = new Map());
+    if (memo.has(key)) return memo.get(key);
+    const [x0, y0, , y1] = area, mid = (y0 + y1) / 2, reach = high / 2 + 5;   // 5 m: about a crown's radius
+    const xy = this.forestTrees ? this.forestTrees.xy : [];
+    const near = xy.filter((p) => p[0] > x0 - 8 - wide - 5 && p[0] < x0 - 3 && p[1] > y0 - reach && p[1] < y1 + reach);
+    let best = mid, fewest = Infinity;
+    const span = Math.max(0, (y1 - y0) / 2 - high / 2 - 4);
+    for (let d = 0; d <= span; d += 4) {   // outwards from halfway up, so a tie keeps the plate nearest the middle
+      for (const y of d ? [mid - d, mid + d] : [mid]) {
+        let k = 0;
+        for (const p of near) if (Math.abs(p[1] - y) < reach) k++;
+        if (k < fewest) { fewest = k; best = y; }
+      }
+    }
+    memo.set(key, best);
+    return best;
+  }
+
+  // The lightning strikes the run was given (hello.scenario.strikes), each a small bolt where it struck: the ones
+  // the request picked (cue) bright, with the time of the strike; the rest dim, and those outside every patrol
+  // area (area "-") dimmer still. On a squad run, a picked strike in no area a squad flies (the plan's
+  // "uncovered") is drawn bright but hollow: asked for, and no drone is looking there. The times go on after
+  // every bolt, each on the first side of its bolt (right, left, above or below right) clear of the others.
+  _drawStrikes(g) {
+    const px = this.overlay.px;
+    const flown = this.squads ? new Set(this.squads.map((q) => q.code)) : null;
+    const taken = [], timed = [];   // boxes [u0, v0, u1, v1] the bolts and times cover; the times to write
+    g.save();
+    g.lineJoin = "round";
+    for (const s of this.strikes) {
+      if (!Number.isFinite(s.x) || !Number.isFinite(s.y)) continue;
+      const cue = !!s.cue, open = cue && !!flown && !flown.has(s.area);
+      const [u, w] = this._toPx(s.x, s.y), a = cue ? 1 : s.area === "-" ? 0.3 : 0.6;
+      const h = (cue ? 8 : 5.5) * px;   // half the bolt's height: 16 m tall when cued, 11 m otherwise
+      g.beginPath();
+      BOLT.forEach(([bx, by], k) => (k ? g.lineTo(u + bx * h, w + by * h) : g.moveTo(u + bx * h, w + by * h)));
+      g.closePath();
+      g.lineWidth = Math.max(1.5, (cue ? 0.8 : 0.6) * px); g.strokeStyle = `rgba(20,20,24,${(0.75 * a).toFixed(3)})`; g.stroke();
+      if (open) { g.lineWidth = Math.max(1, 0.4 * px); g.strokeStyle = "rgba(255,226,92,1)"; g.stroke(); }
+      else { g.fillStyle = cue ? "rgba(255,226,92,1)" : `rgba(250,242,212,${a})`; g.fill(); }
+      taken.push([u - 0.5 * h, w - h, u + 0.5 * h, w + h]);
+      if (cue && s.time) timed.push([u, w, h, String(s.time)]);
+    }
+    const fs = Math.round(9 * px);
+    g.font = `600 ${fs}px Inter, system-ui, sans-serif`; g.textAlign = "left"; g.textBaseline = "middle";
+    g.lineWidth = Math.max(2, 0.9 * px);
+    const clear = (b) => !taken.some((q) => b[0] < q[2] && b[2] > q[0] && b[1] < q[3] && b[3] > q[1]);
+    for (const [u, w, h, text] of timed) {
+      const tw = g.measureText(text).width, gap = 0.55 * h + 2 * px;
+      const spots = [[u + gap, w], [u - gap - tw, w], [u + gap, w - 0.9 * h], [u + gap, w + 0.9 * h]];
+      const boxAt = ([x, y]) => [x - px, y - fs / 2 - px, x + tw + px, y + fs / 2 + px];
+      const [x, y] = spots.find((p) => clear(boxAt(p))) || spots[0];
+      taken.push(boxAt([x, y]));
+      g.strokeStyle = "rgba(20,20,24,.7)"; g.strokeText(text, x, y);
+      g.fillStyle = "rgba(255,240,170,1)"; g.fillText(text, x, y);
+    }
+    g.restore();
+  }
+
   _buildPath(hello) {
+    if (this.squads) return;   // squad runs: hello.path is the first squad's circuit only; the overlay draws every squad's lanes
     const pts = hello.path.map((p) => new THREE.Vector3(p[0], this.groundAt(p[0], p[1]) + 0.4, -p[1]));
     const line = new THREE.Line(new THREE.BufferGeometry().setFromPoints(pts),
       new THREE.LineDashedMaterial({ color: 0xffe2a8, dashSize: 2.5, gapSize: 3, transparent: true, opacity: 0.6 }));
@@ -1160,7 +1508,11 @@ export class SwarmView {
     // Spinning rotors are drawn as blurred discs; blades show only when a rotor has stopped.
     const rotorGeo = new THREE.CircleGeometry(rotorR, 24); rotorGeo.rotateX(-Math.PI / 2);
     const rotors = inst(rotorGeo, new THREE.MeshBasicMaterial({ map: this.rotorTex, transparent: true, depthWrite: false, side: THREE.DoubleSide }), n * 4);
-    const slots = inst(new THREE.TorusGeometry(0.9, 0.07, 6, 28), new THREE.MeshBasicMaterial({ color: 0xffb347, transparent: true, opacity: 0.75 }), n);
+    // Rings under the drones, where each one's slot in the formation is: amber, or on a squad run each drone's
+    // squad colour (white in transit between squads), set per drone over a white material.
+    const slots = inst(new THREE.TorusGeometry(0.9, 0.07, 6, 28),
+      new THREE.MeshBasicMaterial({ color: this.squads ? 0xffffff : 0xffb347, transparent: true, opacity: 0.75 }), n);
+    if (this.squads) for (let i = 0; i < n; i++) slots.setColorAt(i, this._squadColour(this.squadOf ? this.squadOf[i] : -1));
     // Camera footprints: a thin ring and a faint fill where each thermal camera is looking.
     const fp = inst(new THREE.CircleGeometry(1, 48),
       new THREE.MeshBasicMaterial({ color: 0x8ff0ff, transparent: true, opacity: 0.07, depthWrite: false, polygonOffset: true, polygonOffsetFactor: -3 }), n);
@@ -1212,6 +1564,7 @@ export class SwarmView {
     this.cur = { t: f.t, p, at: now, interval: this.prev ? Math.min(400, Math.max(30, now - this.prev.at)) : 100 };
     this.simLatest = f.t;
     this.lastFrame = f;
+    if (this.squads) this.squadLive = f.squads || null;
     this.wind.set(f.wind[0], 0, -f.wind[1]);
     if (f.found) f.found.forEach((hit, i) => {
       const tg = this.targets[i];
@@ -1224,8 +1577,10 @@ export class SwarmView {
   event(e) {
     if (e.kind === "target_found") {
       const tg = this.targets[e.target];
-      if (tg) tg.label.userData.setText(`Hotspot ${e.target + 1} found at ${Number(e.t).toFixed(1)} s`);
+      if (tg && !tg.person) tg.label.userData.setText(`Hotspot ${e.target + 1} found at ${Number(e.t).toFixed(1)} s`);
     }
+    if (this.squads && e.kind === "squad_changed") this._updateSquads(e.squads);
+    if (this.squads && e.kind === "squad_joined") this._updateSquads([e.squad_now]);
     if (this.wildfire) this.wildfire.event(e);
   }
 
@@ -1299,6 +1654,8 @@ export class SwarmView {
     }
     this._camera(dtView);
     this.controls.update();
+    this._drawPeople();
+    if (this.squads) this._setFog(FOG_DENSITY * Math.min(1, 520 / Math.max(1, this.camera.position.distanceTo(this.focus))));
     this.sun.position.copy(this.focus).add(this.sunOffset);   // the shadow box follows what the camera looks at
     this.sun.target.position.copy(this.focus);
     this._drawWind();
@@ -1325,12 +1682,14 @@ export class SwarmView {
     let a = 1;
     if (this.prev && simNow != null) a = Math.max(0, Math.min(1, (simNow - this.prev.t) / Math.max(1e-3, this.cur.t - this.prev.t)));
     else if (this.prev) a = Math.min(1, (performance.now() - this.cur.at) / this.cur.interval);
-    const m = new THREE.Object3D(), part = new THREE.Object3D(), c = new THREE.Vector3();
+    const m = new THREE.Object3D(), part = new THREE.Object3D();
     const mPos = markers.geometry.attributes.position, mCol = markers.geometry.attributes.aColor, mAlpha = markers.geometry.attributes.aAlpha;
     // Pixels per metre at distance 1, to decide when a drone is big enough on screen to drop its marker.
     const pxPerM = this.canvas.clientHeight / (2 * Math.tan((this.camera.fov * Math.PI) / 360));
-    let k = 0, extent = 0;
-    const pts = [], feet = this.footprints = [], at = this.dronePos = [];
+    // Squad runs: each drone's squad (f.sq, -1 in transit) colours its slot ring and, while it flies, its marker;
+    // with squadFocus set, only that squad's flying drones are framed (all of them if it has none flying).
+    const sqOf = this.squads ? f.sq || this.squadOf : null, focusId = this._focusSquadId();
+    const pts = [], others = [], feet = this.footprints = [], at = this.dronePos = [];
     for (let i = 0; i < n; i++) {
       const q1 = this.cur.p[i], q0 = this.prev ? this.prev.p[i] : q1;
       const x = q0[0] + (q1[0] - q0[0]) * a, y = q0[1] + (q1[1] - q0[1]) * a, z = q0[2] + (q1[2] - q0[2]) * a;
@@ -1363,44 +1722,71 @@ export class SwarmView {
         b.im.setMatrixAt(i, m.matrix.clone().multiply(part.matrix));
       }
       mPos.setXYZ(i, x, z + 0.3 * R * size, -y);
-      mCol.setXYZ(i, col.r, col.g, col.b);
+      const mc = sqOf && st === 0 ? this._squadColour(sqOf[i]) : col;   // a failed or retired drone keeps its status colour
+      mCol.setXYZ(i, mc.r, mc.g, mc.b);
       mAlpha.setX(i, 1 - smooth(16, 30, (2.6 * R * size * pxPerM) / Math.max(1, dist)));
       const slot = this.mode === "ride" || this.mode === "close" ? null : f.slots[i];   // close in, the slot rings would fill the frame
       if (slot) {
         m.position.copy(toV(slot)); m.rotation.set(Math.PI / 2, 0, 0); m.scale.setScalar(1); m.updateMatrix();
         slots.setMatrixAt(i, m.matrix);
+        if (sqOf) slots.setColorAt(i, this._squadColour(sqOf[i]));
       } else { m.position.set(0, -1e4, 0); m.scale.setScalar(1e-4); m.updateMatrix(); slots.setMatrixAt(i, m.matrix); }
       if (st === 0) {
         const g = this.groundAt(x, y), r = Math.max(0.01, (z - g) * this.camFootR);
         m.position.set(x, g + 0.3, -y); m.rotation.set(-Math.PI / 2, 0, 0); m.scale.set(r, r, 1); m.updateMatrix();
         fp.setMatrixAt(i, m.matrix); fpRing.setMatrixAt(i, m.matrix);
         feet.push([x, y, r]);
-        c.add(new THREE.Vector3(x, z, -y)); k++; pts.push([x, z, -y]);
+        (focusId == null || sqOf[i] === focusId ? pts : others).push([x, z, -y]);
       } else { m.position.set(0, -1e4, 0); m.scale.setScalar(1e-4); m.updateMatrix(); fp.setMatrixAt(i, m.matrix); fpRing.setMatrixAt(i, m.matrix); }
     }
     for (const im of [...bodies, ...blades.map((b) => b.im), leds, rotors, slots, fp, fpRing]) im.instanceMatrix.needsUpdate = true;
     if (this.terrain && this.hello.sensor) this.overlayDirty = true;   // the footprints move with the drones
     leds.instanceColor.needsUpdate = true;
+    if (sqOf && slots.instanceColor) slots.instanceColor.needsUpdate = true;
     mPos.needsUpdate = mCol.needsUpdate = mAlpha.needsUpdate = true;
     this.droneGroup.visible = true;
-    if (k) {
-      c.multiplyScalar(1 / k);
-      for (const p of pts) extent = Math.max(extent, Math.hypot(p[0] - c.x, p[2] - c.z));
-      this.extent = extent;
-      this.swarmCentre = c;
-      this.fade.focus.value.copy(this.focus);
-      // How far the drones spread across the line of sight, and along it past the centre.
-      const cam = this.camera.position, dx = c.x - cam.x, dz = c.z - cam.z, dl = Math.hypot(dx, dz) || 1;
-      let side = 0, ahead = 0;
-      for (const p of pts) {
-        const ox = p[0] - c.x, oz = p[2] - c.z;
-        side = Math.max(side, Math.abs((ox * dz - oz * dx) / dl)); ahead = Math.max(ahead, (ox * dx + oz * dz) / dl);
-      }
-      // Under the canopy (the ride-along camera in a forest) nothing is cut away, nor from straight above,
-      // where cut crowns leave trunks that read as fallen logs.
-      this.fade.radius.value = this.mode === "top" || (this.crownBase && cam.y < this.crownBase - 0.5) ? 0 : side + 18;
-      this.fade.ahead.value = ahead + 8;
+    this._frameSwarm(pts.length ? pts : others);
+  }
+
+  // The swarm the follow, orbit and chase views frame: the centre and spread of these drones ([x, z, -y], flying),
+  // and how far they reach across and along the line of sight (the crown cutaway).
+  _frameSwarm(pts) {
+    const k = pts.length;
+    if (!k) return;
+    const c = new THREE.Vector3();
+    let extent = 0;
+    for (const p of pts) c.add(new THREE.Vector3(p[0], p[1], p[2]));
+    c.multiplyScalar(1 / k);
+    for (const p of pts) extent = Math.max(extent, Math.hypot(p[0] - c.x, p[2] - c.z));
+    this.extent = extent;
+    this.swarmCentre = c;
+    this.fade.focus.value.copy(this.focus);
+    // How far the drones spread across the line of sight, and along it past the centre.
+    const cam = this.camera.position, dx = c.x - cam.x, dz = c.z - cam.z, dl = Math.hypot(dx, dz) || 1;
+    let side = 0, ahead = 0;
+    for (const p of pts) {
+      const ox = p[0] - c.x, oz = p[2] - c.z;
+      side = Math.max(side, Math.abs((ox * dz - oz * dx) / dl)); ahead = Math.max(ahead, (ox * dx + oz * dz) / dl);
     }
+    // Under the canopy (the ride-along camera in a forest) nothing is cut away, nor from straight above,
+    // where cut crowns leave trunks that read as fallen logs.
+    this.fade.radius.value = this.mode === "top" || (this.crownBase && cam.y < this.crownBase - 0.5) ? 0 : side + 18;
+    this.fade.ahead.value = ahead + 8;
+  }
+
+  // squadFocus changed: frame the new squad from where the drones were last drawn, so a programmed cut that
+  // follows (setMode(mode, true)) lands on it rather than gliding over from the last one.
+  _refocus() {
+    const f = this.lastFrame, at = this.dronePos;
+    if (this.hello && this.squads && !f) {   // set before the first frame (the recorder): start on that squad
+      this._squadStartView(); this.controls.target.copy(this.focus); this.setMode(this.mode);
+      return;
+    }
+    if (!this.hello || !f || !at || !at.length) return;
+    const sqOf = this.squads ? f.sq || this.squadOf : null, focusId = this._focusSquadId(), pts = [], others = [];
+    at.forEach((p, i) => { if (f.s[i] === 0) (focusId == null || sqOf[i] === focusId ? pts : others).push(p); });
+    this._frameSwarm(pts.length ? pts : others);
+    if (this.squads) this.ride = null;   // the ride-along and close-up views pick a drone of the new squad
   }
 
   _drawFire(dt, t) {
@@ -1410,6 +1796,7 @@ export class SwarmView {
     const chance = (rate) => { const e = rate * dt; return Math.floor(e) + (Math.random() < e - Math.floor(e) ? 1 : 0); };
     for (const tg of this.targets || []) {
       // A hotspot is only a scorched patch until a camera finds it; then it glows, smokes and gets a ring.
+      if (tg.person) continue;   // drawn by _drawPeople
       if (!tg.found) { tg.glow.material.opacity = 0; continue; }
       const pulse = 0.55 + 0.25 * Math.sin(t * 7 + tg.t.x) + 0.15 * Math.sin(t * 13.7 + tg.t.y);
       tg.glow.material.opacity = pulse;
@@ -1470,7 +1857,7 @@ export class SwarmView {
     let want = null, aim = 0;   // aim: look this far above the swarm, so the skyline shows at the top of the frame
     if (this.mode === "follow" && !this.userMoved && this.canyon && this.lastFrame) {
       // Between tall buildings: from high up behind the swarm, looking down the street.
-      const hd = this.lastFrame.heading ?? 0, dist = (e * 1.2 + 60) * z;
+      const hd = this._heading(), dist = (e * 1.2 + 60) * z;
       want = new THREE.Vector3(f.x - Math.cos(hd) * dist * 0.55, f.y + dist * 0.85, f.z + Math.sin(hd) * dist * 0.55);
     } else if (this.mode === "follow" && !this.userMoved) {
       // Low enough to see the skyline over the swarm, high enough to see the formation's shape.
@@ -1485,7 +1872,7 @@ export class SwarmView {
       want = new THREE.Vector3(f.x + Math.cos(this.orbitAngle) * rad, f.y + rad * 0.36, f.z + Math.sin(this.orbitAngle) * rad);
       aim = rad * 0.13;
     } else if (this.mode === "chase" && !this.userMoved && this.lastFrame) {
-      const hd = this.lastFrame.heading ?? 0;
+      const hd = this._heading();
       const back = (e * 1.1 + 35) * z;
       want = new THREE.Vector3(f.x - Math.cos(hd) * back, f.y + (10 + e * 0.28) * z, f.z + Math.sin(hd) * back);
     } else if (this.mode === "top" && !this.userMoved) {
@@ -1497,6 +1884,13 @@ export class SwarmView {
     if (cp.y < floor) cp.y = floor;
     this.aim = this.aim == null ? aim : this.aim + (aim - this.aim) * k;
     this.controls.target.set(f.x, f.y + this.aim, f.z);
+  }
+
+  // The way the framed drones fly (radians, 0 east, anticlockwise): the focused squad's, else the run's.
+  _heading() {
+    const f = this.lastFrame, id = this._focusSquadId();
+    const s = id != null && Array.isArray(f.squads) ? f.squads.find((q) => q.id === id) : null;
+    return s && s.heading != null ? s.heading : f.heading ?? 0;
   }
   // Fire (the wildfire valley): from above a fire, behind and to one side, looking along the path the station
   // forecasts for its head, drifting slowly; it glides to each new forecast. fireTarget picks the fire
@@ -1539,12 +1933,16 @@ export class SwarmView {
   _pickDrone() {
     const f = this.lastFrame, at = this.dronePos;
     if (!f || !at || !at.length || !this.swarmCentre) return null;
+    // With squadFocus on a squad run: a drone of that squad (any flying drone if none of it flies).
+    const focusId = this._focusSquadId(), sqOf = focusId == null ? null : f.sq || this.squadOf;
+    let mine = (i) => focusId == null || sqOf[i] === focusId;
+    if (focusId != null && !at.some((_, i) => f.s[i] === 0 && mine(i))) mine = () => true;
     let r = this.ride;
-    if (!r || f.s[r.i] !== 0) {
+    if (!r || f.s[r.i] !== 0 || !mine(r.i)) {
       let best = -1, bd = Infinity;
       at.forEach((p, i) => {
         const d = i === this.rideDrone ? -1 : Math.hypot(p[0] - this.swarmCentre.x, p[2] - this.swarmCentre.z);
-        if (f.s[i] === 0 && d < bd) { bd = d; best = i; }
+        if (f.s[i] === 0 && mine(i) && d < bd) { bd = d; best = i; }
       });
       if (best < 0) return null;
       r = this.ride = { i: best, yaw: r ? r.yaw : this.yaw[best], target: null };

@@ -26,6 +26,7 @@
       <span class="hotspot-only"><i class="dot fire"></i>hotspot</span><span class="scout-only"><i class="dot cam"></i>camera footprint</span>
       <span class="valley-only" hidden><i class="band b30"></i><i class="band b60"></i><i class="band b120"></i><i class="band b180"></i>forecast: fire within 30, 60, 120, 180 min</span>
       <span class="valley-only" hidden><i class="dot phone"></i>phone (simulated)</span><span class="valley-only" hidden><i class="zone l3"></i><i class="zone l4"></i><i class="zone l5"></i>zone at alert Level 3, 4, 5</span><span class="valley-only" hidden><i class="mapped"></i>burning ground mapped by the drones</span>
+      <span class="squads-only" id="squads-legend" hidden><i class="dot sq-F"></i><i class="dot sq-N"></i><i class="dot sq-S"></i>squads: valley floor, north slopes, south slopes</span>
       <span class="muted" id="scale-note"></span>
     </div>
     <div id="wind" title="Simulated wind; the arrow shows where it blows, as seen from the camera"><svg viewBox="-12 -12 24 24" aria-hidden="true"><path d="M0 -10 L6 4 L0 1 L-6 4 Z"/></svg><span>Wind</span></div>
@@ -47,6 +48,10 @@
           <button data-speed="1" class="active">1x</button><button data-speed="2">2x</button><button data-speed="5">5x</button>
         </div>
         <button id="pause">Pause</button>
+      </div>
+      <div id="aircraft-ctl" hidden>
+        <div class="row"><button id="aircraft" title="Crewed firefighting aircraft coming in: every drone stops low, out of their way">Aircraft inbound: hold low</button><span id="aircraft-state" class="muted small"></span></div>
+        <p class="muted small">When crewed firefighting aircraft come in, order the hold: every drone stops 10 m above the treetops (the ground where there are none), out of their way, until you resume the sweep. The safety validator checks each order and the station keeps watching. The simulator does not detect aircraft.</p>
       </div>
 
       <details id="lab" class="lab">
@@ -90,6 +95,17 @@
         <h3>Evacuation alerts <span class="muted small">simulated phones only</span></h3>
         <ul id="zones" class="zones"></ul>
         <ul id="alerts" class="alerts"></ul>
+        <div class="squads-only" hidden>
+          <h3>Squads <span class="muted small" id="sq-patrol"></span></h3>
+          <ul id="squads" class="squads"></ul>
+          <div class="row move">
+            <label>From <select id="move-from"></select></label>
+            <label>To <select id="move-to"></select></label>
+            <label class="narrow">Drones <input id="move-k" type="number" value="2" min="1" step="1"></label>
+            <button id="move-go">Move drones</button>
+          </div>
+          <p class="muted small">The safety check refuses a move that would leave a squad with no drone flying, crowd an area past the widest line that fits across it, or come within 10 s of the last move. Moved drones fly across to the other squad and join it in flight.</p>
+        </div>
       </div>
 
       <h3>Decisions and events <span id="ai-wait" class="muted small"></span></h3>
@@ -111,12 +127,25 @@
     </div>
 
     <div class="tab" id="tab-mission">
-      <p>Describe a civilian mission in plain words. With a Nebius key, Nemotron turns it into a checked mission plan and refuses anything outside civilian use. Without a key, a regex parser reads it instead, and its keyword guard catches only explicit wording, so only the default request and the examples can be flown.</p>
+      <div class="seg mode-switch" id="mission-mode">
+        <button data-mode="search" class="active">Search mission</button><button data-mode="valley">Valley patrol after lightning</button>
+      </div>
+      <p class="search-only">Describe a civilian mission in plain words. With a Nebius key, Nemotron turns it into a checked mission plan and refuses anything outside civilian use. Without a key, a regex parser reads it instead, and its keyword guard catches only explicit wording, so only the default request and the examples can be flown.</p>
+      <p class="valley-mode-only" hidden>Ask for a patrol of the wildfire valley after a lightning storm, in plain words: how many drones, which areas (valley floor, north slopes, south slopes), for how long, and which of the night's reported strikes to check. Nemotron reads the request and refuses anything outside civilian use; fixed rules then split the drones into one squad per area. Without a key, a recorded call is replayed, and a request with no recorded call is read by the regex baseline instead; the plan says which. Everything flown here is a simulation.</p>
       <textarea id="mission-text" rows="4">Search the 400 by 250 m meadow for a missing hiker with 12 drones line abreast, 8 m apart, at 30 m.</textarea>
-      <div class="row wrap examples">
+      <div class="row wrap examples search-only">
         <button data-ex="Send the swarm single file down the 400 m forest trail at a steady 4 m/s, stay under 20 m.">Forest trail</button>
         <button data-ex="Orbit the water tower with a ring of 10 drones, 5 m apart, at 40 m.">Orbit</button>
         <button data-ex="Supply run to the fire camp: 8 drones in a column, 20 mph, 50 m up, 1.5 km.">Supply run</button>
+      </div>
+      <div class="row wrap valley-examples valley-mode-only" hidden>
+        <button data-ex="We had dry lightning last night. Put 16 drones over the whole valley for 12 minutes and check last night's strikes.">Whole valley</button>
+        <button data-ex="We had a storm overnight. Fly the valley floor and the north slopes with 16 drones, looking at the strikes on those two first.">Floor and north</button>
+        <button data-ex="Put 6 on the floor and 6 on the south slopes, and check the strikes there from last night.">Floor and south</button>
+      </div>
+      <div class="row valley-mode-only" hidden>
+        <label class="narrow">Seed <input id="valley-seed" type="number" value="4012" min="0" step="1"></label>
+        <p class="muted small seed-note">The valley, its fires and the night's strike list all come from this seed, so the patrol flies the seed it was compiled for.</p>
       </div>
       <div class="row"><button id="compile" class="primary">Compile mission</button><button id="fly-mission" disabled>Fly this mission</button></div>
       <div id="compile-out"></div>
