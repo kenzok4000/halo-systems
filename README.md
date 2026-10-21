@@ -4,7 +4,7 @@
 
 [![Licence: Apache-2.0](https://img.shields.io/badge/licence-Apache--2.0-blue)](LICENSE)
 
-![The simulated wildfire valley, seed 4012, sixteen drones: as the station's new forecast arrives, Fire 1's head arrow draws out north-northeast with its cone, the crews are updated, and Level 4 evacuation alerts go to three zones of simulated phones; filmed in the dashboard's 3D view](docs/valley.webp)
+![The simulated wildfire valley, seed 4012, sixteen drones: as the station's new forecast arrives, Fire 1's head arrow draws out north-northeast with its cone, the crews are updated, two smouldering fires go to fire dispatch, and Level 4 evacuation alerts go to three zones of simulated phones; filmed in the dashboard's 3D view](docs/valley.webp)
 
 ## In one minute
 
