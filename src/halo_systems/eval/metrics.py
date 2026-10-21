@@ -36,6 +36,10 @@ Definitions (also in docs/BENCHMARKS.md), with the result keys they fill:
 * wildfire (the wildfire valley): fires located and how, smoke location
   error, the last forecast against the true spread, and warning lead times
   and false alarms at the phones; ``Wildfire.evaluate`` and docs/WILDFIRE.md.
+* airspace holds (runs with an "aircraft inbound" order only): each hold's
+  record (``Simulation.airspace_order``), the total time held and the longest
+  time from a hold order until every flying drone was stopped at the hold
+  altitude (``airspace_holds``, ``airspace_held_s``, ``airspace_clear_s_max``).
 """
 
 from __future__ import annotations
@@ -176,7 +180,19 @@ def compute_metrics(sim) -> dict:
         metrics.update(scouting_metrics(sim, t, duration))
     if getattr(sim, "wildfire", None) is not None:
         metrics.update(sim.wildfire.evaluate(sim))
+    if getattr(sim, "airspace", False):
+        metrics.update(airspace_metrics(sim))
     return metrics
+
+
+def airspace_metrics(sim) -> dict:
+    """Runs with an airspace order only: every hold, the time held in all and the slowest clear (None: no hold
+    cleared). A hold still in force at the end counts until the end."""
+    holds = [dict(h) for h in sim.holds]
+    held = sum((h["to_s"] if h["to_s"] is not None else sim.t) - h["from_s"] for h in holds)
+    clears = [h["clear_s"] for h in holds if h["clear_s"] is not None]
+    return {"airspace_holds": holds, "airspace_held_s": round(float(held), 2),
+            "airspace_clear_s_max": max(clears) if clears else None}
 
 
 def scouting_metrics(sim, t: np.ndarray, duration: float) -> dict:

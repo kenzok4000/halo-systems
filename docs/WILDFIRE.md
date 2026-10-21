@@ -177,6 +177,18 @@ gain. The cost is false fires: 0.85 to 1.50 per flight against 0.35 to 0.40 for 
 alert rule they led to public alerts in 5 of the 20 valleys at 8 drones (never for the floor squad). Phones warned
 in time did not change. No crashes in any flight.
 
+**Aircraft inbound.** When crewed firefighting aircraft (air tankers, helicopters, a lead plane) come into the
+valley, the operator orders a hold: `POST /api/runs/<id>/inject {"kind": "aircraft", "op": "hold"}` (optionally
+`"altitude_m"`), and later `"op": "resume"`. The order passes the same safety validator as every directive and is
+logged like one: a hold is never refused for timing and never climbs (it is clamped to the swarm's altitude now);
+a resume needs a hold in force, at least 3 s old. Every flying drone stops where it is and descends to the hold
+altitude (10 m above the treetops by default); squads and drones flying between squads stop too, and squad moves
+are refused until the resume. The ground station, smoke watch and alerts keep running. On resume the swarm climbs
+back and carries on the sweep where it stopped. A demonstration on development seed 3000 with 16 drones (a
+5-minute hold 42% of the way along the sweep): every drone was stopped at the hold altitude 6.1 s after the order, the
+hold cost 29% of a battery, the sweep finished 305 s later and found the same 5 fires
+([results/airspace_hold/REPORT.md](../results/airspace_hold/REPORT.md)). Runs without an order are unchanged.
+
 **A job in plain words (Nemotron).** The operator types the job, for example "We had dry lightning last night.
 Put 16 drones over the whole valley for 12 minutes and check last night's strikes." Nemotron 3 Nano, with
 reasoning, reads it into a short spec: how many drones, which areas, how long, and which strikes to check (by when

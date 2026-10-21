@@ -374,8 +374,10 @@ def make_handler(state: State, host: str = "127.0.0.1"):
                                        the wildfire valley also takes approval: "auto", "manual" or "modelled",
                                        alert_rule ("forecast", "presigned" or "distance"), and squads
                                        ("auto" or e.g. "F10-N7-S7"), patrol_min and squad_script
-    POST /api/runs/<id>/inject         {kind, ...}: motor_failure, gust, blackout, directive or squad
-                                       ({from, to, k, at_s}: move k drones between squads)
+    POST /api/runs/<id>/inject         {kind, ...}: motor_failure, gust, blackout, directive, squad
+                                       ({from, to, k, at_s}: move k drones between squads) or aircraft
+                                       ({op: "hold" or "resume", altitude_m, at_s}: crewed firefighting
+                                       aircraft inbound, so the swarm holds low until resumed)
     POST /api/runs/<id>/control        {speed, paused, stop}
     POST /api/runs/<id>/approve        {alert}: approve a checked evacuation alert (simulated phones only)
     POST /api/runs/<id>/cancel         {alert}: cancel a sent evacuation alert (simulated phones only)

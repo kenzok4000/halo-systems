@@ -13,15 +13,22 @@ through ``SafetyValidator.check`` before the controller sees it:
    are rejected, so a chattering supervisor cannot thrash the formation.
 
 A rejected or malformed proposal leaves the last safe directive in force.
+
+Squad orders (``check_squads``) and airspace orders (``check_airspace``, the
+operator's "aircraft inbound" hold and its resume) pass here too and are
+logged the same way, each entry with its ``kind``.
 """
 
 from __future__ import annotations
 
 import math
+import numbers
 from dataclasses import dataclass, field
 
 from ..control.directive import DIRECTIVE_FIELDS, Directive
 from ..control.formations import SHAPES
+
+HOLD_ALTITUDE_M = 10.0      # default airspace-hold altitude, above the ground the plan follows (tree crowns included)
 
 
 @dataclass
@@ -48,6 +55,19 @@ class ValidationResult:
 
     def to_dict(self) -> dict:
         return {"action": self.action, "violations": self.violations, "directive": self.directive.to_dict()}
+
+
+@dataclass
+class AirspaceCheck:
+    """The verdict on an airspace order: ``altitude_m`` is the altitude to hold (a hold that is not rejected)."""
+
+    action: str                       # accepted | clamped | rejected
+    altitude_m: float | None = None
+    violations: list = field(default_factory=list)
+
+    @property
+    def ok(self) -> bool:
+        return self.action != "rejected"
 
 
 class SafetyValidator:
@@ -140,14 +160,15 @@ class SafetyValidator:
     SQUAD_ORDER_GAP_S = 10.0
 
     def check_squads(self, order: dict, flying_by_squad: dict, caps: dict, t: float, source: str,
-                     incoming: dict | None = None) -> list[str]:
+                     incoming: dict | None = None, airspace_hold: bool = False) -> list[str]:
         """Check an order to move drones between squads; returns the violations (empty: accepted).
 
         ``order`` is {"op": "move", "from": code, "to": code, "k": drones}; ``flying_by_squad`` maps each squad's
         code to its drones flying now, ``incoming`` to drones already on their way to it, and ``caps`` to the most
         drones one line fits across its area. A move needs k of at least 1, the source to keep at least one flying
         drone, the receiving squad (with those on their way) to stay within its cap, and orders at least
-        SQUAD_ORDER_GAP_S apart. Logged like a directive, with ``kind`` "squads".
+        SQUAD_ORDER_GAP_S apart, and no airspace hold in force (``airspace_hold``: every drone stays where it is
+        until the operator resumes). Logged like a directive, with ``kind`` "squads".
         """
         incoming = incoming or {}
         bad = []
@@ -172,9 +193,79 @@ class SafetyValidator:
         last = getattr(self, "_last_squad_t", -math.inf)
         if t - last < self.SQUAD_ORDER_GAP_S:
             bad.append(f"squad orders must be {self.SQUAD_ORDER_GAP_S:.0f} s apart")
+        if airspace_hold:
+            bad.append("airspace hold in force")
         if not bad:
             self._last_squad_t = t
         self.log.append({"t": round(t, 2), "source": source, "kind": "squads", "order": dict(order),
                          "action": "accepted" if not bad else "rejected", "violations": bad})
         return bad
 
+    # -- airspace orders ("aircraft inbound": hold and resume) ----------------------------------------------------
+    def check_airspace(self, order, *, held_since_s: float | None, hold_altitude_m: float | None,
+                       directive_altitude_m: float, t: float, source: str,
+                       current_altitude_m: float | None = None) -> AirspaceCheck:
+        """Check an airspace order: {"op": "hold", "altitude_m": optional} or {"op": "resume"}.
+
+        ``held_since_s`` is when the hold in force began (None: not holding), ``hold_altitude_m`` its altitude,
+        ``directive_altitude_m`` the altitude of the directive in force and ``current_altitude_m`` the altitude the
+        swarm's plan is at now (lower while descending, holding or climbing back; None: the directive's), all above
+        the ground the plan follows.
+
+        * hold: the altitude defaults to HOLD_ALTITUDE_M and must be a finite number (a bool is not one). It is
+          clamped to [the altitude floor, the lower of the directive's altitude and the swarm's altitude now], since
+          a hold never climbs (action "clamped", with a note). While holding, a further hold is accepted only if it
+          is lower. A hold is never refused for timing and does not reset the directive rate limit: getting out of
+          the aircraft's way comes first.
+        * resume: only while holding, and at least ``min_change_interval_s`` after the hold began (anti-chatter).
+
+        Logged like a directive, with ``kind`` "airspace" and the altitude held.
+        """
+        bad, notes, alt = [], [], None
+        op = order.get("op") if isinstance(order, dict) else None
+        if not isinstance(order, dict):
+            bad.append("order is not an object")
+        elif op not in ("hold", "resume"):
+            bad.append(f"unknown airspace order {op!r}; use 'hold' or 'resume'")
+        elif op == "hold":
+            raw = order.get("altitude_m")
+            if raw is None:
+                alt = HOLD_ALTITUDE_M
+            elif isinstance(raw, bool) or not isinstance(raw, numbers.Real):
+                bad.append("altitude_m is not a number")
+            else:
+                try:
+                    alt = float(raw)
+                except (OverflowError, ValueError):     # an integer too large for a float
+                    alt = math.nan
+                if not math.isfinite(alt):
+                    bad.append("altitude_m is not finite")
+                    alt = None
+            if alt is not None:
+                lo = self.limits.altitude_m[0]
+                if alt < lo:
+                    notes.append(f"hold altitude {alt:g} m below the floor {lo:g} m; raised")
+                    alt = lo
+                cap, what = float(directive_altitude_m), f"the directive altitude {directive_altitude_m:g} m"
+                if current_altitude_m is not None and current_altitude_m < cap:
+                    cap = max(float(current_altitude_m), lo)
+                    what = f"the swarm's altitude now, {current_altitude_m:.2f} m"
+                if alt > cap:
+                    notes.append(f"hold altitude {alt:g} m above {what}; clamped (a hold never climbs)")
+                    alt = cap
+                if held_since_s is not None and not alt < hold_altitude_m:
+                    bad.append(f"already holding at {hold_altitude_m:g} m; a further hold must be lower")
+        else:
+            if held_since_s is None:
+                bad.append("not holding; nothing to resume")
+            # With a little slack: step times are sums of 0.02 s, so 4.02 - 1.02 can come out as 2.9999999999999996.
+            elif t - held_since_s < self.limits.min_change_interval_s - 1e-6:
+                bad.append(f"resume {t - held_since_s:.1f} s after the hold began "
+                           f"(minimum {self.limits.min_change_interval_s:g} s)")
+        action = "rejected" if bad else "clamped" if notes else "accepted"
+        check = AirspaceCheck(action, None if bad else alt, notes + bad)
+        self.log.append({"t": round(t, 2), "source": source, "kind": "airspace",
+                         "order": dict(order) if isinstance(order, dict) else order, "action": action,
+                         "violations": list(check.violations),
+                         "altitude_m": round(alt, 2) if alt is not None and not bad else None})
+        return check
