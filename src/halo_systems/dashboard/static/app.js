@@ -66,8 +66,9 @@ let valley = null;   // the wildfire valley's station state for the panel: locat
 // checked alert at once, like Japan's earthquake early warning, and the incident commander can cancel it or give
 // a zone the all-clear; "manual", each waits for the commander's tap here (for drills). ?approval=manual picks that.
 const APPROVAL = new URLSearchParams(location.search).get("approval") === "manual" ? "manual" : "auto";
-// A valley patrol from the Mission tab sends its alerts by the district's pre-signed rules: Level 3 and up only for
-// a fire believed spreading, and each smouldering find goes to fire dispatch instead (simulated). ?alerts=forecast
+// A valley patrol from the Mission tab sends its alerts by the district's pre-signed rules: Level 3 for any located
+// fire, smouldering or spreading, forecast to reach the zone; Level 4 and 5 only for a fire believed spreading; and
+// every located fire also goes to fire dispatch as a card (simulated). ?alerts=forecast
 // flies it with the forecast rule of the other valley runs. ?alert_rule=forecast|presigned|distance (the recorder's
 // --alert-rule) flies every valley run under that rule, from the Fly tab too, whose runs otherwise use the forecast rule.
 const ALERT_RULE = ((r) => (["forecast", "presigned", "distance"].includes(r) ? r : null))(new URLSearchParams(location.search).get("alert_rule"));

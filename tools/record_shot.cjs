@@ -51,8 +51,9 @@
 // check may refuse it (both show as events). --squad-focus F|N|S frames that squad in the follow, orbit, chase, ride
 // and close-up views from the start of the flight (window.haloView.squadFocus).
 // --alert-rule presigned|forecast|distance flies a wildfire valley run (--scenario wildfire_valley or --valley) with its
-// alerts under that rule: presigned sends smouldering finds to fire dispatch as cards and public alerts only for fires
-// believed spreading, each under its trigger rule; forecast is today's rule, the scenario's default (a --valley
+// alerts under that rule: presigned sends every located fire to fire dispatch as a card, and public alerts under its
+// trigger rules (Level 3 for smouldering fires too, Level 4 and 5 only for fires believed spreading); forecast is
+// today's rule, the scenario's default (a --valley
 // patrol defaults to presigned).
 // --aircraft "hold@90,resume@390" (with --film; wildfire valley runs) orders the "aircraft inbound" airspace hold, as the
 // operator does when crewed firefighting aircraft come into the valley (the simulator does not detect aircraft): at 90
