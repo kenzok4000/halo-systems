@@ -4,6 +4,9 @@ import json
 import unittest
 import xml.dom.minidom
 
+import numpy as np
+
+from halo_systems.dashboard.server import _valley_options
 from halo_systems.eval.runner import make_controller, make_supervisor, run_one
 from halo_systems.eval.scenarios import make
 from halo_systems.sim import crew_export
@@ -81,6 +84,63 @@ class PresignedTest(unittest.TestCase):
         sc = make("wildfire_valley", 2003, n=4)
         self.assertEqual(sc.wildfire.alerts.rule, "forecast")
         self.assertNotIn("station", sc.wildfire.summary(sc.world.terrain))
+
+
+class SmoulderAlertsTest(unittest.TestCase):
+    """Pre-signed rules whose Level 3 trigger also counts smoulders (smoulder_alerts)."""
+
+    def _station(self, **options):
+        sc = make("wildfire_valley", 2001, n=4, options=options)
+        body = DroneBody()
+        sim = Simulation(sc, make_controller("improved", body, sc.world), make_supervisor("fixed"), seed=2001,
+                         body=body, record_hz=0)
+        return sim, sim.wildfire
+
+    @staticmethod
+    def _smoulder_forecast(wf, near):
+        """A forecast with one located smoulder: nothing spreading reaches a phone, but if the smoulder took off
+        now it would reach the phones ``near`` in an hour."""
+        members, n = 20, len(wf.phones)
+        act, pot = np.full((members, n), np.inf), np.full((members, n), np.inf)
+        pot[:, near] = 3600.0
+        return {"id": 0, "t": 0.0, "active": {"phone_arrivals": act}, "potential": {"phone_arrivals": pot},
+                "located": []}
+
+    def test_level_3_counts_the_smoulder_only_when_asked(self):
+        for options, want in (({"alert_rule": "forecast"}, 3), ({"alert_rule": "presigned"}, 0),
+                              ({"alert_rule": "presigned", "smoulder_alerts": True}, 3)):
+            sim, wf = self._station(**options)
+            near = np.nonzero(wf.zone_of_phone == wf.zone_of_phone[0])[0]
+            fc = self._smoulder_forecast(wf, near)
+            level, prob, _ = wf._zone_targets(fc)
+            self.assertTrue(np.all(level[near] == want), options)
+            wf.forecasts.append(fc)
+            wf._draft_alerts(sim, fc)
+            sent = [a for a in wf.alerts if a["state"] == "delivered"]
+            self.assertEqual(len(sent), 1 if want else 0, options)
+            if want and options["alert_rule"] == "presigned":
+                trig = sent[0]["trigger"]
+                self.assertEqual(trig["rule"], "T3")
+                self.assertIn("smouldering", trig["text"])
+                self.assertTrue(sent[0]["check"]["ok"])
+
+    def test_triggers_summary_and_validation(self):
+        pol = AlertPolicy(rule="presigned", smoulder_alerts=True)
+        self.assertIn("smouldering", pol.trigger(3)["text"])
+        self.assertEqual(pol.trigger(4), AlertPolicy(rule="presigned").trigger(4))   # evacuations: spreading only
+        self.assertEqual(pol.trigger(5), AlertPolicy(rule="presigned").trigger(5))
+        self.assertNotIn("smouldering", AlertPolicy(rule="presigned").trigger(3)["text"])
+        sc = make("wildfire_valley", 2001, n=4, options={"alert_rule": "presigned", "smoulder_alerts": True})
+        self.assertTrue(sc.wildfire.summary(sc.world.terrain)["smoulder_alerts"])
+        sc = make("wildfire_valley", 2001, n=4, options={"alert_rule": "presigned"})
+        self.assertNotIn("smoulder_alerts", sc.wildfire.summary(sc.world.terrain))   # older runs stay identical
+        with self.assertRaises(ValueError):
+            self._station(alert_rule="forecast", smoulder_alerts=True)
+
+    def test_dashboard_passes_it_with_presigned_only(self):
+        self.assertTrue(_valley_options({"alert_rule": "presigned", "smoulder_alerts": True})["smoulder_alerts"])
+        self.assertNotIn("smoulder_alerts", _valley_options({"alert_rule": "forecast", "smoulder_alerts": True}))
+        self.assertNotIn("smoulder_alerts", _valley_options({"alert_rule": "presigned", "smoulder_alerts": "yes"}))
 
 
 class CrewExportTest(unittest.TestCase):

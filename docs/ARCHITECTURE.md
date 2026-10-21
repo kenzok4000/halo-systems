@@ -16,6 +16,19 @@ Halo Systems has three loops that run at very different speeds. Only the fastest
  50 Hz, per drone: slot tracking + consensus ──► CBF safety filter ──► thrust ──► physics
 ```
 
+## Where each loop runs
+
+[results/compute/REPORT.md](../results/compute/REPORT.md), made by `tools/compute_table.py`, times the controller, the rule supervisor, the station and the forecast on development valleys 3000-3003 (16 drones), flown one at a time; the valley compile's latencies are from its scored calls (`results/valley_eval`). The timings are from the development machine (x86_64, 4 cores), not a drone or a Jetson.
+
+* **Flight control** runs on each drone at 50 Hz. All 16 drones' commands in one vectorised call took 3.33 ms per 20 ms step (p95 4.57 ms). In the committed valley sweep (seeds 4000-4019), which flew its flights in parallel so its times depend on the machine's load, one drone's controller alone took 3.2 ms per step, against 5.5 ms for all 16.
+* **The rule supervisor** runs on the ground station every 5 s. A decision took a median 0.035 ms (p95 0.063 ms).
+* **The station** (smoke bearings, thermal finds, located fires, cards to fire dispatch) runs on the ground station (a Jetson Orin Nano is the candidate) once a second. It took a median 2.56 ms per step (p95 17.59 ms), steps that ran a forecast included, busy 3.56% of the flight.
+* **The spread forecast** (with crew briefs and pre-signed alert checks) runs once a fire is located: every 2 min, sooner when the picture changes (at least 30 s apart). A forecast took a median 1620.1 ms (p95 1790.3 ms).
+* **The valley compile** runs once per job on Nebius Token Factory (Nemotron 3 Nano, reasoning): median 4.7 s, p95 10.44 s (47 calls).
+* **The test engineer** (Nemotron, proposing stress tests) runs on Token Factory before deployment, per batch of tests. It is not in flight and was not timed here (`results/valley_stress`).
+
+When the cloud link drops, flight control, the rule supervisor, the station and the forecast are unaffected: none of them uses the link, and no model takes part in any alert or card. The valley compile's call fails and the regex baseline reads the request instead; the operator checks the plan. A Nemotron supervisor falls back to the rules: on the forest trail all 18 calls fell back, and the flight completed with no drones lost.
+
 ## Simulator (`sim/`)
 
 * **Body and power** (`body.py`, `physics.py`). Point-mass quadcopter: 1.2 kg, thrust-to-weight 2.5, drag area 0.035 m², radius 0.15 m, first-order motor lag of 0.05 s, and no downward thrust, since a quadcopter cannot push itself down. Rotor power comes from momentum theory: induced velocity from Glauert's relation v_i⁴ + V²v_i² = v_h⁴, plus parasitic power D·V. That gives about 17 minutes of hover on the battery. Energy per kilometre has a minimum at an economical cruise speed, which the supervisor can choose.
@@ -24,6 +37,12 @@ Halo Systems has three loops that run at very different speeds. Only the fastest
 * **World** (`world.py`). Trees (cylinders) and buildings (boxes) with a clearance query. `free_width_ahead` measures the obstacle-free lane along the path, from the formation's tail to 100 m ahead of its centre.
 * **Ground sensor and targets** (`scenario.py`, `engine.py`). A scenario can carry targets on the ground (smouldering hotspots) and a camera looking straight down from each drone. The footprint is a disc of radius altitude × tan(FOV/2), the circle inscribed in the image. Ten times a second the engine adds dwell to every target inside some flying drone's footprint; a target is found once its dwell reaches the sensor's dwell time, and the find is an event with the drone and the time. Coverage is a grid of 5 m cells over the survey block, marked when a cell's centre falls inside a footprint. The supervisor's report carries the count found so far and the area covered, not the hotspots' positions.
 * **Engine** (`engine.py`). Fixed 0.02 s step. It applies scripted events (motor failures, operator orders, blackouts), detects drone-to-drone collisions by closest approach within each step and obstacle and ground strikes at the end of each step, retires drones whose battery reaches the reserve, and builds the status report for the supervisor. A supervisor's answer is applied only after its measured latency has passed in simulated time, so a slow model has a real cost.
+* **Terrain** (`terrain.py`). A height grid with land cover, used the way a national mapping agency's terrain model is. The drones keep their height above the ground plus tree crowns, with a look-ahead so a rising slope is climbed before it is reached. Line of sight is checked against the ground, so smoke behind a ridge is not seen.
+* **Fire spread** (`fire.py`). Rothermel's surface fire model with Albini's revisions, on Anderson's standard fuel models, with wind and slope added as vectors. Arrival times over the landscape come from a minimum-travel-time calculation, as in FlamMap. It is used for the true fires and for the forecast.
+* **Smoke** (`smoke.py`). What a fire's plume looks like from a drone's forward camera, what a particulate (PM2.5) sensor reads inside it, and the triangulation that turns smoke bearings into located plumes.
+* **Wildfire valley** (`wildfire.py`). The wildfire world and the ground station. Lightning fires smoulder, then spread over the terrain's fuels. The station locates and maps fires from thermal finds and smoke bearings, forecasts their spread with an ensemble of spread runs, briefs the fire crews and alerts the phones (simulated only) in fixed evacuation zones. Under today's rule (`alert_rule` "forecast", the scenario default) fixed rules set each zone's level, and Level 3 also counts smouldering fires as if they took off now. Under the pre-signed rules (`alert_rule` "presigned"), the entry's alert design, public alerts go out automatically only under trigger rules the alerting authority signed in advance, and each located fire also goes to fire dispatch as a card. Nothing here calls a language model. See [WILDFIRE.md](WILDFIRE.md).
+* **Crew outputs** (`crew_export.py`). Each fire's brief as a map file (GeoJSON or KML) and as a short message in the order of the NWCG size-up report. Every feature says it is simulated.
+* **Without drones** (`detection.py`). How the valley's fires would be found by today's methods (satellites, an AI camera network, public calls), as rules from published figures applied to the same true fires. No flight is needed and nothing is tuned.
 
 ## Controllers (`control/`)
 
@@ -39,11 +58,21 @@ Both controllers get the same noisy observations and the same acceleration limit
   6. *filter*: a complementary filter on the navigation estimate.
   7. *feedforward*: the slot's own acceleration, low-passed.
 
+The other modules in `control/`:
+
+* `directive.py`: the directive a supervisor sets and the 50 Hz controller flies. It never touches the motors.
+* `formations.py`: formation shapes and the `Path` the formation centre follows.
+* `assignment.py`: Hungarian assignment of drones to slots.
+* `plan.py`: `FormationPlan`, the virtual leader and every drone's slot, computed alike by every drone from the mission and the directive. The two controllers differ in how they build it (*reassign*, *blend*, *pace*). An airspace hold stops its leader and lowers the plan to the hold altitude.
+* `base.py`: `Observation` and the `Controller` interface.
+* `cbf.py`: the control-barrier-function safety filter used by the improved controller (*cbf* above).
+* `squads.py`: the swarm split into squads, each flying its own formation over its own area. An operator gives each area a number of drones (or asks for `auto`); each squad flies line abreast, no wider than its area, on a closed circuit of lanes until the patrol ends. Drones can be moved between squads mid-flight, and both squads' circuits are then re-planned for their new sizes.
+
 ## Supervisors (`supervisor/`)
 
 All supervisors read the same status report (`Simulation.summary`) and return the same five-field directive.
 
-* **Fixed**: flies the mission plan unchanged. The baseline for "no supervision".
+* **Fixed** (`base.py`): flies the mission plan unchanged. The baseline for "no supervision".
 * **Rule** (`rule.py`). Hand-written rules, tuned on seeds 0-9:
   * After gusts or near misses, widen spacing and margin for 15 s.
   * When more than half the radio links are stale, slow down.
@@ -77,14 +106,17 @@ Orders are scripted (`Scenario.airspace_script`, e.g. `[{"t": 600, "op": "hold"}
 
 * `client.py`: OpenAI-compatible client for Nebius Token Factory with timeouts, retries with backoff and jitter, `Retry-After`, a client-side rate limit, JSON-mode fallback, response validation, and a redacted call log.
 * `budget.py`: a spend ledger shared by every process, checked before each request. See [NVIDIA_NEBIUS.md](NVIDIA_NEBIUS.md).
-* `cache.py`: a record/replay cache keyed on the model, messages, temperature and request options (reasoning switch, token limit). The supervisor's calls go through it, so any Nemotron supervisor flight can be replayed exactly without a key. The mission compiler's and test engineer's calls are kept in call logs instead.
+* `cache.py`: a record/replay cache keyed on the model, messages, temperature and request options (reasoning switch, token limit). The supervisor's calls go through it, so any Nemotron supervisor flight can be replayed exactly without a key. The valley compiler's and the valley test engineer's calls go through it too. The mission compiler's and the benchmark test engineer's (`tester.py`) calls are kept in call logs instead.
+* `prompts.py`: the Nemotron supervisor's prompt and the status message built for it. They must stay the same byte for byte, or the stored calls in `results/nemotron_cache.jsonl` become misses; `PROMPT_VERSION` is recorded with every supervisor decision.
 * `mission.py`: the mission compiler, its civilian-use guard, the regex baseline and the scoring.
+* `valley.py`: the valley mission compiler. Nemotron reads an operator's plain words, such as "check last night's strikes in the north block with 16 drones", and answers which drones, areas, patrol length and strikes they mean. Code applies that to the lightning strike list, picks the squads and checks the plan by fixed rules. The model never flies the drones, never picks a strike by itself and takes no part in alerts. Its calls are recorded in `results/valley_compile_cache.jsonl`; `regex_baseline` is what it is scored against (`halo valley-eval`), with the same civilian-use guard as the mission compiler.
 * `tester.py`: the stress-test search (random, corners, cross-entropy method, Nemotron), and re-flying a search on another configuration.
+* `valley_tester.py`: the test engineer for the wildfire valley. It searches the day's weather, fuels and haze for conditions where the ground station misses a fire, warns people too late, or sends a public alert it should not have. The flight under test uses the pre-signed alert rules. Random search, corner search and Nemotron share the budget. The model only proposes test conditions; no language model takes part in any alert, card or flight decision.
 * `doctor.py`: the end-to-end check, which writes `evidence/latest/` (the committed check is in `evidence/`).
 
 ## Evaluation (`eval/`)
 
-* `scenarios.py`: the ten benchmark scenarios and the wildfire valley, plus `from_mission` for compiled missions.
+* `scenarios.py`: the ten benchmark scenarios (the wildfire scout among them), the wildfire valley and the missing hiker search (`hiker_search`), twelve in all (`halo list`), plus `from_mission` for compiled missions.
 * `runner.py`: runs a grid of scenarios × configurations × seeds in parallel processes, resumable, one JSON line per run.
 * `metrics.py`, `stats.py` and `report.py`: per-run metrics, bootstrap confidence intervals, paired comparisons on the same seeds, and the Markdown report with charts.
 
@@ -92,11 +124,11 @@ The headline formation metric is the *integrity error*. The ideal formation is t
 
 ## Dashboard (`dashboard/`)
 
-A standard-library HTTP server streams frames over server-sent events to a three.js page. With a key, supervisor calls run on a worker thread, so the flight never waits for the API. When replaying recorded calls without a key, they are answered in step with the simulation, exactly as in the benchmark. The page lets the operator start flights with any swarm size, inject gusts, motor failures and radio blackouts, order formations, compile missions and browse the benchmark results. In scouting scenarios it draws the hotspots and lights each one up when a drone's camera has found it.
+A standard-library HTTP server streams frames over server-sent events to a three.js page. With a key, supervisor calls run on a worker thread, so the flight never waits for the API. When replaying recorded calls without a key, they are answered in step with the simulation, exactly as in the benchmark. The page lets the operator start flights with any swarm size, inject gusts, motor failures and radio blackouts, order formations, compile missions and browse the benchmark results. For the wildfire valley the server also compiles a patrol from plain words (`POST /api/valley/compile`, answered from `results/valley_compile_cache.jsonl` without a key) and takes squad moves and aircraft holds as injects. In scouting scenarios it draws the hotspots and lights each one up when a drone's camera has found it.
 
 ## Known simplifications
 
-Beyond what the model leaves out by design (rotor and attitude dynamics, terrain, smoke), a review of the code found these. They apply equally to every configuration, so comparisons between controllers and supervisors are unaffected, but they make some conditions milder than their settings suggest.
+Beyond what the model leaves out by design (rotor and attitude dynamics, and terrain and smoke outside the wildfire valley), a review of the code found these. They apply equally to every configuration, so comparisons between controllers and supervisors are unaffected, but they make some conditions milder than their settings suggest.
 
 * **Vertical turbulence is much weaker than set.** `wind.py` scales the vertical part of the shared turbulence by 0.3 on every step rather than once, so vertical gusts are close to zero. Horizontal turbulence, local turbulence and gust fronts behave as described.
 * **Vertical GPS bias** starts at 0.6 of the horizontal bias but drifts to the full size within about 20 s (`sensing.py`).

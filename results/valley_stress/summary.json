@@ -1,0 +1,153 @@
+{
+ "random_0": {
+  "tests": 20,
+  "random_top_ups": 0,
+  "failures": 11,
+  "by_what": {
+   "late-warning": 6,
+   "missed-fire": 1,
+   "false-alarm": 2,
+   "needless-evacuation": 2,
+   "drone-lost": 0
+  },
+  "distinct_failure_kinds": 11,
+  "first_failure_at": 1,
+  "mildest_failure_stress": 0.291,
+  "mean_failure_stress": 0.441,
+  "phones_warned_late": 57,
+  "max_severity": 121.0,
+  "mean_severity": 18.346,
+  "caused_failures": 6,
+  "caused_kinds": 6,
+  "mildest_caused_stress": 0.308
+ },
+ "random_1": {
+  "tests": 20,
+  "random_top_ups": 0,
+  "failures": 8,
+  "by_what": {
+   "late-warning": 6,
+   "missed-fire": 0,
+   "false-alarm": 0,
+   "needless-evacuation": 2,
+   "drone-lost": 0
+  },
+  "distinct_failure_kinds": 8,
+  "first_failure_at": 3,
+  "mildest_failure_stress": 0.407,
+  "mean_failure_stress": 0.54,
+  "phones_warned_late": 47,
+  "max_severity": 116.07,
+  "mean_severity": 11.604,
+  "caused_failures": 4,
+  "caused_kinds": 4,
+  "mildest_caused_stress": 0.407
+ },
+ "corners_0": {
+  "tests": 20,
+  "random_top_ups": 0,
+  "failures": 8,
+  "by_what": {
+   "late-warning": 7,
+   "missed-fire": 0,
+   "false-alarm": 2,
+   "needless-evacuation": 0,
+   "drone-lost": 0
+  },
+  "distinct_failure_kinds": 8,
+  "first_failure_at": 1,
+  "mildest_failure_stress": 0.375,
+  "mean_failure_stress": 0.562,
+  "phones_warned_late": 37,
+  "max_severity": 101.08,
+  "mean_severity": 13.293,
+  "caused_failures": 7,
+  "caused_kinds": 7,
+  "mildest_caused_stress": 0.375
+ },
+ "corners_1": {
+  "tests": 20,
+  "random_top_ups": 0,
+  "failures": 9,
+  "by_what": {
+   "late-warning": 8,
+   "missed-fire": 0,
+   "false-alarm": 1,
+   "needless-evacuation": 1,
+   "drone-lost": 0
+  },
+  "distinct_failure_kinds": 10,
+  "first_failure_at": 2,
+  "mildest_failure_stress": 0.375,
+  "mean_failure_stress": 0.597,
+  "phones_warned_late": 55,
+  "max_severity": 48.0,
+  "mean_severity": 14.856,
+  "caused_failures": 6,
+  "caused_kinds": 6,
+  "mildest_caused_stress": 0.5
+ },
+ "nemotron_0": {
+  "tests": 20,
+  "random_top_ups": 4,
+  "failures": 12,
+  "by_what": {
+   "late-warning": 5,
+   "missed-fire": 2,
+   "false-alarm": 3,
+   "needless-evacuation": 4,
+   "drone-lost": 0
+  },
+  "distinct_failure_kinds": 13,
+  "first_failure_at": 1,
+  "mildest_failure_stress": 0.303,
+  "mean_failure_stress": 0.555,
+  "phones_warned_late": 24,
+  "max_severity": 76.0,
+  "mean_severity": 14.103,
+  "caused_failures": 8,
+  "caused_kinds": 9,
+  "mildest_caused_stress": 0.38
+ },
+ "nemotron_1": {
+  "tests": 20,
+  "random_top_ups": 0,
+  "failures": 7,
+  "by_what": {
+   "late-warning": 5,
+   "missed-fire": 0,
+   "false-alarm": 0,
+   "needless-evacuation": 2,
+   "drone-lost": 0
+  },
+  "distinct_failure_kinds": 7,
+  "first_failure_at": 3,
+  "mildest_failure_stress": 0.276,
+  "mean_failure_stress": 0.476,
+  "phones_warned_late": 45,
+  "max_severity": 103.06,
+  "mean_severity": 11.332,
+  "caused_failures": 3,
+  "caused_kinds": 3,
+  "mildest_caused_stress": 0.359
+ },
+ "drawn-day_None": {
+  "tests": 40,
+  "random_top_ups": 0,
+  "failures": 14,
+  "by_what": {
+   "late-warning": 9,
+   "missed-fire": 1,
+   "false-alarm": 3,
+   "needless-evacuation": 1,
+   "drone-lost": 0
+  },
+  "distinct_failure_kinds": 4,
+  "first_failure_at": 1,
+  "mildest_failure_stress": 0.264,
+  "mean_failure_stress": 0.264,
+  "phones_warned_late": 26,
+  "max_severity": 43.0,
+  "mean_severity": 7.225
+ }
+}

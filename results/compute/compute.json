@@ -1,0 +1,192 @@
+{
+ "platform": "x86_64, 4 cores, Python 3.13.16",
+ "controller_sweep": {
+  "1": {
+   "flights": 20,
+   "seeds": "4000-4019",
+   "alert_rules": [
+    "forecast"
+   ],
+   "ms_per_step_mean_median": 3.2,
+   "ms_per_step_p95_median": 5.05
+  },
+  "4": {
+   "flights": 20,
+   "seeds": "4000-4019",
+   "alert_rules": [
+    "forecast"
+   ],
+   "ms_per_step_mean_median": 4.51,
+   "ms_per_step_p95_median": 7.05
+  },
+  "16": {
+   "flights": 40,
+   "seeds": "4000-4019",
+   "alert_rules": [
+    "distance",
+    "forecast"
+   ],
+   "ms_per_step_mean_median": 5.5,
+   "ms_per_step_p95_median": 8.86
+  }
+ },
+ "token_factory": {
+  "nano_think": {
+   "model": "nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B",
+   "reasoning": true,
+   "calls": 47,
+   "latency_s_median": 4.7,
+   "latency_s_p95": 10.44
+  },
+  "nano": {
+   "model": "nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B",
+   "reasoning": false,
+   "calls": 47,
+   "latency_s_median": 1.07,
+   "latency_s_p95": 1.44
+  }
+ },
+ "station": {
+  "seeds": [
+   3000,
+   3001,
+   3002,
+   3003
+  ],
+  "load_avg_1min": {
+   "before": 0.16,
+   "after": 1.0
+  },
+  "flights": [
+   {
+    "seed": 3000,
+    "flight_s": 252.48,
+    "wall_s": 72.9,
+    "station_steps": 253,
+    "forecasts": 5,
+    "supervisor_calls": 50,
+    "validator_checks": 45,
+    "ctrl_ms_mean": 3.403,
+    "ctrl_ms_p95": 5.399,
+    "supervisor_period_s": 5.0,
+    "forecast_every_s": 120.0,
+    "forecast_min_gap_s": 30.0
+   },
+   {
+    "seed": 3001,
+    "flight_s": 251.16,
+    "wall_s": 72.1,
+    "station_steps": 252,
+    "forecasts": 7,
+    "supervisor_calls": 50,
+    "validator_checks": 40,
+    "ctrl_ms_mean": 3.309,
+    "ctrl_ms_p95": 4.204,
+    "supervisor_period_s": 5.0,
+    "forecast_every_s": 120.0,
+    "forecast_min_gap_s": 30.0
+   },
+   {
+    "seed": 3002,
+    "flight_s": 246.74,
+    "wall_s": 74.1,
+    "station_steps": 247,
+    "forecasts": 7,
+    "supervisor_calls": 49,
+    "validator_checks": 38,
+    "ctrl_ms_mean": 3.342,
+    "ctrl_ms_p95": 4.567,
+    "supervisor_period_s": 5.0,
+    "forecast_every_s": 120.0,
+    "forecast_min_gap_s": 30.0
+   },
+   {
+    "seed": 3003,
+    "flight_s": 249.52,
+    "wall_s": 69.6,
+    "station_steps": 250,
+    "forecasts": 4,
+    "supervisor_calls": 49,
+    "validator_checks": 33,
+    "ctrl_ms_mean": 3.325,
+    "ctrl_ms_p95": 4.577,
+    "supervisor_period_s": 5.0,
+    "forecast_every_s": 120.0,
+    "forecast_min_gap_s": 30.0
+   }
+  ],
+  "ctrl_ms_mean_median": 3.33,
+  "ctrl_ms_p95_median": 4.57,
+  "station_steps": 1002,
+  "station_ms_median": 2.56,
+  "station_ms_p95": 17.59,
+  "station_ms_max": 1880.29,
+  "forecasts": 23,
+  "forecast_ms_median": 1620.1,
+  "forecast_ms_p95": 1790.3,
+  "forecast_ms_max": 1875.5,
+  "supervisor_calls": 198,
+  "supervisor_ms_median": 0.035,
+  "supervisor_ms_p95": 0.063,
+  "supervisor_ms_max": 1.308,
+  "summary_ms_median": 1.551,
+  "summary_ms_p95": 2.484,
+  "summary_ms_max": 3.909,
+  "validator_checks": 156,
+  "validator_ms_median": 0.028,
+  "validator_ms_p95": 0.045,
+  "validator_ms_max": 6.834,
+  "busy_share_pct": 3.56
+ },
+ "link_drop": {
+  "valley_compile": {
+   "request": "We had dry lightning last night. Put 16 drones over the whole valley for 12 minutes and check last night's strikes.",
+   "call": "failed: network error: OSError: network unreachable (simulated link drop)",
+   "fallback": "regex baseline",
+   "spec": {
+    "refused": false,
+    "refusal_reason": "",
+    "drones": 16,
+    "areas": [
+     "F",
+     "N",
+     "S"
+    ],
+    "per_area": null,
+    "patrol_min": 12.0,
+    "strikes": {
+     "when": "last_night",
+     "where": "any"
+    },
+    "notes": ""
+   },
+   "squads": "F4-N6-S6-R0",
+   "strike_ids": [
+    5,
+    6,
+    7,
+    8,
+    9,
+    10,
+    11,
+    12,
+    13,
+    14,
+    15,
+    16,
+    17,
+    18,
+    19
+   ]
+  },
+  "supervisor": {
+   "scenario": "forest_trail",
+   "completed": true,
+   "ai_calls": 18,
+   "ai_fallbacks": 18,
+   "directive_changes": 3,
+   "collisions": 0,
+   "drones_lost": 0
+  }
+ }
+}

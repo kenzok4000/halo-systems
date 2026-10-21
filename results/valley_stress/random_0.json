@@ -1,0 +1,799 @@
+{
+ "searcher": "random",
+ "model": null,
+ "search": 0,
+ "base": 9100,
+ "budget": 20,
+ "batch": 4,
+ "config": "improved+rule",
+ "alerts": {
+  "alert_rule": "presigned",
+  "approval": "auto"
+ },
+ "summary": {
+  "tests": 20,
+  "random_top_ups": 0,
+  "failures": 11,
+  "by_what": {
+   "late-warning": 6,
+   "missed-fire": 1,
+   "false-alarm": 2,
+   "needless-evacuation": 2,
+   "drone-lost": 0
+  },
+  "distinct_failure_kinds": 11,
+  "first_failure_at": 1,
+  "mildest_failure_stress": 0.291,
+  "mean_failure_stress": 0.441,
+  "phones_warned_late": 57,
+  "max_severity": 121.0,
+  "mean_severity": 18.346
+ },
+ "failure_kinds": [
+  "false-alarm:wind-shift+early-takeoff",
+  "false-alarm:windy+wind-shift+patchy-fuel",
+  "late-warning:wind-shift+early-takeoff+patchy-fuel+haze",
+  "late-warning:wind-shift+haze",
+  "late-warning:wind-shift+late-takeoff",
+  "late-warning:windy+late-takeoff+haze",
+  "late-warning:windy+wind-shift+bad-forecast+early-takeoff+haze",
+  "late-warning:windy+wind-shift+patchy-fuel",
+  "missed-fire:wind-shift",
+  "needless-evacuation:few-drones+windy+wind-shift+late-takeoff+haze",
+  "needless-evacuation:late-takeoff+haze"
+ ],
+ "history": [
+  {
+   "i": 0,
+   "params": {
+    "drones": 28,
+    "wind_scale": 1.453,
+    "wind_shift_deg": -16.689,
+    "moisture_scale": 0.832,
+    "forecast_error": 0.617,
+    "smoulder_scale": 1.64,
+    "patchiness": 0.313,
+    "visibility_m": 895.685,
+    "smoke_range_scale": 0.423
+   },
+   "why": "uniform random",
+   "seed": 9100,
+   "outcome": {
+    "phones_reached_3h": 39,
+    "phones_warned_in_time": 34,
+    "phones_missed": 1,
+    "lead_time_min_p10": 27.9,
+    "fires_spreading_missed": [],
+    "fires_located": 4,
+    "false_locations_standing": 11,
+    "alerts_delivered": 5,
+    "alerts_not_justified": 0,
+    "alerts_from_false_fires": 0,
+    "alerts_for_smoulders": 0,
+    "needless_evacuations": [],
+    "dispatch_cards": 14,
+    "drones_lost": 0,
+    "flight_s": 108.7,
+    "kinds": [
+     "late-warning"
+    ],
+    "failed": true,
+    "severity": 15.21
+   }
+  },
+  {
+   "i": 1,
+   "params": {
+    "drones": 18,
+    "wind_scale": 1.356,
+    "wind_shift_deg": 4.701,
+    "moisture_scale": 1.066,
+    "forecast_error": 0.019,
+    "smoulder_scale": 1.407,
+    "patchiness": 0.379,
+    "visibility_m": 937.334,
+    "smoke_range_scale": 0.992
+   },
+   "why": "uniform random",
+   "seed": 9101,
+   "outcome": {
+    "phones_reached_3h": 3,
+    "phones_warned_in_time": 3,
+    "phones_missed": 0,
+    "lead_time_min_p10": 66.2,
+    "fires_spreading_missed": [],
+    "fires_located": 4,
+    "false_locations_standing": 1,
+    "alerts_delivered": 3,
+    "alerts_not_justified": 1,
+    "alerts_from_false_fires": 0,
+    "alerts_for_smoulders": 1,
+    "needless_evacuations": [],
+    "dispatch_cards": 4,
+    "drones_lost": 0,
+    "flight_s": 250.8,
+    "kinds": [],
+    "failed": false,
+    "severity": 2.0
+   }
+  },
+  {
+   "i": 2,
+   "params": {
+    "drones": 30,
+    "wind_scale": 1.611,
+    "wind_shift_deg": 38.116,
+    "moisture_scale": 0.835,
+    "forecast_error": 2.247,
+    "smoulder_scale": 1.462,
+    "patchiness": 0.259,
+    "visibility_m": 1800.346,
+    "smoke_range_scale": 0.822
+   },
+   "why": "uniform random",
+   "seed": 9102,
+   "outcome": {
+    "phones_reached_3h": 41,
+    "phones_warned_in_time": 39,
+    "phones_missed": 0,
+    "lead_time_min_p10": 90.5,
+    "fires_spreading_missed": [],
+    "fires_located": 4,
+    "false_locations_standing": 2,
+    "alerts_delivered": 6,
+    "alerts_not_justified": 1,
+    "alerts_from_false_fires": 0,
+    "alerts_for_smoulders": 0,
+    "needless_evacuations": [],
+    "dispatch_cards": 6,
+    "drones_lost": 0,
+    "flight_s": 106.5,
+    "kinds": [],
+    "failed": false,
+    "severity": 3.0
+   }
+  },
+  {
+   "i": 3,
+   "params": {
+    "drones": 7,
+    "wind_scale": 1.104,
+    "wind_shift_deg": -88.369,
+    "moisture_scale": 1.37,
+    "forecast_error": 0.423,
+    "smoulder_scale": 1.379,
+    "patchiness": 0.127,
+    "visibility_m": 594.215,
+    "smoke_range_scale": 0.432
+   },
+   "why": "uniform random",
+   "seed": 9103,
+   "outcome": {
+    "phones_reached_3h": 7,
+    "phones_warned_in_time": 7,
+    "phones_missed": 0,
+    "lead_time_min_p10": 30.8,
+    "fires_spreading_missed": [],
+    "fires_located": 4,
+    "false_locations_standing": 0,
+    "alerts_delivered": 11,
+    "alerts_not_justified": 7,
+    "alerts_from_false_fires": 0,
+    "alerts_for_smoulders": 0,
+    "needless_evacuations": [],
+    "dispatch_cards": 4,
+    "drones_lost": 0,
+    "flight_s": 327.4,
+    "kinds": [],
+    "failed": false,
+    "severity": 7.0
+   }
+  },
+  {
+   "i": 4,
+   "params": {
+    "drones": 24,
+    "wind_scale": 1.433,
+    "wind_shift_deg": -70.077,
+    "moisture_scale": 0.92,
+    "forecast_error": 2.934,
+    "smoulder_scale": 0.338,
+    "patchiness": 0.325,
+    "visibility_m": 727.239,
+    "smoke_range_scale": 0.86
+   },
+   "why": "uniform random",
+   "seed": 9104,
+   "outcome": {
+    "phones_reached_3h": 27,
+    "phones_warned_in_time": 8,
+    "phones_missed": 18,
+    "lead_time_min_p10": 22.9,
+    "fires_spreading_missed": [],
+    "fires_located": 4,
+    "false_locations_standing": 0,
+    "alerts_delivered": 4,
+    "alerts_not_justified": 0,
+    "alerts_from_false_fires": 0,
+    "alerts_for_smoulders": 0,
+    "needless_evacuations": [],
+    "dispatch_cards": 4,
+    "drones_lost": 0,
+    "flight_s": 105.3,
+    "kinds": [
+     "late-warning"
+    ],
+    "failed": true,
+    "severity": 72.71
+   }
+  },
+  {
+   "i": 5,
+   "params": {
+    "drones": 27,
+    "wind_scale": 1.086,
+    "wind_shift_deg": 61.308,
+    "moisture_scale": 1.311,
+    "forecast_error": 0.927,
+    "smoulder_scale": 1.414,
+    "patchiness": 0.445,
+    "visibility_m": 1632.796,
+    "smoke_range_scale": 0.438
+   },
+   "why": "uniform random",
+   "seed": 9105,
+   "outcome": {
+    "phones_reached_3h": 38,
+    "phones_warned_in_time": 6,
+    "phones_missed": 30,
+    "lead_time_min_p10": 107.0,
+    "fires_spreading_missed": [],
+    "fires_located": 3,
+    "false_locations_standing": 0,
+    "alerts_delivered": 4,
+    "alerts_not_justified": 1,
+    "alerts_from_false_fires": 0,
+    "alerts_for_smoulders": 0,
+    "needless_evacuations": [],
+    "dispatch_cards": 2,
+    "drones_lost": 0,
+    "flight_s": 104.5,
+    "kinds": [
+     "late-warning"
+    ],
+    "failed": true,
+    "severity": 121.0
+   }
+  },
+  {
+   "i": 6,
+   "params": {
+    "drones": 24,
+    "wind_scale": 1.626,
+    "wind_shift_deg": -33.811,
+    "moisture_scale": 0.986,
+    "forecast_error": 0.969,
+    "smoulder_scale": 1.013,
+    "patchiness": 0.529,
+    "visibility_m": 1908.022,
+    "smoke_range_scale": 0.91
+   },
+   "why": "uniform random",
+   "seed": 9106,
+   "outcome": {
+    "phones_reached_3h": 14,
+    "phones_warned_in_time": 13,
+    "phones_missed": 1,
+    "lead_time_min_p10": 139.9,
+    "fires_spreading_missed": [],
+    "fires_located": 3,
+    "false_locations_standing": 0,
+    "alerts_delivered": 5,
+    "alerts_not_justified": 2,
+    "alerts_from_false_fires": 0,
+    "alerts_for_smoulders": 0,
+    "needless_evacuations": [],
+    "dispatch_cards": 3,
+    "drones_lost": 0,
+    "flight_s": 112.2,
+    "kinds": [
+     "late-warning"
+    ],
+    "failed": true,
+    "severity": 6.0
+   }
+  },
+  {
+   "i": 7,
+   "params": {
+    "drones": 21,
+    "wind_scale": 1.916,
+    "wind_shift_deg": -37.643,
+    "moisture_scale": 0.989,
+    "forecast_error": 1.258,
+    "smoulder_scale": 1.129,
+    "patchiness": 0.578,
+    "visibility_m": 1282.392,
+    "smoke_range_scale": 0.643
+   },
+   "why": "uniform random",
+   "seed": 9107,
+   "outcome": {
+    "phones_reached_3h": 39,
+    "phones_warned_in_time": 37,
+    "phones_missed": 0,
+    "lead_time_min_p10": 66.9,
+    "fires_spreading_missed": [],
+    "fires_located": 3,
+    "false_locations_standing": 3,
+    "alerts_delivered": 9,
+    "alerts_not_justified": 3,
+    "alerts_from_false_fires": 7,
+    "alerts_for_smoulders": 0,
+    "needless_evacuations": [],
+    "dispatch_cards": 7,
+    "drones_lost": 0,
+    "flight_s": 263.4,
+    "kinds": [
+     "false-alarm"
+    ],
+    "failed": true,
+    "severity": 41.0
+   }
+  },
+  {
+   "i": 8,
+   "params": {
+    "drones": 24,
+    "wind_scale": 0.514,
+    "wind_shift_deg": -8.024,
+    "moisture_scale": 0.835,
+    "forecast_error": 0.568,
+    "smoulder_scale": 1.647,
+    "patchiness": 0.148,
+    "visibility_m": 612.038,
+    "smoke_range_scale": 0.969
+   },
+   "why": "uniform random",
+   "seed": 9108,
+   "outcome": {
+    "phones_reached_3h": 25,
+    "phones_warned_in_time": 23,
+    "phones_missed": 0,
+    "lead_time_min_p10": 52.1,
+    "fires_spreading_missed": [],
+    "fires_located": 5,
+    "false_locations_standing": 0,
+    "alerts_delivered": 9,
+    "alerts_not_justified": 3,
+    "alerts_from_false_fires": 0,
+    "alerts_for_smoulders": 0,
+    "needless_evacuations": [
+     "S3"
+    ],
+    "dispatch_cards": 5,
+    "drones_lost": 0,
+    "flight_s": 103.5,
+    "kinds": [
+     "needless-evacuation"
+    ],
+    "failed": true,
+    "severity": 6.0
+   }
+  },
+  {
+   "i": 9,
+   "params": {
+    "drones": 8,
+    "wind_scale": 1.647,
+    "wind_shift_deg": -51.924,
+    "moisture_scale": 1.397,
+    "forecast_error": 0.891,
+    "smoulder_scale": 1.717,
+    "patchiness": 0.371,
+    "visibility_m": 743.772,
+    "smoke_range_scale": 0.405
+   },
+   "why": "uniform random",
+   "seed": 9109,
+   "outcome": {
+    "phones_reached_3h": 39,
+    "phones_warned_in_time": 34,
+    "phones_missed": 0,
+    "lead_time_min_p10": 58.3,
+    "fires_spreading_missed": [],
+    "fires_located": 4,
+    "false_locations_standing": 0,
+    "alerts_delivered": 7,
+    "alerts_not_justified": 4,
+    "alerts_from_false_fires": 0,
+    "alerts_for_smoulders": 0,
+    "needless_evacuations": [
+     "N2"
+    ],
+    "dispatch_cards": 4,
+    "drones_lost": 0,
+    "flight_s": 337.0,
+    "kinds": [
+     "needless-evacuation"
+    ],
+    "failed": true,
+    "severity": 7.0
+   }
+  },
+  {
+   "i": 10,
+   "params": {
+    "drones": 4,
+    "wind_scale": 1.806,
+    "wind_shift_deg": -60.724,
+    "moisture_scale": 0.731,
+    "forecast_error": 2.805,
+    "smoulder_scale": 0.754,
+    "patchiness": 0.668,
+    "visibility_m": 1258.117,
+    "smoke_range_scale": 0.608
+   },
+   "why": "uniform random",
+   "seed": 9110,
+   "outcome": {
+    "phones_reached_3h": 48,
+    "phones_warned_in_time": 44,
+    "phones_missed": 0,
+    "lead_time_min_p10": 52.1,
+    "fires_spreading_missed": [],
+    "fires_located": 3,
+    "false_locations_standing": 0,
+    "alerts_delivered": 8,
+    "alerts_not_justified": 3,
+    "alerts_from_false_fires": 0,
+    "alerts_for_smoulders": 0,
+    "needless_evacuations": [],
+    "dispatch_cards": 4,
+    "drones_lost": 0,
+    "flight_s": 568.5,
+    "kinds": [],
+    "failed": false,
+    "severity": 3.0
+   }
+  },
+  {
+   "i": 11,
+   "params": {
+    "drones": 25,
+    "wind_scale": 1.164,
+    "wind_shift_deg": -37.91,
+    "moisture_scale": 1.339,
+    "forecast_error": 0.957,
+    "smoulder_scale": 0.533,
+    "patchiness": 0.762,
+    "visibility_m": 1814.62,
+    "smoke_range_scale": 0.588
+   },
+   "why": "uniform random",
+   "seed": 9111,
+   "outcome": {
+    "phones_reached_3h": 13,
+    "phones_warned_in_time": 9,
+    "phones_missed": 4,
+    "lead_time_min_p10": 137.7,
+    "fires_spreading_missed": [],
+    "fires_located": 3,
+    "false_locations_standing": 0,
+    "alerts_delivered": 1,
+    "alerts_not_justified": 0,
+    "alerts_from_false_fires": 0,
+    "alerts_for_smoulders": 0,
+    "needless_evacuations": [],
+    "dispatch_cards": 3,
+    "drones_lost": 0,
+    "flight_s": 109.3,
+    "kinds": [
+     "late-warning"
+    ],
+    "failed": true,
+    "severity": 16.0
+   }
+  },
+  {
+   "i": 12,
+   "params": {
+    "drones": 28,
+    "wind_scale": 1.127,
+    "wind_shift_deg": -34.497,
+    "moisture_scale": 1.318,
+    "forecast_error": 1.515,
+    "smoulder_scale": 1.772,
+    "patchiness": 0.113,
+    "visibility_m": 2022.025,
+    "smoke_range_scale": 0.762
+   },
+   "why": "uniform random",
+   "seed": 9112,
+   "outcome": {
+    "phones_reached_3h": 9,
+    "phones_warned_in_time": 6,
+    "phones_missed": 3,
+    "lead_time_min_p10": 51.9,
+    "fires_spreading_missed": [],
+    "fires_located": 4,
+    "false_locations_standing": 0,
+    "alerts_delivered": 4,
+    "alerts_not_justified": 1,
+    "alerts_from_false_fires": 0,
+    "alerts_for_smoulders": 0,
+    "needless_evacuations": [],
+    "dispatch_cards": 4,
+    "drones_lost": 0,
+    "flight_s": 98.2,
+    "kinds": [
+     "late-warning"
+    ],
+    "failed": true,
+    "severity": 13.0
+   }
+  },
+  {
+   "i": 13,
+   "params": {
+    "drones": 12,
+    "wind_scale": 1.757,
+    "wind_shift_deg": -78.164,
+    "moisture_scale": 0.717,
+    "forecast_error": 2.203,
+    "smoulder_scale": 0.755,
+    "patchiness": 0.134,
+    "visibility_m": 673.079,
+    "smoke_range_scale": 0.755
+   },
+   "why": "uniform random",
+   "seed": 9113,
+   "outcome": {
+    "phones_reached_3h": 46,
+    "phones_warned_in_time": 41,
+    "phones_missed": 0,
+    "lead_time_min_p10": 68.8,
+    "fires_spreading_missed": [],
+    "fires_located": 4,
+    "false_locations_standing": 0,
+    "alerts_delivered": 5,
+    "alerts_not_justified": 1,
+    "alerts_from_false_fires": 0,
+    "alerts_for_smoulders": 0,
+    "needless_evacuations": [],
+    "dispatch_cards": 4,
+    "drones_lost": 0,
+    "flight_s": 236.5,
+    "kinds": [],
+    "failed": false,
+    "severity": 1.0
+   }
+  },
+  {
+   "i": 14,
+   "params": {
+    "drones": 12,
+    "wind_scale": 1.661,
+    "wind_shift_deg": -51.557,
+    "moisture_scale": 0.783,
+    "forecast_error": 0.396,
+    "smoulder_scale": 1.852,
+    "patchiness": 0.702,
+    "visibility_m": 2266.673,
+    "smoke_range_scale": 0.871
+   },
+   "why": "uniform random",
+   "seed": 9114,
+   "outcome": {
+    "phones_reached_3h": 10,
+    "phones_warned_in_time": 9,
+    "phones_missed": 0,
+    "lead_time_min_p10": 36.4,
+    "fires_spreading_missed": [],
+    "fires_located": 4,
+    "false_locations_standing": 1,
+    "alerts_delivered": 8,
+    "alerts_not_justified": 2,
+    "alerts_from_false_fires": 0,
+    "alerts_for_smoulders": 0,
+    "needless_evacuations": [],
+    "dispatch_cards": 5,
+    "drones_lost": 0,
+    "flight_s": 247.4,
+    "kinds": [],
+    "failed": false,
+    "severity": 3.0
+   }
+  },
+  {
+   "i": 15,
+   "params": {
+    "drones": 15,
+    "wind_scale": 1.713,
+    "wind_shift_deg": -70.879,
+    "moisture_scale": 1.092,
+    "forecast_error": 0.64,
+    "smoulder_scale": 1.658,
+    "patchiness": 0.279,
+    "visibility_m": 1528.333,
+    "smoke_range_scale": 0.427
+   },
+   "why": "uniform random",
+   "seed": 9115,
+   "outcome": {
+    "phones_reached_3h": 30,
+    "phones_warned_in_time": 28,
+    "phones_missed": 0,
+    "lead_time_min_p10": 71.3,
+    "fires_spreading_missed": [],
+    "fires_located": 4,
+    "false_locations_standing": 0,
+    "alerts_delivered": 7,
+    "alerts_not_justified": 4,
+    "alerts_from_false_fires": 0,
+    "alerts_for_smoulders": 7,
+    "needless_evacuations": [],
+    "dispatch_cards": 4,
+    "drones_lost": 0,
+    "flight_s": 262.1,
+    "kinds": [],
+    "failed": false,
+    "severity": 4.0
+   }
+  },
+  {
+   "i": 16,
+   "params": {
+    "drones": 15,
+    "wind_scale": 0.622,
+    "wind_shift_deg": 39.432,
+    "moisture_scale": 1.348,
+    "forecast_error": 1.989,
+    "smoulder_scale": 1.397,
+    "patchiness": 0.357,
+    "visibility_m": 2447.177,
+    "smoke_range_scale": 0.978
+   },
+   "why": "uniform random",
+   "seed": 9116,
+   "outcome": {
+    "phones_reached_3h": 2,
+    "phones_warned_in_time": 2,
+    "phones_missed": 0,
+    "lead_time_min_p10": 153.0,
+    "fires_spreading_missed": [
+     0
+    ],
+    "fires_located": 4,
+    "false_locations_standing": 0,
+    "alerts_delivered": 7,
+    "alerts_not_justified": 4,
+    "alerts_from_false_fires": 0,
+    "alerts_for_smoulders": 7,
+    "needless_evacuations": [],
+    "dispatch_cards": 4,
+    "drones_lost": 0,
+    "flight_s": 253.5,
+    "kinds": [
+     "missed-fire"
+    ],
+    "failed": true,
+    "severity": 14.0
+   }
+  },
+  {
+   "i": 17,
+   "params": {
+    "drones": 23,
+    "wind_scale": 0.96,
+    "wind_shift_deg": 22.863,
+    "moisture_scale": 0.784,
+    "forecast_error": 2.592,
+    "smoulder_scale": 0.757,
+    "patchiness": 0.359,
+    "visibility_m": 1529.641,
+    "smoke_range_scale": 0.557
+   },
+   "why": "uniform random",
+   "seed": 9117,
+   "outcome": {
+    "phones_reached_3h": 41,
+    "phones_warned_in_time": 40,
+    "phones_missed": 0,
+    "lead_time_min_p10": 75.5,
+    "fires_spreading_missed": [],
+    "fires_located": 4,
+    "false_locations_standing": 0,
+    "alerts_delivered": 6,
+    "alerts_not_justified": 1,
+    "alerts_from_false_fires": 0,
+    "alerts_for_smoulders": 0,
+    "needless_evacuations": [],
+    "dispatch_cards": 4,
+    "drones_lost": 0,
+    "flight_s": 108.2,
+    "kinds": [],
+    "failed": false,
+    "severity": 1.0
+   }
+  },
+  {
+   "i": 18,
+   "params": {
+    "drones": 14,
+    "wind_scale": 0.803,
+    "wind_shift_deg": -56.961,
+    "moisture_scale": 0.863,
+    "forecast_error": 0.998,
+    "smoulder_scale": 0.59,
+    "patchiness": 0.236,
+    "visibility_m": 2245.628,
+    "smoke_range_scale": 0.984
+   },
+   "why": "uniform random",
+   "seed": 9118,
+   "outcome": {
+    "phones_reached_3h": 30,
+    "phones_warned_in_time": 29,
+    "phones_missed": 0,
+    "lead_time_min_p10": 51.1,
+    "fires_spreading_missed": [],
+    "fires_located": 4,
+    "false_locations_standing": 1,
+    "alerts_delivered": 6,
+    "alerts_not_justified": 2,
+    "alerts_from_false_fires": 5,
+    "alerts_for_smoulders": 0,
+    "needless_evacuations": [],
+    "dispatch_cards": 6,
+    "drones_lost": 0,
+    "flight_s": 247.2,
+    "kinds": [
+     "false-alarm"
+    ],
+    "failed": true,
+    "severity": 28.0
+   }
+  },
+  {
+   "i": 19,
+   "params": {
+    "drones": 24,
+    "wind_scale": 1.822,
+    "wind_shift_deg": 16.045,
+    "moisture_scale": 0.755,
+    "forecast_error": 2.992,
+    "smoulder_scale": 0.593,
+    "patchiness": 0.338,
+    "visibility_m": 1610.369,
+    "smoke_range_scale": 0.771
+   },
+   "why": "uniform random",
+   "seed": 9119,
+   "outcome": {
+    "phones_reached_3h": 43,
+    "phones_warned_in_time": 41,
+    "phones_missed": 0,
+    "lead_time_min_p10": 100.6,
+    "fires_spreading_missed": [],
+    "fires_located": 4,
+    "false_locations_standing": 1,
+    "alerts_delivered": 8,
+    "alerts_not_justified": 2,
+    "alerts_from_false_fires": 0,
+    "alerts_for_smoulders": 0,
+    "needless_evacuations": [],
+    "dispatch_cards": 6,
+    "drones_lost": 0,
+    "flight_s": 99.1,
+    "kinds": [],
+    "failed": false,
+    "severity": 3.0
+   }
+  }
+ ],
+ "model_calls": [],
+ "model_cost_usd": 0,
+ "aborted_runs_calls": [],
+ "recorded_cost_usd": 0
+}

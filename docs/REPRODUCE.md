@@ -7,6 +7,8 @@ Everything here runs on a laptop with Python 3.10 or newer and numpy. Charts nee
 * Seeds 0-9 (`--seeds tuning`) were used while developing and tuning the controllers and the rule supervisor.
 * Seeds 1000-1019 (`--seeds heldout`) were not looked at until the final runs. Every headline number outside the wildfire valley uses them.
 * The wildfire valley has its own seeds: 2000-2011 and 3000-3019 for development, and 4000-4019 held out and flown once with the final code ([WILDFIRE.md](WILDFIRE.md)).
+* Each later result has a held-out set of its own, not used before its run: 7000-7019 for which way the fire runs, 8000-8019 for squads per area, 9000-9019 for the pre-signed alerts (T3), 9000-9039 for the first crew (T4: 9000-9019 are T3's pre-signed, automatic flights and 9020-9039 its own), 9040-9087 for the valley compiler (the strike lists of its 48 held-out requests, no flights), 9100-9119 and 9150-9169 for the valley test engineer (T5b), and 9200-9219 for the missing hiker (T11). From 8000-8019 on, each results folder keeps the plan written before the run (`PREREG.md`); the fire-direction set is described in [WILDFIRE.md](WILDFIRE.md).
+* All these held-out seeds are spent, and so are 5000-5019 and 6000-6019, used in earlier attempts at the fire-direction measurement ([WILDFIRE.md](WILDFIRE.md)); 9120-9149 and 9170-9199 were reserved with T5b and stay unused. The commands below rerun the spent sets to check the committed results; a new measurement needs fresh seeds. The aircraft-inbound demo (seed 3000) and the compute table (3000-3003) use development seeds.
 
 Each seed fixes the wind, sensor noise, radio losses, obstacle layout and initial positions. Every configuration sees the same conditions for a given seed. That is why the report can compare configurations seed by seed (paired comparisons).
 
@@ -135,6 +137,103 @@ The valley's rows come from a sweep script rather than `bench`, because each row
 PYTHONPATH=src python3 tools/wildfire_valley_sweep.py --out results/wildfire_valley/runs.jsonl   # seeds 4000-4019: 1, 4 and 16 drones, and the distance-rule ablation
 PYTHONPATH=src python3 tools/wildfire_valley_report.py results/wildfire_valley/runs.jsonl        # writes REPORT.md and summary.json next to the rows
 PYTHONPATH=src python3 tools/wildfire_valley_figures.py --seed 4012 --n 16                       # map.png, swarm_size.png, detection.png
+```
+
+The second held-out set, for which way the fire runs, was flown once at 0c46d42 with the same sweep (80 flights). The spread-timing breakdown flies nothing: it splits the rows of both held-out sets by when each fire starts to spread, with bins picked after those results were known.
+
+```bash
+PYTHONPATH=src python3 tools/wildfire_valley_sweep.py --seeds 7000-7019 --out results/wildfire_valley_7000/runs.jsonl
+PYTHONPATH=src python3 tools/wildfire_valley_report.py results/wildfire_valley_7000/runs.jsonl
+PYTHONPATH=src python3 tools/wildfire_spread_timing.py      # REPORT.md, summary.json and timing.png in results/wildfire_spread_timing/
+```
+
+## Squads per area (no key needed)
+
+Flown once from 939fadc, the commit that adds the plan (`results/wildfire_valley_squads/PREREG.md`), with the legacy ground station only. Without `--stations legacy` the sweep also flies the tighter station merge ("tight"), which the plan dropped before the run.
+
+```bash
+PYTHONPATH=src python3 tools/wildfire_valley_squads_sweep.py --seeds 8000-8019 --arms A,B,D \
+  --sizes 4,8,16,32,64 --stations legacy --out results/wildfire_valley_squads/runs.jsonl
+PYTHONPATH=src python3 tools/wildfire_valley_squads_report.py --runs results/wildfire_valley_squads/runs.jsonl   # REPORT.md, summary.json, by_size.csv, squads.png
+```
+
+Here and below, the sweeps that fly rows (squads, alerts, the first crew's `fly`, the hiker's `fly`) skip rows already in their output. Each report's section headed "What it shows (written after the run)" was written by hand. The report commands write `REPORT.md` whole, so to check a result, fly into a new `--out` and compare the generated part. The valley test engineer's commands, the hiker's `film`, `valley-eval`, the aircraft-inbound demo and the compute table skip nothing: they fly or score everything again and write their `--out` whole, so give them a new `--out` (or folder) too.
+
+## Valley compiler (needs a key, or replays without one)
+
+Nemotron 3 Nano turns an operator's plain words plus the night's strike list into a patrol spec, and code builds the patrol. It was scored once from 939fadc, the commit that froze the prompt, the planner and the baseline, on the 48 held-out requests (ids 101-148, strike lists from seeds 9040-9087), with the 16 tuning requests beside them. Those held-out requests are spent.
+
+```bash
+NANO=nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B
+HALO_BUDGET_USD=8.73 halo valley-eval --sets heldout,tuning --think --model $NANO \
+  --cache results/valley_compile_cache.jsonl --ai-log results/valley_eval/calls.jsonl --out results/valley_eval/nano_think.json
+HALO_BUDGET_USD=8.73 halo valley-eval --sets heldout,tuning --model $NANO \
+  --cache results/valley_compile_cache.jsonl --ai-log results/valley_eval/calls.jsonl --out results/valley_eval/nano.json
+gzip results/valley_eval/calls.jsonl
+```
+
+`HALO_BUDGET_USD` is the spend guard's cap on the shared ledger ([NVIDIA_NEBIUS.md](NVIDIA_NEBIUS.md)); the committed runs set it to 8.73 to stay within the spend Kenzo approved. Each file also scores the regex baseline on the same requests, and without `--model` the command scores the baseline only, with no key. With `--replay` (and a new `--out`), every call is answered from `results/valley_compile_cache.jsonl`, with no key and no cost, and the scores come out as committed. `valley-eval` writes only the JSON files; `results/valley_eval/REPORT.md` was written from them.
+
+## Pre-signed alerts and the first crew (no key needed)
+
+T3 flies each valley with 16 drones three times, and only the alerts differ: today's rule, pre-signed rules sent automatically, and pre-signed rules with an official's one-tap approval. T4's first-crew model reads only the pre-signed, automatic flights: T3's on seeds 9000-9019 and its own on 9020-9039. Both were flown from a checkout of 548d841, the commit that adds their plans.
+
+```bash
+PYTHONPATH=src python3 tools/wildfire_alerts_sweep.py --seeds 9000-9019 --out results/wildfire_alerts/runs.jsonl
+PYTHONPATH=src python3 tools/wildfire_alerts_sweep.py --report --out results/wildfire_alerts/runs.jsonl   # REPORT.md and summary.json next to the rows
+PYTHONPATH=src python3 tools/wildfire_initial_attack.py fly --seeds 9020-9039 --out results/wildfire_initial_attack/flights.jsonl
+PYTHONPATH=src python3 tools/wildfire_initial_attack.py model \
+  --flights results/wildfire_alerts/runs.jsonl,results/wildfire_initial_attack/flights.jsonl --out results/wildfire_initial_attack
+```
+
+`model` runs each valley's true spread on to 12 h and keeps it in `truth.json.gz`, which a rerun into the same folder reuses.
+
+## Valley test engineer (Nemotron's searches need a key; the rest do not)
+
+Random search, corner search and Nemotron 3 Nano look for conditions where the valley's station fails, with pre-signed rules sent automatically; the drawn day (the valley's own conditions) is the control. Test i of search s flies valley seed 9100 + 50 s + i, so searches 0 and 1 fly the spent seeds 9100-9119 and 9150-9169. The plan and the search tool (`tools/wildfire_valley_stress.py`) are in 902d69d, and the result files were made from a checkout of it; `tools/wildfire_valley_both_rules.py` was added after the run and run from the same checkout.
+
+```bash
+for s in 0 1; do
+  PYTHONPATH=src python3 tools/wildfire_valley_stress.py search --searcher random  --search $s --out results/valley_stress/random_$s.json
+  PYTHONPATH=src python3 tools/wildfire_valley_stress.py search --searcher corners --search $s --out results/valley_stress/corners_$s.json
+  # needs a key
+  HALO_BUDGET_USD=8.73 PYTHONPATH=src python3 tools/wildfire_valley_stress.py search --searcher nemotron --search $s \
+    --cache results/valley_stress/calls_cache.jsonl --out results/valley_stress/nemotron_$s.json
+done
+PYTHONPATH=src python3 tools/wildfire_valley_stress.py drawn-day --out results/valley_stress/drawn_day.json
+PYTHONPATH=src python3 tools/wildfire_valley_stress.py recheck results/valley_stress/{random,corners,nemotron}_?.json \
+  results/valley_stress/drawn_day.json --out results/valley_stress/recheck_forecast.json
+PYTHONPATH=src python3 tools/wildfire_valley_stress.py report results/valley_stress/{random,corners,nemotron}_?.json \
+  results/valley_stress/drawn_day.json --recheck results/valley_stress/recheck_forecast.json --out results/valley_stress/REPORT.md
+env -u NEBIUS_API_KEY PYTHONPATH=src python3 tools/wildfire_valley_both_rules.py --out results/valley_stress/drawn_day_both_rules.json   # added after the run
+```
+
+The ten Nemotron calls cost USD 0.026. `--replay` answers Nemotron's turns from the recorded calls only, with no key and no spend, and reproduces a recorded search exactly:
+
+```bash
+env -u NEBIUS_API_KEY PYTHONPATH=src python3 tools/wildfire_valley_stress.py search --searcher nemotron --search 0 \
+  --cache results/valley_stress/calls_cache.jsonl --replay --out nemotron_0_replay.json
+```
+
+`recheck` flies every failing test twice more, under the pre-signed rules and under today's rule. `wildfire_valley_both_rules.py` flies all 40 drawn-day valleys from `drawn_day.json` under both rules, paired, and writes its `--out` whole.
+
+## Missing hiker (no key needed)
+
+Flown once from 902d69d, as planned in `results/hiker_search/PREREG.md`: 1, 4 and 16 drones on each seed, plus one drone with the planned speed held. `film` flies the Mission tab's hiker request on seeds 0-9 to choose a seed for filming; those seeds are not part of the measurement.
+
+```bash
+PYTHONPATH=src python3 tools/hiker_search_sweep.py fly --seeds 9200-9219 --out results/hiker_search/runs.jsonl
+PYTHONPATH=src python3 tools/hiker_search_sweep.py report --runs results/hiker_search/runs.jsonl   # REPORT.md and summary.json next to the rows (summary.json is not committed)
+PYTHONPATH=src python3 tools/hiker_search_sweep.py film --seeds 0-9 --out results/hiker_search/film.json
+```
+
+## Aircraft inbound and the compute table (no key needed)
+
+Both use development seeds and come from 2af5c5d. The aircraft-inbound demo flies seed 3000 with 16 drones twice, without and with the operator's hold; one seed is a demonstration of the control, not a measurement. The compute table flies development valleys 3000-3003 one at a time and times each loop, so its timings belong to the machine it runs on; it also reads the committed valley sweep and valley-compile results. Its check of a dropped cloud link uses a simulated dead link: nothing leaves the machine, and no key is needed.
+
+```bash
+PYTHONPATH=src python3 tools/airspace_hold_demo.py --out results/airspace_hold   # REPORT.md and summary.json
+PYTHONPATH=src python3 tools/compute_table.py --out results/compute             # REPORT.md and compute.json
 ```
 
 ## Tuning rounds

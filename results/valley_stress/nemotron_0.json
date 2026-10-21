@@ -1,0 +1,912 @@
+{
+ "searcher": "nemotron",
+ "model": "nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B",
+ "search": 0,
+ "base": 9100,
+ "budget": 20,
+ "batch": 4,
+ "config": "improved+rule",
+ "alerts": {
+  "alert_rule": "presigned",
+  "approval": "auto"
+ },
+ "summary": {
+  "tests": 20,
+  "random_top_ups": 4,
+  "failures": 12,
+  "by_what": {
+   "late-warning": 5,
+   "missed-fire": 2,
+   "false-alarm": 3,
+   "needless-evacuation": 4,
+   "drone-lost": 0
+  },
+  "distinct_failure_kinds": 13,
+  "first_failure_at": 1,
+  "mildest_failure_stress": 0.303,
+  "mean_failure_stress": 0.555,
+  "phones_warned_late": 24,
+  "max_severity": 76.0,
+  "mean_severity": 14.103
+ },
+ "failure_kinds": [
+  "false-alarm:wind-shift+haze",
+  "false-alarm:windy",
+  "false-alarm:windy+wind-shift+dry+bad-forecast",
+  "late-warning:bad-forecast",
+  "late-warning:few-drones+windy+wind-shift+dry+bad-forecast+early-takeoff+patchy-fuel+haze",
+  "late-warning:other",
+  "late-warning:windy+wind-shift+dry+patchy-fuel+haze",
+  "missed-fire:other",
+  "missed-fire:wind-shift+haze",
+  "needless-evacuation:few-drones+dry+early-takeoff+patchy-fuel+haze",
+  "needless-evacuation:windy+wind-shift+dry",
+  "needless-evacuation:windy+wind-shift+dry+bad-forecast+patchy-fuel+haze",
+  "needless-evacuation:windy+wind-shift+dry+patchy-fuel+haze"
+ ],
+ "history": [
+  {
+   "i": 0,
+   "params": {
+    "drones": 8,
+    "wind_scale": 1.5,
+    "wind_shift_deg": 90.0,
+    "moisture_scale": 0.6,
+    "forecast_error": 2.5,
+    "smoulder_scale": 0.5,
+    "patchiness": 0.8,
+    "visibility_m": 500.0,
+    "smoke_range_scale": 0.4
+   },
+   "why": "shift hides smoke under overhang, cameras miss fire causing missed-fire",
+   "seed": 9100,
+   "outcome": {
+    "phones_reached_3h": 33,
+    "phones_warned_in_time": 29,
+    "phones_missed": 1,
+    "lead_time_min_p10": 23.4,
+    "fires_spreading_missed": [],
+    "fires_located": 4,
+    "false_locations_standing": 15,
+    "alerts_delivered": 4,
+    "alerts_not_justified": 0,
+    "alerts_from_false_fires": 0,
+    "alerts_for_smoulders": 0,
+    "needless_evacuations": [],
+    "dispatch_cards": 20,
+    "drones_lost": 0,
+    "flight_s": 346.2,
+    "kinds": [
+     "late-warning"
+    ],
+    "failed": true,
+    "severity": 19.66
+   }
+  },
+  {
+   "i": 1,
+   "params": {
+    "drones": 4,
+    "wind_scale": 2.0,
+    "wind_shift_deg": 0.0,
+    "moisture_scale": 0.6,
+    "forecast_error": 3.0,
+    "smoulder_scale": 2.0,
+    "patchiness": 0.0,
+    "visibility_m": 2500.0,
+    "smoke_range_scale": 1.0
+   },
+   "why": "few drones and severe forecast error cause late-warning for fast\u2011spreading fire",
+   "seed": 9101,
+   "outcome": {
+    "phones_reached_3h": 3,
+    "phones_warned_in_time": 3,
+    "phones_missed": 0,
+    "lead_time_min_p10": 82.4,
+    "fires_spreading_missed": [],
+    "fires_located": 4,
+    "false_locations_standing": 0,
+    "alerts_delivered": 4,
+    "alerts_not_justified": 3,
+    "alerts_from_false_fires": 0,
+    "alerts_for_smoulders": 0,
+    "needless_evacuations": [],
+    "dispatch_cards": 3,
+    "drones_lost": 0,
+    "flight_s": 571.2,
+    "kinds": [],
+    "failed": false,
+    "severity": 3.0
+   }
+  },
+  {
+   "i": 2,
+   "params": {
+    "drones": 16,
+    "wind_scale": 1.8,
+    "wind_shift_deg": 45.0,
+    "moisture_scale": 0.7,
+    "forecast_error": 2.5,
+    "smoulder_scale": 1.5,
+    "patchiness": 0.5,
+    "visibility_m": 1500.0,
+    "smoke_range_scale": 0.6
+   },
+   "why": "unforecasted wind turn triggers needless evacuation despite no fire arrival",
+   "seed": 9102,
+   "outcome": {
+    "phones_reached_3h": 41,
+    "phones_warned_in_time": 39,
+    "phones_missed": 0,
+    "lead_time_min_p10": 70.9,
+    "fires_spreading_missed": [],
+    "fires_located": 3,
+    "false_locations_standing": 4,
+    "alerts_delivered": 8,
+    "alerts_not_justified": 0,
+    "alerts_from_false_fires": 3,
+    "alerts_for_smoulders": 0,
+    "needless_evacuations": [],
+    "dispatch_cards": 7,
+    "drones_lost": 0,
+    "flight_s": 248.8,
+    "kinds": [
+     "false-alarm"
+    ],
+    "failed": true,
+    "severity": 19.0
+   }
+  },
+  {
+   "i": 3,
+   "params": {
+    "drones": 32,
+    "wind_scale": 2.0,
+    "wind_shift_deg": 90.0,
+    "moisture_scale": 0.6,
+    "forecast_error": 1.0,
+    "smoulder_scale": 1.0,
+    "patchiness": 0.3,
+    "visibility_m": 2500.0,
+    "smoke_range_scale": 1.0
+   },
+   "why": "high wind and shift cause a drone to crash, counting as drone\u2011lost",
+   "seed": 9103,
+   "outcome": {
+    "phones_reached_3h": 36,
+    "phones_warned_in_time": 36,
+    "phones_missed": 0,
+    "lead_time_min_p10": 30.5,
+    "fires_spreading_missed": [],
+    "fires_located": 5,
+    "false_locations_standing": 1,
+    "alerts_delivered": 8,
+    "alerts_not_justified": 2,
+    "alerts_from_false_fires": 0,
+    "alerts_for_smoulders": 4,
+    "needless_evacuations": [],
+    "dispatch_cards": 6,
+    "drones_lost": 0,
+    "flight_s": 108.2,
+    "kinds": [],
+    "failed": false,
+    "severity": 3.0
+   }
+  },
+  {
+   "i": 4,
+   "params": {
+    "drones": 8,
+    "wind_scale": 1.5,
+    "wind_shift_deg": 60.0,
+    "moisture_scale": 0.7,
+    "forecast_error": 2.0,
+    "smoulder_scale": 1.5,
+    "patchiness": 0.5,
+    "visibility_m": 500.0,
+    "smoke_range_scale": 0.5
+   },
+   "why": "strong wind shift hides smoke, causing missed fire",
+   "seed": 9104,
+   "outcome": {
+    "phones_reached_3h": 32,
+    "phones_warned_in_time": 31,
+    "phones_missed": 0,
+    "lead_time_min_p10": 74.0,
+    "fires_spreading_missed": [],
+    "fires_located": 5,
+    "false_locations_standing": 0,
+    "alerts_delivered": 4,
+    "alerts_not_justified": 1,
+    "alerts_from_false_fires": 0,
+    "alerts_for_smoulders": 0,
+    "needless_evacuations": [],
+    "dispatch_cards": 5,
+    "drones_lost": 0,
+    "flight_s": 333.1,
+    "kinds": [],
+    "failed": false,
+    "severity": 1.0
+   }
+  },
+  {
+   "i": 5,
+   "params": {
+    "drones": 4,
+    "wind_scale": 1.8,
+    "wind_shift_deg": 0.0,
+    "moisture_scale": 0.6,
+    "forecast_error": 1.5,
+    "smoulder_scale": 2.0,
+    "patchiness": 0.8,
+    "visibility_m": 500.0,
+    "smoke_range_scale": 0.4
+   },
+   "why": "few drones and long smolder let hidden fire spread unseen, missed fire",
+   "seed": 9105,
+   "outcome": {
+    "phones_reached_3h": 6,
+    "phones_warned_in_time": 6,
+    "phones_missed": 0,
+    "lead_time_min_p10": 88.5,
+    "fires_spreading_missed": [],
+    "fires_located": 2,
+    "false_locations_standing": 0,
+    "alerts_delivered": 4,
+    "alerts_not_justified": 1,
+    "alerts_from_false_fires": 0,
+    "alerts_for_smoulders": 0,
+    "needless_evacuations": [],
+    "dispatch_cards": 3,
+    "drones_lost": 0,
+    "flight_s": 567.7,
+    "kinds": [],
+    "failed": false,
+    "severity": 1.0
+   }
+  },
+  {
+   "i": 6,
+   "params": {
+    "drones": 16,
+    "wind_scale": 1.2,
+    "wind_shift_deg": 30.0,
+    "moisture_scale": 1.2,
+    "forecast_error": 2.8,
+    "smoulder_scale": 1.0,
+    "patchiness": 0.2,
+    "visibility_m": 2500.0,
+    "smoke_range_scale": 1.0
+   },
+   "why": "high forecast error predicts spread that never occurs, causing needless evacuation",
+   "seed": 9106,
+   "outcome": {
+    "phones_reached_3h": 35,
+    "phones_warned_in_time": 33,
+    "phones_missed": 1,
+    "lead_time_min_p10": 90.9,
+    "fires_spreading_missed": [],
+    "fires_located": 3,
+    "false_locations_standing": 2,
+    "alerts_delivered": 6,
+    "alerts_not_justified": 3,
+    "alerts_from_false_fires": 0,
+    "alerts_for_smoulders": 0,
+    "needless_evacuations": [],
+    "dispatch_cards": 4,
+    "drones_lost": 0,
+    "flight_s": 245.6,
+    "kinds": [
+     "late-warning"
+    ],
+    "failed": true,
+    "severity": 9.0
+   }
+  },
+  {
+   "i": 7,
+   "params": {
+    "drones": 32,
+    "wind_scale": 2.0,
+    "wind_shift_deg": 90.0,
+    "moisture_scale": 0.6,
+    "forecast_error": 0.5,
+    "smoulder_scale": 1.0,
+    "patchiness": 0.3,
+    "visibility_m": 2500.0,
+    "smoke_range_scale": 1.0
+   },
+   "why": "extreme wind shift and speed risk drone loss",
+   "seed": 9107,
+   "outcome": {
+    "phones_reached_3h": 18,
+    "phones_warned_in_time": 17,
+    "phones_missed": 0,
+    "lead_time_min_p10": 48.6,
+    "fires_spreading_missed": [],
+    "fires_located": 4,
+    "false_locations_standing": 0,
+    "alerts_delivered": 7,
+    "alerts_not_justified": 3,
+    "alerts_from_false_fires": 0,
+    "alerts_for_smoulders": 0,
+    "needless_evacuations": [
+     "S3"
+    ],
+    "dispatch_cards": 3,
+    "drones_lost": 0,
+    "flight_s": 110.4,
+    "kinds": [
+     "needless-evacuation"
+    ],
+    "failed": true,
+    "severity": 6.0
+   }
+  },
+  {
+   "i": 8,
+   "params": {
+    "drones": 4,
+    "wind_scale": 1.0,
+    "wind_shift_deg": 0.0,
+    "moisture_scale": 0.6,
+    "forecast_error": 1.0,
+    "smoulder_scale": 0.5,
+    "patchiness": 0.8,
+    "visibility_m": 500.0,
+    "smoke_range_scale": 0.4
+   },
+   "why": "hidden fire spreads early and is hidden from thermal and smoke detection",
+   "seed": 9108,
+   "outcome": {
+    "phones_reached_3h": 32,
+    "phones_warned_in_time": 30,
+    "phones_missed": 0,
+    "lead_time_min_p10": 33.4,
+    "fires_spreading_missed": [],
+    "fires_located": 3,
+    "false_locations_standing": 0,
+    "alerts_delivered": 8,
+    "alerts_not_justified": 3,
+    "alerts_from_false_fires": 0,
+    "alerts_for_smoulders": 0,
+    "needless_evacuations": [
+     "S3"
+    ],
+    "dispatch_cards": 3,
+    "drones_lost": 0,
+    "flight_s": 567.6,
+    "kinds": [
+     "needless-evacuation"
+    ],
+    "failed": true,
+    "severity": 6.0
+   }
+  },
+  {
+   "i": 9,
+   "params": {
+    "drones": 32,
+    "wind_scale": 2.0,
+    "wind_shift_deg": 90.0,
+    "moisture_scale": 0.6,
+    "forecast_error": 3.0,
+    "smoulder_scale": 1.0,
+    "patchiness": 0.8,
+    "visibility_m": 500.0,
+    "smoke_range_scale": 0.4
+   },
+   "why": "severe gust and sudden wind shift cause a drone to crash",
+   "seed": 9109,
+   "outcome": {
+    "phones_reached_3h": 11,
+    "phones_warned_in_time": 10,
+    "phones_missed": 0,
+    "lead_time_min_p10": 30.1,
+    "fires_spreading_missed": [],
+    "fires_located": 4,
+    "false_locations_standing": 0,
+    "alerts_delivered": 6,
+    "alerts_not_justified": 4,
+    "alerts_from_false_fires": 0,
+    "alerts_for_smoulders": 0,
+    "needless_evacuations": [
+     "F4"
+    ],
+    "dispatch_cards": 4,
+    "drones_lost": 0,
+    "flight_s": 114.1,
+    "kinds": [
+     "needless-evacuation"
+    ],
+    "failed": true,
+    "severity": 7.0
+   }
+  },
+  {
+   "i": 10,
+   "params": {
+    "drones": 16,
+    "wind_scale": 1.0,
+    "wind_shift_deg": 0.0,
+    "moisture_scale": 1.0,
+    "forecast_error": 1.0,
+    "smoulder_scale": 1.0,
+    "patchiness": 0.3,
+    "visibility_m": 2500.0,
+    "smoke_range_scale": 1.0
+   },
+   "why": "valley triggers unjustified evacuation despite no nearby fire",
+   "seed": 9110,
+   "outcome": {
+    "phones_reached_3h": 34,
+    "phones_warned_in_time": 31,
+    "phones_missed": 0,
+    "lead_time_min_p10": 66.6,
+    "fires_spreading_missed": [],
+    "fires_located": 5,
+    "false_locations_standing": 1,
+    "alerts_delivered": 4,
+    "alerts_not_justified": 1,
+    "alerts_from_false_fires": 0,
+    "alerts_for_smoulders": 0,
+    "needless_evacuations": [],
+    "dispatch_cards": 6,
+    "drones_lost": 0,
+    "flight_s": 251.1,
+    "kinds": [],
+    "failed": false,
+    "severity": 2.0
+   }
+  },
+  {
+   "i": 11,
+   "params": {
+    "drones": 16,
+    "wind_scale": 1.0,
+    "wind_shift_deg": 5.0,
+    "moisture_scale": 0.9,
+    "forecast_error": 1.2,
+    "smoulder_scale": 1.0,
+    "patchiness": 0.4,
+    "visibility_m": 2000.0,
+    "smoke_range_scale": 0.9
+   },
+   "why": "reduced smoke visibility and slight forecast error delay warning",
+   "seed": 9111,
+   "outcome": {
+    "phones_reached_3h": 24,
+    "phones_warned_in_time": 20,
+    "phones_missed": 3,
+    "lead_time_min_p10": 113.8,
+    "fires_spreading_missed": [],
+    "fires_located": 4,
+    "false_locations_standing": 1,
+    "alerts_delivered": 2,
+    "alerts_not_justified": 0,
+    "alerts_from_false_fires": 0,
+    "alerts_for_smoulders": 0,
+    "needless_evacuations": [],
+    "dispatch_cards": 5,
+    "drones_lost": 0,
+    "flight_s": 266.0,
+    "kinds": [
+     "late-warning"
+    ],
+    "failed": true,
+    "severity": 13.0
+   }
+  },
+  {
+   "i": 12,
+   "params": {
+    "drones": 15,
+    "wind_scale": 1.0,
+    "wind_shift_deg": 0.0,
+    "moisture_scale": 1.0,
+    "forecast_error": 1.0,
+    "smoulder_scale": 1.0,
+    "patchiness": 0.35,
+    "visibility_m": 2400.0,
+    "smoke_range_scale": 0.9
+   },
+   "why": "hidden fire under a rock overhang evades detection, causing a missed-fire",
+   "seed": 9112,
+   "outcome": {
+    "phones_reached_3h": 28,
+    "phones_warned_in_time": 26,
+    "phones_missed": 2,
+    "lead_time_min_p10": 49.3,
+    "fires_spreading_missed": [],
+    "fires_located": 4,
+    "false_locations_standing": 0,
+    "alerts_delivered": 6,
+    "alerts_not_justified": 0,
+    "alerts_from_false_fires": 0,
+    "alerts_for_smoulders": 0,
+    "needless_evacuations": [],
+    "dispatch_cards": 4,
+    "drones_lost": 0,
+    "flight_s": 243.0,
+    "kinds": [
+     "late-warning"
+    ],
+    "failed": true,
+    "severity": 8.0
+   }
+  },
+  {
+   "i": 13,
+   "params": {
+    "drones": 16,
+    "wind_scale": 1.3,
+    "wind_shift_deg": 20.0,
+    "moisture_scale": 1.0,
+    "forecast_error": 1.0,
+    "smoulder_scale": 1.0,
+    "patchiness": 0.3,
+    "visibility_m": 2500.0,
+    "smoke_range_scale": 1.0
+   },
+   "why": "moderate wind shift and higher speed cause a drone to crash, resulting in drone-lost",
+   "seed": 9113,
+   "outcome": {
+    "phones_reached_3h": 16,
+    "phones_warned_in_time": 13,
+    "phones_missed": 0,
+    "lead_time_min_p10": 49.3,
+    "fires_spreading_missed": [],
+    "fires_located": 5,
+    "false_locations_standing": 0,
+    "alerts_delivered": 3,
+    "alerts_not_justified": 0,
+    "alerts_from_false_fires": 0,
+    "alerts_for_smoulders": 0,
+    "needless_evacuations": [],
+    "dispatch_cards": 5,
+    "drones_lost": 0,
+    "flight_s": 243.3,
+    "kinds": [],
+    "failed": false,
+    "severity": 0.0
+   }
+  },
+  {
+   "i": 14,
+   "params": {
+    "drones": 16,
+    "wind_scale": 1.05,
+    "wind_shift_deg": 5.0,
+    "moisture_scale": 1.0,
+    "forecast_error": 1.5,
+    "smoulder_scale": 1.0,
+    "patchiness": 0.3,
+    "visibility_m": 2500.0,
+    "smoke_range_scale": 1.0
+   },
+   "why": "forecast overestimates spread leading to an unnecessary Level 4 evacuation",
+   "seed": 9114,
+   "outcome": {
+    "phones_reached_3h": 38,
+    "phones_warned_in_time": 35,
+    "phones_missed": 0,
+    "lead_time_min_p10": 71.1,
+    "fires_spreading_missed": [],
+    "fires_located": 5,
+    "false_locations_standing": 1,
+    "alerts_delivered": 7,
+    "alerts_not_justified": 2,
+    "alerts_from_false_fires": 0,
+    "alerts_for_smoulders": 0,
+    "needless_evacuations": [],
+    "dispatch_cards": 6,
+    "drones_lost": 0,
+    "flight_s": 252.3,
+    "kinds": [],
+    "failed": false,
+    "severity": 3.0
+   }
+  },
+  {
+   "i": 15,
+   "params": {
+    "drones": 16,
+    "wind_scale": 1.0,
+    "wind_shift_deg": 5.0,
+    "moisture_scale": 0.9,
+    "forecast_error": 1.2,
+    "smoulder_scale": 1.0,
+    "patchiness": 0.4,
+    "visibility_m": 2000.0,
+    "smoke_range_scale": 0.8
+   },
+   "why": "reduced smoke visibility and slight wind shift delay warnings, causing a late-warning",
+   "seed": 9115,
+   "outcome": {
+    "phones_reached_3h": 20,
+    "phones_warned_in_time": 19,
+    "phones_missed": 0,
+    "lead_time_min_p10": 95.5,
+    "fires_spreading_missed": [
+     0
+    ],
+    "fires_located": 3,
+    "false_locations_standing": 0,
+    "alerts_delivered": 8,
+    "alerts_not_justified": 2,
+    "alerts_from_false_fires": 0,
+    "alerts_for_smoulders": 8,
+    "needless_evacuations": [],
+    "dispatch_cards": 4,
+    "drones_lost": 0,
+    "flight_s": 262.2,
+    "kinds": [
+     "missed-fire"
+    ],
+    "failed": true,
+    "severity": 12.0
+   }
+  },
+  {
+   "i": 16,
+   "params": {
+    "drones": 16,
+    "wind_scale": 1.0,
+    "wind_shift_deg": -51.95,
+    "moisture_scale": 1.053,
+    "forecast_error": 1.474,
+    "smoulder_scale": 1.177,
+    "patchiness": 0.366,
+    "visibility_m": 2250.539,
+    "smoke_range_scale": 0.465
+   },
+   "why": "random top-up (model gave too few or unreadable tests)",
+   "seed": 9116,
+   "outcome": {
+    "phones_reached_3h": 10,
+    "phones_warned_in_time": 10,
+    "phones_missed": 0,
+    "lead_time_min_p10": 121.7,
+    "fires_spreading_missed": [
+     0
+    ],
+    "fires_located": 3,
+    "false_locations_standing": 1,
+    "alerts_delivered": 8,
+    "alerts_not_justified": 3,
+    "alerts_from_false_fires": 6,
+    "alerts_for_smoulders": 2,
+    "needless_evacuations": [],
+    "dispatch_cards": 4,
+    "drones_lost": 0,
+    "flight_s": 252.4,
+    "kinds": [
+     "false-alarm",
+     "missed-fire"
+    ],
+    "failed": true,
+    "severity": 44.0
+   }
+  },
+  {
+   "i": 17,
+   "params": {
+    "drones": 12,
+    "wind_scale": 1.631,
+    "wind_shift_deg": -6.068,
+    "moisture_scale": 1.226,
+    "forecast_error": 2.354,
+    "smoulder_scale": 1.428,
+    "patchiness": 0.43,
+    "visibility_m": 1950.415,
+    "smoke_range_scale": 0.933
+   },
+   "why": "random top-up (model gave too few or unreadable tests)",
+   "seed": 9117,
+   "outcome": {
+    "phones_reached_3h": 36,
+    "phones_warned_in_time": 35,
+    "phones_missed": 0,
+    "lead_time_min_p10": 67.3,
+    "fires_spreading_missed": [],
+    "fires_located": 4,
+    "false_locations_standing": 2,
+    "alerts_delivered": 9,
+    "alerts_not_justified": 5,
+    "alerts_from_false_fires": 0,
+    "alerts_for_smoulders": 8,
+    "needless_evacuations": [],
+    "dispatch_cards": 6,
+    "drones_lost": 0,
+    "flight_s": 240.1,
+    "kinds": [],
+    "failed": false,
+    "severity": 7.0
+   }
+  },
+  {
+   "i": 18,
+   "params": {
+    "drones": 17,
+    "wind_scale": 1.942,
+    "wind_shift_deg": 6.684,
+    "moisture_scale": 1.163,
+    "forecast_error": 0.185,
+    "smoulder_scale": 0.668,
+    "patchiness": 0.295,
+    "visibility_m": 1738.103,
+    "smoke_range_scale": 0.783
+   },
+   "why": "random top-up (model gave too few or unreadable tests)",
+   "seed": 9118,
+   "outcome": {
+    "phones_reached_3h": 35,
+    "phones_warned_in_time": 33,
+    "phones_missed": 0,
+    "lead_time_min_p10": 26.1,
+    "fires_spreading_missed": [],
+    "fires_located": 3,
+    "false_locations_standing": 2,
+    "alerts_delivered": 9,
+    "alerts_not_justified": 5,
+    "alerts_from_false_fires": 7,
+    "alerts_for_smoulders": 0,
+    "needless_evacuations": [],
+    "dispatch_cards": 6,
+    "drones_lost": 0,
+    "flight_s": 247.4,
+    "kinds": [
+     "false-alarm"
+    ],
+    "failed": true,
+    "severity": 42.39
+   }
+  },
+  {
+   "i": 19,
+   "params": {
+    "drones": 17,
+    "wind_scale": 1.959,
+    "wind_shift_deg": -85.641,
+    "moisture_scale": 0.703,
+    "forecast_error": 0.625,
+    "smoulder_scale": 1.418,
+    "patchiness": 0.785,
+    "visibility_m": 1215.281,
+    "smoke_range_scale": 0.405
+   },
+   "why": "random top-up (model gave too few or unreadable tests)",
+   "seed": 9119,
+   "outcome": {
+    "phones_reached_3h": 26,
+    "phones_warned_in_time": 8,
+    "phones_missed": 17,
+    "lead_time_min_p10": 54.9,
+    "fires_spreading_missed": [],
+    "fires_located": 3,
+    "false_locations_standing": 0,
+    "alerts_delivered": 6,
+    "alerts_not_justified": 5,
+    "alerts_from_false_fires": 0,
+    "alerts_for_smoulders": 0,
+    "needless_evacuations": [
+     "F4"
+    ],
+    "dispatch_cards": 4,
+    "drones_lost": 0,
+    "flight_s": 262.0,
+    "kinds": [
+     "late-warning",
+     "needless-evacuation"
+    ],
+    "failed": true,
+    "severity": 76.0
+   }
+  }
+ ],
+ "model_calls": [
+  {
+   "call_id": "dd020e8deccd",
+   "role": "valley-test-engineer",
+   "model": "nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B",
+   "started_at": 1792544251.795724,
+   "latency_s": 9.979,
+   "attempts": 1,
+   "status": "ok",
+   "http_status": 200,
+   "error": null,
+   "request_id": "2f37d3d9a1ac4ddc30033bcd5f1c1ad5",
+   "prompt_tokens": 1101,
+   "completion_tokens": 2631,
+   "total_tokens": 3732,
+   "cost_usd": 0.001162,
+   "finish_reason": "stop",
+   "response_format": "json_object",
+   "cached": false,
+   "extra": {}
+  },
+  {
+   "call_id": "0a50011f8bc4",
+   "role": "valley-test-engineer",
+   "model": "nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B",
+   "started_at": 1792544391.3985615,
+   "latency_s": 24.076,
+   "attempts": 1,
+   "status": "ok",
+   "http_status": 200,
+   "error": null,
+   "request_id": "3b46b9225ad91eef99defef382a298d7",
+   "prompt_tokens": 1706,
+   "completion_tokens": 2908,
+   "total_tokens": 4614,
+   "cost_usd": 0.001334,
+   "finish_reason": "stop",
+   "response_format": "json_object",
+   "cached": false,
+   "extra": {}
+  },
+  {
+   "call_id": "d79221c69c64",
+   "role": "valley-test-engineer",
+   "model": "nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B",
+   "started_at": 1792544558.488988,
+   "latency_s": 40.605,
+   "attempts": 1,
+   "status": "ok",
+   "http_status": 200,
+   "error": null,
+   "request_id": "e2461f018be83553780739d26addf676",
+   "prompt_tokens": 2309,
+   "completion_tokens": 8203,
+   "total_tokens": 10512,
+   "cost_usd": 0.003512,
+   "finish_reason": "stop",
+   "response_format": "json_object",
+   "cached": false,
+   "extra": {}
+  },
+  {
+   "call_id": "df9e14c2ccd0",
+   "role": "valley-test-engineer",
+   "model": "nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B",
+   "started_at": 1792544736.75876,
+   "latency_s": 23.624,
+   "attempts": 1,
+   "status": "ok",
+   "http_status": 200,
+   "error": null,
+   "request_id": "d0a7c11eab37d7a4231f154d9229cb20",
+   "prompt_tokens": 2921,
+   "completion_tokens": 7175,
+   "total_tokens": 10096,
+   "cost_usd": 0.003162,
+   "finish_reason": "stop",
+   "response_format": "json_object",
+   "cached": false,
+   "extra": {}
+  },
+  {
+   "call_id": "4815ed2d6f6a",
+   "role": "valley-test-engineer",
+   "model": "nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B",
+   "started_at": 1792544848.7421584,
+   "latency_s": 148.069,
+   "attempts": 1,
+   "status": "error",
+   "http_status": 200,
+   "error": "reply cut off at max_tokens before any answer (reasoning used the budget)",
+   "request_id": "892621aba7d4a105fc07159bc6ce525a",
+   "prompt_tokens": 3529,
+   "completion_tokens": 12000,
+   "total_tokens": 15529,
+   "cost_usd": 0.005153,
+   "finish_reason": null,
+   "response_format": null,
+   "cached": false,
+   "extra": {}
+  }
+ ],
+ "model_cost_usd": 0.014323,
+ "aborted_runs_calls": [],
+ "recorded_cost_usd": 0.014323
+}

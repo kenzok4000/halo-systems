@@ -450,7 +450,7 @@ def valley_strikes(seed: int) -> list[dict]:
 
 def wildfire_valley(seed: int = 0, n: int = 16, alert_rule: str = "forecast", approval: str = "auto",
                     squads=None, patrol_s: float = PATROL_S, squad_script=None, station: str = "legacy",
-                    report_v2: bool = False, strikes=None) -> Scenario:
+                    report_v2: bool = False, strikes=None, smoulder_alerts: bool = False) -> Scenario:
     """Scout a mountain valley for lightning fires, forecast their spread and warn the phones in their way.
 
     The morning after dry lightning, five fires smoulder in a valley between two ridges: one already
@@ -604,7 +604,8 @@ def wildfire_valley(seed: int = 0, n: int = 16, alert_rule: str = "forecast", ap
     zones = grid_zones([x0, bx0, 0.5 * (bx0 + bx1), bx1, x1], [y0, by0 - 30.0, by1 + 30.0, y1],
                        [("S", "South slopes"), ("F", "Valley floor"), ("N", "North slopes")], places)
     wildfire = WildfireConfig(fires=fires, weather=weather, weather_forecast=told, phones=phones, places=places,
-                              overhangs=overhangs, zones=zones, alerts=AlertPolicy(rule=alert_rule, approval=approval),
+                              overhangs=overhangs, zones=zones, alerts=AlertPolicy(rule=alert_rule, approval=approval,
+                                                                                smoulder_alerts=smoulder_alerts),
                               station=station, report_v2=report_v2)
     sc = Scenario(
         name="wildfire_valley",

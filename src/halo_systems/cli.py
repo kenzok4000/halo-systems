@@ -81,6 +81,8 @@ def _valley_options(args) -> dict:
         opts["report_v2"] = True
     if args.alert_rule is not None:
         opts["alert_rule"] = args.alert_rule
+    if args.smoulder_alerts:
+        opts["smoulder_alerts"] = True
     return opts
 
 
@@ -390,6 +392,9 @@ def main(argv=None) -> int:
     s.add_argument("--alert-rule", default=None, choices=("forecast", "presigned", "distance"),
                    help="wildfire_valley: how public alerts are decided (presigned: spreading fires only, under "
                         "trigger rules signed in advance; smoulders go to fire dispatch)")
+    s.add_argument("--smoulder-alerts", action="store_true",
+                   help="wildfire_valley with --alert-rule presigned: the Level 3 rule also counts smoulders, so a "
+                        "smoulder near homes brings a public 'prepare' as well as its card to fire dispatch")
     s.set_defaults(fn=cmd_run)
 
     s = sub.add_parser("bench", help="run a benchmark grid")
