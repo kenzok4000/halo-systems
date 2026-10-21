@@ -1,0 +1,987 @@
+{
+ "seeds": [
+  8000,
+  8019
+ ],
+ "flights": 300,
+ "stations": {
+  "legacy": {
+   "by_size": {
+    "4": {
+     "A": {
+      "flights": 20,
+      "seeds": [
+       8000,
+       8001,
+       8002,
+       8003,
+       8004,
+       8005,
+       8006,
+       8007,
+       8008,
+       8009,
+       8010,
+       8011,
+       8012,
+       8013,
+       8014,
+       8015,
+       8016,
+       8017,
+       8018,
+       8019
+      ],
+      "split": "one line of 4",
+      "flying": 4,
+      "reserve": 0,
+      "found_pct": 78.0,
+      "smoulder_pct": 53.0,
+      "first_pct": 54.0,
+      "nearest_pct": 79.0,
+      "type_pct": [
+       100.0,
+       95.0,
+       65.0,
+       95.0,
+       35.0
+      ],
+      "false_per_flight": 0.2,
+      "classes": {
+       "smouldering": 53,
+       "after_spread": 25,
+       "not_credited": 2,
+       "hidden": 7,
+       "not_in_view": 13
+      },
+      "retired": 0,
+      "crashes": 0,
+      "near_misses": 0,
+      "energy_wh_per_drone": 21.431849999999997,
+      "duration_s": 569.353,
+      "pass_s": {}
+     },
+     "B": {
+      "flights": 20,
+      "seeds": [
+       8000,
+       8001,
+       8002,
+       8003,
+       8004,
+       8005,
+       8006,
+       8007,
+       8008,
+       8009,
+       8010,
+       8011,
+       8012,
+       8013,
+       8014,
+       8015,
+       8016,
+       8017,
+       8018,
+       8019
+      ],
+      "split": "F4-N0-S0-R0",
+      "flying": 4,
+      "reserve": 0,
+      "found_pct": 72.0,
+      "smoulder_pct": 50.0,
+      "first_pct": 50.0,
+      "nearest_pct": 72.0,
+      "type_pct": [
+       100.0,
+       90.0,
+       60.0,
+       95.0,
+       15.0
+      ],
+      "false_per_flight": 0.55,
+      "classes": {
+       "smouldering": 50,
+       "after_spread": 22,
+       "not_credited": 3,
+       "hidden": 8,
+       "not_in_view": 17
+      },
+      "retired": 0,
+      "crashes": 0,
+      "near_misses": 0,
+      "energy_wh_per_drone": 27.220400000000005,
+      "duration_s": 720.0,
+      "pass_s": {
+       "F": 573.2
+      }
+     },
+     "D": {
+      "flights": 20,
+      "seeds": [
+       8000,
+       8001,
+       8002,
+       8003,
+       8004,
+       8005,
+       8006,
+       8007,
+       8008,
+       8009,
+       8010,
+       8011,
+       8012,
+       8013,
+       8014,
+       8015,
+       8016,
+       8017,
+       8018,
+       8019
+      ],
+      "split": "F4-N0-S0-R0",
+      "flying": 4,
+      "reserve": 0,
+      "found_pct": 72.0,
+      "smoulder_pct": 50.0,
+      "first_pct": 50.0,
+      "nearest_pct": 72.0,
+      "type_pct": [
+       100.0,
+       90.0,
+       60.0,
+       95.0,
+       15.0
+      ],
+      "false_per_flight": 0.55,
+      "classes": {
+       "smouldering": 50,
+       "after_spread": 22,
+       "not_credited": 3,
+       "hidden": 8,
+       "not_in_view": 17
+      },
+      "retired": 0,
+      "crashes": 0,
+      "near_misses": 0,
+      "energy_wh_per_drone": 27.220400000000005,
+      "duration_s": 720.0,
+      "pass_s": {
+       "F": 573.2
+      }
+     }
+    },
+    "8": {
+     "A": {
+      "flights": 20,
+      "seeds": [
+       8000,
+       8001,
+       8002,
+       8003,
+       8004,
+       8005,
+       8006,
+       8007,
+       8008,
+       8009,
+       8010,
+       8011,
+       8012,
+       8013,
+       8014,
+       8015,
+       8016,
+       8017,
+       8018,
+       8019
+      ],
+      "split": "one line of 8",
+      "flying": 8,
+      "reserve": 0,
+      "found_pct": 76.0,
+      "smoulder_pct": 53.0,
+      "first_pct": 54.0,
+      "nearest_pct": 76.0,
+      "type_pct": [
+       100.0,
+       95.0,
+       60.0,
+       95.0,
+       30.0
+      ],
+      "false_per_flight": 0.0,
+      "classes": {
+       "smouldering": 53,
+       "after_spread": 23,
+       "not_credited": 2,
+       "hidden": 8,
+       "not_in_view": 14
+      },
+      "retired": 0,
+      "crashes": 0,
+      "near_misses": 0,
+      "energy_wh_per_drone": 12.860449999999997,
+      "duration_s": 335.3949999999999,
+      "pass_s": {}
+     },
+     "B": {
+      "flights": 20,
+      "seeds": [
+       8000,
+       8001,
+       8002,
+       8003,
+       8004,
+       8005,
+       8006,
+       8007,
+       8008,
+       8009,
+       8010,
+       8011,
+       8012,
+       8013,
+       8014,
+       8015,
+       8016,
+       8017,
+       8018,
+       8019
+      ],
+      "split": "F6-N0-S0-R2",
+      "flying": 6,
+      "reserve": 2,
+      "found_pct": 74.0,
+      "smoulder_pct": 51.0,
+      "first_pct": 51.0,
+      "nearest_pct": 75.0,
+      "type_pct": [
+       100.0,
+       95.0,
+       60.0,
+       95.0,
+       20.0
+      ],
+      "false_per_flight": 0.4,
+      "classes": {
+       "smouldering": 51,
+       "after_spread": 23,
+       "not_credited": 2,
+       "hidden": 8,
+       "not_in_view": 16
+      },
+      "retired": 0,
+      "crashes": 0,
+      "near_misses": 0,
+      "energy_wh_per_drone": 27.3034,
+      "duration_s": 720.0,
+      "pass_s": {
+       "F": 422.0
+      }
+     },
+     "D": {
+      "flights": 20,
+      "seeds": [
+       8000,
+       8001,
+       8002,
+       8003,
+       8004,
+       8005,
+       8006,
+       8007,
+       8008,
+       8009,
+       8010,
+       8011,
+       8012,
+       8013,
+       8014,
+       8015,
+       8016,
+       8017,
+       8018,
+       8019
+      ],
+      "split": "F4-N4-S0-R0",
+      "flying": 8,
+      "reserve": 0,
+      "found_pct": 84.0,
+      "smoulder_pct": 58.0,
+      "first_pct": 58.0,
+      "nearest_pct": 86.0,
+      "type_pct": [
+       100.0,
+       95.0,
+       55.0,
+       95.0,
+       75.0
+      ],
+      "false_per_flight": 1.0,
+      "classes": {
+       "smouldering": 58,
+       "after_spread": 26,
+       "not_credited": 2,
+       "hidden": 9,
+       "not_in_view": 5
+      },
+      "retired": 0,
+      "crashes": 0,
+      "near_misses": 0,
+      "energy_wh_per_drone": 26.896700000000003,
+      "duration_s": 720.0,
+      "pass_s": {
+       "F": 573.2,
+       "N": 579.8
+      }
+     }
+    },
+    "16": {
+     "A": {
+      "flights": 20,
+      "seeds": [
+       8000,
+       8001,
+       8002,
+       8003,
+       8004,
+       8005,
+       8006,
+       8007,
+       8008,
+       8009,
+       8010,
+       8011,
+       8012,
+       8013,
+       8014,
+       8015,
+       8016,
+       8017,
+       8018,
+       8019
+      ],
+      "split": "one line of 16",
+      "flying": 16,
+      "reserve": 0,
+      "found_pct": 84.0,
+      "smoulder_pct": 58.0,
+      "first_pct": 59.0,
+      "nearest_pct": 84.0,
+      "type_pct": [
+       100.0,
+       95.0,
+       55.0,
+       95.0,
+       75.0
+      ],
+      "false_per_flight": 0.4,
+      "classes": {
+       "smouldering": 58,
+       "after_spread": 26,
+       "not_credited": 2,
+       "hidden": 9,
+       "not_in_view": 5
+      },
+      "retired": 0,
+      "crashes": 0,
+      "near_misses": 0,
+      "energy_wh_per_drone": 9.2775,
+      "duration_s": 244.46099999999996,
+      "pass_s": {}
+     },
+     "B": {
+      "flights": 20,
+      "seeds": [
+       8000,
+       8001,
+       8002,
+       8003,
+       8004,
+       8005,
+       8006,
+       8007,
+       8008,
+       8009,
+       8010,
+       8011,
+       8012,
+       8013,
+       8014,
+       8015,
+       8016,
+       8017,
+       8018,
+       8019
+      ],
+      "split": "F11-N0-S0-R5",
+      "flying": 11,
+      "reserve": 5,
+      "found_pct": 80.0,
+      "smoulder_pct": 55.0,
+      "first_pct": 56.0,
+      "nearest_pct": 81.0,
+      "type_pct": [
+       100.0,
+       95.0,
+       60.0,
+       95.0,
+       50.0
+      ],
+      "false_per_flight": 0.35,
+      "classes": {
+       "smouldering": 55,
+       "after_spread": 25,
+       "not_credited": 2,
+       "hidden": 8,
+       "not_in_view": 10
+      },
+      "retired": 0,
+      "crashes": 0,
+      "near_misses": 0,
+      "energy_wh_per_drone": 27.558500000000002,
+      "duration_s": 720.0,
+      "pass_s": {
+       "F": 254.2
+      }
+     },
+     "D": {
+      "flights": 20,
+      "seeds": [
+       8000,
+       8001,
+       8002,
+       8003,
+       8004,
+       8005,
+       8006,
+       8007,
+       8008,
+       8009,
+       8010,
+       8011,
+       8012,
+       8013,
+       8014,
+       8015,
+       8016,
+       8017,
+       8018,
+       8019
+      ],
+      "split": "F4-N6-S6-R0",
+      "flying": 16,
+      "reserve": 0,
+      "found_pct": 88.0,
+      "smoulder_pct": 62.0,
+      "first_pct": 62.0,
+      "nearest_pct": 90.0,
+      "type_pct": [
+       100.0,
+       95.0,
+       50.0,
+       95.0,
+       100.0
+      ],
+      "false_per_flight": 1.05,
+      "classes": {
+       "smouldering": 62,
+       "after_spread": 26,
+       "not_credited": 2,
+       "hidden": 10,
+       "not_in_view": 0
+      },
+      "retired": 0,
+      "crashes": 0,
+      "near_misses": 0,
+      "energy_wh_per_drone": 26.81495,
+      "duration_s": 720.0,
+      "pass_s": {
+       "F": 573.2,
+       "N": 428.8,
+       "S": 428.8
+      }
+     }
+    },
+    "32": {
+     "A": {
+      "flights": 20,
+      "seeds": [
+       8000,
+       8001,
+       8002,
+       8003,
+       8004,
+       8005,
+       8006,
+       8007,
+       8008,
+       8009,
+       8010,
+       8011,
+       8012,
+       8013,
+       8014,
+       8015,
+       8016,
+       8017,
+       8018,
+       8019
+      ],
+      "split": "one line of 32",
+      "flying": 32,
+      "reserve": 0,
+      "found_pct": 86.0,
+      "smoulder_pct": 62.0,
+      "first_pct": 62.0,
+      "nearest_pct": 86.0,
+      "type_pct": [
+       100.0,
+       95.0,
+       65.0,
+       95.0,
+       75.0
+      ],
+      "false_per_flight": 0.5,
+      "classes": {
+       "smouldering": 62,
+       "after_spread": 24,
+       "not_credited": 2,
+       "hidden": 7,
+       "not_in_view": 5
+      },
+      "retired": 0,
+      "crashes": 0,
+      "near_misses": 0,
+      "energy_wh_per_drone": 3.85025,
+      "duration_s": 98.577,
+      "pass_s": {}
+     },
+     "B": {
+      "flights": 20,
+      "seeds": [
+       8000,
+       8001,
+       8002,
+       8003,
+       8004,
+       8005,
+       8006,
+       8007,
+       8008,
+       8009,
+       8010,
+       8011,
+       8012,
+       8013,
+       8014,
+       8015,
+       8016,
+       8017,
+       8018,
+       8019
+      ],
+      "split": "F11-N0-S0-R21",
+      "flying": 11,
+      "reserve": 21,
+      "found_pct": 80.0,
+      "smoulder_pct": 55.0,
+      "first_pct": 56.0,
+      "nearest_pct": 81.0,
+      "type_pct": [
+       100.0,
+       95.0,
+       60.0,
+       95.0,
+       50.0
+      ],
+      "false_per_flight": 0.35,
+      "classes": {
+       "smouldering": 55,
+       "after_spread": 25,
+       "not_credited": 2,
+       "hidden": 8,
+       "not_in_view": 10
+      },
+      "retired": 0,
+      "crashes": 0,
+      "near_misses": 0,
+      "energy_wh_per_drone": 27.558500000000002,
+      "duration_s": 720.0,
+      "pass_s": {
+       "F": 254.2
+      }
+     },
+     "D": {
+      "flights": 20,
+      "seeds": [
+       8000,
+       8001,
+       8002,
+       8003,
+       8004,
+       8005,
+       8006,
+       8007,
+       8008,
+       8009,
+       8010,
+       8011,
+       8012,
+       8013,
+       8014,
+       8015,
+       8016,
+       8017,
+       8018,
+       8019
+      ],
+      "split": "F6-N12-S12-R2",
+      "flying": 30,
+      "reserve": 2,
+      "found_pct": 90.0,
+      "smoulder_pct": 64.0,
+      "first_pct": 64.0,
+      "nearest_pct": 90.0,
+      "type_pct": [
+       100.0,
+       95.0,
+       60.0,
+       95.0,
+       100.0
+      ],
+      "false_per_flight": 1.5,
+      "classes": {
+       "smouldering": 64,
+       "after_spread": 26,
+       "not_credited": 2,
+       "hidden": 8,
+       "not_in_view": 0
+      },
+      "retired": 0,
+      "crashes": 0,
+      "near_misses": 0,
+      "energy_wh_per_drone": 26.9577,
+      "duration_s": 720.0,
+      "pass_s": {
+       "F": 422.0,
+       "N": 258.2,
+       "S": 258.2
+      }
+     }
+    },
+    "64": {
+     "A": {
+      "flights": 20,
+      "seeds": [
+       8000,
+       8001,
+       8002,
+       8003,
+       8004,
+       8005,
+       8006,
+       8007,
+       8008,
+       8009,
+       8010,
+       8011,
+       8012,
+       8013,
+       8014,
+       8015,
+       8016,
+       8017,
+       8018,
+       8019
+      ],
+      "split": "one line of 64",
+      "flying": 64,
+      "reserve": 0,
+      "found_pct": 87.0,
+      "smoulder_pct": 61.0,
+      "first_pct": 61.0,
+      "nearest_pct": 88.0,
+      "type_pct": [
+       100.0,
+       95.0,
+       45.0,
+       95.0,
+       100.0
+      ],
+      "false_per_flight": 0.7,
+      "classes": {
+       "smouldering": 61,
+       "after_spread": 26,
+       "not_credited": 2,
+       "hidden": 11,
+       "not_in_view": 0
+      },
+      "retired": 0,
+      "crashes": 0,
+      "near_misses": 0,
+      "energy_wh_per_drone": 3.74225,
+      "duration_s": 96.81500000000003,
+      "pass_s": {}
+     },
+     "B": {
+      "flights": 20,
+      "seeds": [
+       8000,
+       8001,
+       8002,
+       8003,
+       8004,
+       8005,
+       8006,
+       8007,
+       8008,
+       8009,
+       8010,
+       8011,
+       8012,
+       8013,
+       8014,
+       8015,
+       8016,
+       8017,
+       8018,
+       8019
+      ],
+      "split": "F11-N0-S0-R53",
+      "flying": 11,
+      "reserve": 53,
+      "found_pct": 80.0,
+      "smoulder_pct": 55.0,
+      "first_pct": 56.0,
+      "nearest_pct": 81.0,
+      "type_pct": [
+       100.0,
+       95.0,
+       60.0,
+       95.0,
+       50.0
+      ],
+      "false_per_flight": 0.35,
+      "classes": {
+       "smouldering": 55,
+       "after_spread": 25,
+       "not_credited": 2,
+       "hidden": 8,
+       "not_in_view": 10
+      },
+      "retired": 0,
+      "crashes": 0,
+      "near_misses": 0,
+      "energy_wh_per_drone": 27.558500000000002,
+      "duration_s": 720.0,
+      "pass_s": {
+       "F": 254.2
+      }
+     },
+     "D": {
+      "flights": 20,
+      "seeds": [
+       8000,
+       8001,
+       8002,
+       8003,
+       8004,
+       8005,
+       8006,
+       8007,
+       8008,
+       8009,
+       8010,
+       8011,
+       8012,
+       8013,
+       8014,
+       8015,
+       8016,
+       8017,
+       8018,
+       8019
+      ],
+      "split": "F11-N12-S12-R29",
+      "flying": 35,
+      "reserve": 29,
+      "found_pct": 91.0,
+      "smoulder_pct": 65.0,
+      "first_pct": 65.0,
+      "nearest_pct": 93.0,
+      "type_pct": [
+       100.0,
+       95.0,
+       65.0,
+       95.0,
+       100.0
+      ],
+      "false_per_flight": 0.85,
+      "classes": {
+       "smouldering": 65,
+       "after_spread": 26,
+       "not_credited": 2,
+       "hidden": 7,
+       "not_in_view": 0
+      },
+      "retired": 0,
+      "crashes": 0,
+      "near_misses": 0,
+      "energy_wh_per_drone": 27.0841,
+      "duration_s": 720.0,
+      "pass_s": {
+       "F": 254.2,
+       "N": 258.2,
+       "S": 258.2
+      }
+     }
+    }
+   },
+   "paired": {
+    "4:D-B:found_per_flight": {
+     "mean": 0.0,
+     "lo": 0.0,
+     "hi": 0.0,
+     "better": 0,
+     "worse": 0
+    },
+    "4:D-B:smoulder_per_flight": {
+     "mean": 0.0,
+     "lo": 0.0,
+     "hi": 0.0,
+     "better": 0,
+     "worse": 0
+    },
+    "4:D-A:found_per_flight": {
+     "mean": -0.3,
+     "lo": -0.65,
+     "hi": -0.05,
+     "better": 0,
+     "worse": 4
+    },
+    "4:D-A:smoulder_per_flight": {
+     "mean": -0.15,
+     "lo": -0.4,
+     "hi": 0.0,
+     "better": 0,
+     "worse": 2
+    },
+    "8:D-B:found_per_flight": {
+     "mean": 0.5,
+     "lo": 0.2,
+     "hi": 0.85,
+     "better": 9,
+     "worse": 1
+    },
+    "8:D-B:smoulder_per_flight": {
+     "mean": 0.35,
+     "lo": 0.0,
+     "hi": 0.7,
+     "better": 7,
+     "worse": 2
+    },
+    "8:D-A:found_per_flight": {
+     "mean": 0.4,
+     "lo": 0.1,
+     "hi": 0.7,
+     "better": 8,
+     "worse": 1
+    },
+    "8:D-A:smoulder_per_flight": {
+     "mean": 0.25,
+     "lo": 0.0,
+     "hi": 0.55,
+     "better": 5,
+     "worse": 1
+    },
+    "16:D-B:found_per_flight": {
+     "mean": 0.4,
+     "lo": 0.1,
+     "hi": 0.7,
+     "better": 9,
+     "worse": 2
+    },
+    "16:D-B:smoulder_per_flight": {
+     "mean": 0.35,
+     "lo": 0.0,
+     "hi": 0.7,
+     "better": 9,
+     "worse": 3
+    },
+    "16:D-A:found_per_flight": {
+     "mean": 0.2,
+     "lo": -0.1,
+     "hi": 0.5,
+     "better": 5,
+     "worse": 2
+    },
+    "16:D-A:smoulder_per_flight": {
+     "mean": 0.2,
+     "lo": -0.1,
+     "hi": 0.5,
+     "better": 5,
+     "worse": 2
+    },
+    "32:D-B:found_per_flight": {
+     "mean": 0.5,
+     "lo": 0.2,
+     "hi": 0.8,
+     "better": 10,
+     "worse": 1
+    },
+    "32:D-B:smoulder_per_flight": {
+     "mean": 0.45,
+     "lo": 0.1,
+     "hi": 0.75,
+     "better": 10,
+     "worse": 2
+    },
+    "32:D-A:found_per_flight": {
+     "mean": 0.2,
+     "lo": -0.15,
+     "hi": 0.5,
+     "better": 8,
+     "worse": 4
+    },
+    "32:D-A:smoulder_per_flight": {
+     "mean": 0.1,
+     "lo": -0.2,
+     "hi": 0.4,
+     "better": 6,
+     "worse": 4
+    },
+    "64:D-B:found_per_flight": {
+     "mean": 0.55,
+     "lo": 0.35,
+     "hi": 0.75,
+     "better": 11,
+     "worse": 0
+    },
+    "64:D-B:smoulder_per_flight": {
+     "mean": 0.5,
+     "lo": 0.25,
+     "hi": 0.75,
+     "better": 11,
+     "worse": 1
+    },
+    "64:D-A:found_per_flight": {
+     "mean": 0.2,
+     "lo": -0.05,
+     "hi": 0.45,
+     "better": 6,
+     "worse": 2
+    },
+    "64:D-A:smoulder_per_flight": {
+     "mean": 0.2,
+     "lo": -0.05,
+     "hi": 0.45,
+     "better": 6,
+     "worse": 2
+    }
+   }
+  }
+ }
+}

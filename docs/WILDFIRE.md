@@ -52,6 +52,10 @@ bootstrap intervals over seeds. Full tables: [REPORT.md](../results/wildfire_val
   fire, 95 fires escaped initial attack against 150: the drones prevented 55, 37% of today's escapes. The valley's
   day is dry and windy by design, so the escape rates themselves are far above real ones; the share prevented is
   the result (see "Getting the first crew there" below).
+- **Squads per area.** On another held-out set (seeds 8000 to 8019, 300 flights, flown once), splitting the
+  drones into squads over the valley floor and both slopes found 88% of fires with 16 drones, against 80% for one
+  squad on the floor and 84% for today's single sweep, and the fire across the valley in every valley. The cost
+  was about one false fire per flight against 0.35 (see "Squads" below).
 
 ![When each fire was reported and how big it was, by the drones and by today's methods](../results/wildfire_valley/detection.png)
 
@@ -164,7 +168,14 @@ drones between squads during the flight; every order passes the validator (a squ
 the moved drones fly across and join. With a strike list, each squad starts on the lane nearest the night's
 strikes in its area. Results by squad size, on held-out seeds 8000 to 8019:
 [results/wildfire_valley_squads/REPORT.md](../results/wildfire_valley_squads/REPORT.md).
-<!-- RESULTS: squads -->
+On those 20 valleys (300 flights, flown once), squads per area found 84% to 91% of the fires with 8 to 64
+drones, against 74% to 80% for one squad patrolling the floor (+0.40 to +0.55 fires per flight, every interval
+above zero), and the fire across the valley in every valley from 16 drones. Against today's single sweep the gain is
+clear at 8 drones (+0.40 per flight) and smaller from 16 up (+0.20, within the noise); at 4 drones one sweep beats a
+patrol (78% against 72%). The squads patrol for 12 minutes, longer than one sweep takes, and that is part of the
+gain. The cost is false fires: 0.85 to 1.50 per flight against 0.35 to 0.40 for one floor squad, and under today's
+alert rule they led to public alerts in 5 of the 20 valleys at 8 drones (never for the floor squad). Phones warned
+in time did not change. No crashes in any flight.
 
 **A job in plain words (Nemotron).** The operator types the job, for example "We had dry lightning last night.
 Put 16 drones over the whole valley for 12 minutes and check last night's strikes." Nemotron 3 Nano, with
