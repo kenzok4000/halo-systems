@@ -426,7 +426,7 @@ the head will not advance, though it does, counts as 180 degrees off. Two simple
 downwind of the wind the swarm measured, and straight upslope under the fire (where the slope is 2% or more).
 
 **Results.** On a second held-out set, seeds 7000 to 7019 (20 valleys), each flown once with the final method
-(commit 0c46d42; the later change to how the reasons are worded, below, leaves every score unchanged, checked
+(commit d4efe78; the later change to how the reasons are worded, below, leaves every score unchanged, checked
 on development flights), the briefs in each flight's last forecast against the true head over the next hour.
 Brackets are 95% bootstrap intervals over seeds; full table in
 [results/wildfire_valley_7000/REPORT.md](../results/wildfire_valley_7000/REPORT.md).
@@ -458,7 +458,7 @@ worst misses came from one fire's spread being credited to a neighbour. Measurin
 sharing ground by the nearest burning ground and widening the cone by 10 degrees brought it to 12 degrees (the
 wind-only rule: 29), with the cone holding 83%. A first held-out attempt on seeds 5000 to 5019 was stopped after
 eight one-drone flights, when the brief was found to give no area for some fires located by smoke; its rows were
-set aside unread. Seeds 6000 to 6019 were then flown once (commit 46f60bc): a median error of 12 degrees against
+set aside unread. Seeds 6000 to 6019 were then flown once (commit 5c2c9df): a median error of 12 degrees against
 24 for the wind-only rule. Two independent reviews of that code then found faults: grid ties pulling bearings to
 one side, a plain mean naming a direction between two groups of members, a two-headed fire given a direction
 between its heads, a fire overrun by another still scored as moving, and missed heads left out of some columns;

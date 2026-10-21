@@ -99,7 +99,7 @@ Each failing test (drawn-day tests included) flown twice more on the same valley
 - False alarms rest on false fires the station located and never cleared. Three drawn-day valleys had one under both alert rules.
 - No drone was lost in 160 tests, including 32 drones in twice the day's wind.
 
-**Pre-signed rules against today's rule on every valley (added after the run).** The re-flights above cover only the failing tests, so they cannot show what today's rule costs on the valleys where the pre-signed rules did well. After the run we flew all 40 drawn-day valleys under both rules, paired the same way (`drawn_day_both_rules.json`, made by `tools/wildfire_valley_both_rules.py` from the checkout of 902d69d):
+**Pre-signed rules against today's rule on every valley (added after the run).** The re-flights above cover only the failing tests, so they cannot show what today's rule costs on the valleys where the pre-signed rules did well. After the run we flew all 40 drawn-day valleys under both rules, paired the same way (`drawn_day_both_rules.json`, made by `tools/wildfire_valley_both_rules.py` from the checkout of 5f693a6):
 
 | All 40 drawn-day valleys | Pre-signed rules | Today's rule |
 |---|---|---|

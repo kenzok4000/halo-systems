@@ -3,7 +3,7 @@
 Added after the held-out run: the recheck re-flew only the tests that failed under the pre-signed rules, which
 cannot say whether today's rule fails on the valleys the pre-signed rules passed. This flies all 40 drawn-day
 valleys under both rules with delivery lags on their own stream (the recheck's pairing) and writes
-results/valley_stress/drawn_day_both_rules.json. The committed file was made from a checkout of 902d69d.
+results/valley_stress/drawn_day_both_rules.json. The committed file was made from a checkout of 5f693a6.
 No language model and no key: it reads results/valley_stress/drawn_day.json. It overwrites --out whole, so give a
 new --out to compare with the committed file.
 
@@ -38,7 +38,7 @@ def main():
     for k, t in enumerate(tests):
         t["presigned_paired"], t["today_rule"] = res[2 * k], res[2 * k + 1]
     out.write_text(json.dumps({"what": "every drawn-day valley under both alert rules, paired delivery lags",
-                               "code": "902d69d", "tests": tests}, indent=1))
+                               "code": "5f693a6", "tests": tests}, indent=1))
     print(f"wrote {out}: {len(tests)} valleys x 2 rules")
 
 

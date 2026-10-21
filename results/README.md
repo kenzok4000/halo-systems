@@ -9,8 +9,8 @@ Everything here was produced by the commands in [docs/REPRODUCE.md](../docs/REPR
 | 1000-1019 | The nine scenarios, the ablation, GPS, scaling, the wildfire scout and the replay check | this folder's top level, `ablation/`, `gps/`, `scaling/`, `wildfire/`, `replay_check/` |
 | 4000-4019 | The wildfire valley, flown once at 9c50f70. A sweep of an earlier version was stopped part-way and its rows set aside unread | `wildfire_valley/` |
 | 5000-5019 | A first held-out attempt at which way the fire runs, stopped after eight one-drone flights; its rows were set aside unread | not in the repository |
-| 6000-6019 | Which way the fire runs, flown once at 46f60bc; reviews then found faults in that code, so the results come from 7000-7019 | not in the repository |
-| 7000-7019 | Which way the fire runs, flown once at 0c46d42 | `wildfire_valley_7000/` |
+| 6000-6019 | Which way the fire runs, flown once at 5c2c9df; reviews then found faults in that code, so the results come from 7000-7019 | not in the repository |
+| 7000-7019 | Which way the fire runs, flown once at d4efe78 | `wildfire_valley_7000/` |
 | 8000-8019 | Squads per area | `wildfire_valley_squads/` |
 | 9000-9019 | Public alerts under pre-signed rules (T3); their pre-signed, automatic flights also feed the first crew (T4) | `wildfire_alerts/`, `wildfire_initial_attack/` |
 | 9020-9039 | The first crew (T4) | `wildfire_initial_attack/` |
@@ -67,13 +67,13 @@ These came after the wildfire valley above, one folder each. A folder with a `PR
 
 ### Which way the fire runs, held-out seeds (7000-7019), run once
 
-`wildfire_valley_7000/` is the wildfire valley flown once more, on fresh seeds with the code at 0c46d42, to score the briefs that tell fire crews which way each fire's head runs ([docs/WILDFIRE.md](../docs/WILDFIRE.md#which-way-the-fire-runs)). The flights are those of `wildfire_valley/` (1, 4 and 16 drones under today's rule, and 16 under the distance rule), so the report repeats the other measures on this second set. Seeds 5000-5019 and 6000-6019 were spent on this question first ([above](#held-out-seed-sets-so-far)).
+`wildfire_valley_7000/` is the wildfire valley flown once more, on fresh seeds with the code at d4efe78, to score the briefs that tell fire crews which way each fire's head runs ([docs/WILDFIRE.md](../docs/WILDFIRE.md#which-way-the-fire-runs)). The flights are those of `wildfire_valley/` (1, 4 and 16 drones under today's rule, and 16 under the distance rule), so the report repeats the other measures on this second set. Seeds 5000-5019 and 6000-6019 were spent on this question first ([above](#held-out-seed-sets-so-far)).
 
 | File | What it is | Commit |
 |---|---|---|
-| `runs.jsonl`, `REPORT.md`, `summary.json` | 80 flights and their report, with a section on which way the head runs | 0c46d42 (added in 1553854) |
-| `direction.png` | Which way the head runs: the briefs against two simple rules (straight downwind, straight upslope) | 1553854 |
-| `map.png`, `swarm_size.png`, `detection.png` | As in `wildfire_valley/`; the map is seed 7006 with 16 drones and the last brief's head arrows and cones | 1553854 |
+| `runs.jsonl`, `REPORT.md`, `summary.json` | 80 flights and their report, with a section on which way the head runs | d4efe78 (added in 96b9444) |
+| `direction.png` | Which way the head runs: the briefs against two simple rules (straight downwind, straight upslope) | 96b9444 |
+| `map.png`, `swarm_size.png`, `detection.png` | As in `wildfire_valley/`; the map is seed 7006 with 16 drones and the last brief's head arrows and cones | 96b9444 |
 
 ```bash
 PYTHONPATH=src python3 tools/wildfire_valley_sweep.py --seeds 7000-7019 --out results/wildfire_valley_7000/runs.jsonl
@@ -87,7 +87,7 @@ PYTHONPATH=src python3 tools/wildfire_valley_figures.py --seed 7006 --n 16 --bri
 
 | File | What it is | Commit |
 |---|---|---|
-| `REPORT.md`, `summary.json`, `timing.png` | Who reported each fire first, the drones or today's methods, by when the fire starts to spread | fa415b3 |
+| `REPORT.md`, `summary.json`, `timing.png` | Who reported each fire first, the drones or today's methods, by when the fire starts to spread | b57f903 |
 
 ```bash
 PYTHONPATH=src python3 tools/wildfire_spread_timing.py
@@ -99,9 +99,9 @@ PYTHONPATH=src python3 tools/wildfire_spread_timing.py
 
 | File | What it is | Commit |
 |---|---|---|
-| `PREREG.md` | The plan, measures and predictions, written before the seeds were flown | 548d841 |
-| `runs.jsonl` | One row per flight: 60 flights (20 valleys, three policies) | 548d841 (added in 902d69d) |
-| `REPORT.md`, `summary.json` | Public alerts, phones warned in time and cards to fire dispatch, paired against today's rule | 548d841 (added in 902d69d) |
+| `PREREG.md` | The plan, measures and predictions, written before the seeds were flown | 6cb093f |
+| `runs.jsonl` | One row per flight: 60 flights (20 valleys, three policies) | 6cb093f (added in 5f693a6) |
+| `REPORT.md`, `summary.json` | Public alerts, phones warned in time and cards to fire dispatch, paired against today's rule | 6cb093f (added in 5f693a6) |
 
 ```bash
 PYTHONPATH=src python3 tools/wildfire_alerts_sweep.py --seeds 9000-9019 --out results/wildfire_alerts/runs.jsonl
@@ -114,11 +114,11 @@ PYTHONPATH=src python3 tools/wildfire_alerts_sweep.py --report --out results/wil
 
 | File | What it is | Commit |
 |---|---|---|
-| `PREREG.md` | The plan, measures and predictions | 548d841 |
-| `flights.jsonl` | The 20 flights on seeds 9020-9039 | 548d841 (added in 902d69d) |
-| `truth.json.gz` | Each seed's true fires run on to 12 h, and today's report times | 548d841 (added in 902d69d) |
-| `fires.jsonl` | One row per true fire (200): report times, the crew's response time, and the outcome with today's reports and with the drones' | 548d841 (added in 902d69d) |
-| `REPORT.md`, `summary.json` | The first crew on scene while the fire smoulders, escapes, and the sensitivity rows | 548d841 (added in 902d69d) |
+| `PREREG.md` | The plan, measures and predictions | 6cb093f |
+| `flights.jsonl` | The 20 flights on seeds 9020-9039 | 6cb093f (added in 5f693a6) |
+| `truth.json.gz` | Each seed's true fires run on to 12 h, and today's report times | 6cb093f (added in 5f693a6) |
+| `fires.jsonl` | One row per true fire (200): report times, the crew's response time, and the outcome with today's reports and with the drones' | 6cb093f (added in 5f693a6) |
+| `REPORT.md`, `summary.json` | The first crew on scene while the fire smoulders, escapes, and the sensitivity rows | 6cb093f (added in 5f693a6) |
 
 ```bash
 PYTHONPATH=src python3 tools/wildfire_alerts_sweep.py --seeds 9000-9019 --out results/wildfire_alerts/runs.jsonl
@@ -135,9 +135,9 @@ PYTHONPATH=src python3 tools/wildfire_initial_attack.py model \
 
 | File | What it is | Commit |
 |---|---|---|
-| `PREREG.md` | The plan, measures and predictions | 939fadc |
-| `runs.jsonl` | One row per flight: 300 flights | 939fadc (added in 528fa18) |
-| `REPORT.md`, `summary.json`, `by_size.csv`, `squads.png` | Fires found by their own evidence, found while smouldering, the fire across the valley and false fires, by arm and size, paired by valley | 528fa18 |
+| `PREREG.md` | The plan, measures and predictions | 994550a |
+| `runs.jsonl` | One row per flight: 300 flights | 994550a (added in d7e8f0d) |
+| `REPORT.md`, `summary.json`, `by_size.csv`, `squads.png` | Fires found by their own evidence, found while smouldering, the fire across the valley and false fires, by arm and size, paired by valley | d7e8f0d |
 
 ```bash
 PYTHONPATH=src python3 tools/wildfire_valley_squads_sweep.py --seeds 8000-8019 --arms A,B,D \
@@ -147,16 +147,16 @@ PYTHONPATH=src python3 tools/wildfire_valley_squads_report.py --runs results/wil
 
 ### Valley compile (T5a), held-out requests on seeds 9040-9087, scored once
 
-`valley_eval/` scores the valley compiler: Nemotron 3 Nano turns a job in plain words, plus the night's lightning strike list, into a patrol plan (the model writes a short spec; code applies it to the strike list and builds the plan). 48 held-out requests (ids 101-148), each on its own valley seed (9040-9087, strike lists only, no flights), were scored once at 939fadc against a regex baseline, with the 16 tuning requests beside them.
+`valley_eval/` scores the valley compiler: Nemotron 3 Nano turns a job in plain words, plus the night's lightning strike list, into a patrol plan (the model writes a short spec; code applies it to the strike list and builds the plan). 48 held-out requests (ids 101-148), each on its own valley seed (9040-9087, strike lists only, no flights), were scored once at 994550a against a regex baseline, with the 16 tuning requests beside them.
 
 | File | What it is | Commit |
 |---|---|---|
-| `PREREG.md` | The plan, written before Nemotron saw any held-out request | 939fadc |
-| `REPORT.md` | The results, with reasoning on and off, against the baseline, written by hand from the JSON files | 548d841 (scores from 939fadc) |
-| `nano_think.json`, `nano.json` | Every request with the gold reading, each scorer's spec and its score; reasoning on and off | 939fadc (added in 548d841) |
-| `calls.jsonl.gz` | Every call: request, reply, tokens, cost and latency | 939fadc (added in 548d841) |
-| `heldout_provenance.json` | How each held-out request was written and checked, with every reading | 939fadc |
-| `../valley_compile_cache.jsonl` | The recorded replies, so the dashboard and `valley-eval --replay` run without a key and give the same answers; also the filmed request on seed 4012 | added in 548d841 |
+| `PREREG.md` | The plan, written before Nemotron saw any held-out request | 994550a |
+| `REPORT.md` | The results, with reasoning on and off, against the baseline, written by hand from the JSON files | 6cb093f (scores from 994550a) |
+| `nano_think.json`, `nano.json` | Every request with the gold reading, each scorer's spec and its score; reasoning on and off | 994550a (added in 6cb093f) |
+| `calls.jsonl.gz` | Every call: request, reply, tokens, cost and latency | 994550a (added in 6cb093f) |
+| `heldout_provenance.json` | How each held-out request was written and checked, with every reading | 994550a |
+| `../valley_compile_cache.jsonl` | The recorded replies, so the dashboard and `valley-eval --replay` run without a key and give the same answers; also the filmed request on seed 4012 | added in 6cb093f |
 
 Without a key, from the recorded replies (the same without `--think` for `nano.json`); `PREREG.md` gives the live command, which needs a key:
 
@@ -168,17 +168,17 @@ PYTHONPATH=src python3 -m halo_systems.cli valley-eval --sets heldout,tuning --t
 
 ### Valley test engineer (T5b), held-out seeds (9100-9119 and 9150-9169)
 
-In `valley_stress/`, three searchers (random, corner and Nemotron 3 Nano) look for conditions of the day under which the valley's ground station fails. The system under test is today's flight (improved controller, rule supervisor) with pre-signed rules, automatic. Each searcher runs two searches of 20 tests on the same 40 valleys; the drawn day (the valley's own conditions) on the same valleys is the control. Plan and tools in 902d69d, flown from a checkout of it.
+In `valley_stress/`, three searchers (random, corner and Nemotron 3 Nano) look for conditions of the day under which the valley's ground station fails. The system under test is today's flight (improved controller, rule supervisor) with pre-signed rules, automatic. Each searcher runs two searches of 20 tests on the same 40 valleys; the drawn day (the valley's own conditions) on the same valleys is the control. Plan and tools in 5f693a6, flown from a checkout of it.
 
 | File | What it is | Commit |
 |---|---|---|
-| `PREREG.md` | The plan, the failure definitions, the development results and the spend cap | 902d69d |
-| `random_0.json`, `random_1.json`, `corners_0.json`, `corners_1.json`, `nemotron_0.json`, `nemotron_1.json` | Each search: every test's conditions and outcome, and Nemotron's reason for each of its tests | 902d69d |
-| `drawn_day.json` | The control: the drawn day on the same 40 valleys | 902d69d |
-| `calls_cache.jsonl` | Every Nemotron reply, and every call that failed, for replay without a key | 902d69d |
-| `recheck_forecast.json` | Every failing test re-flown under the pre-signed rules and under today's rule, paired | 902d69d |
-| `REPORT.md`, `summary.json` | The failures each searcher's conditions caused, every failing test and the re-flights | 902d69d |
-| `drawn_day_both_rules.json` | Added after the run by `tools/wildfire_valley_both_rules.py`: all 40 drawn-day valleys under both rules, paired | 902d69d |
+| `PREREG.md` | The plan, the failure definitions, the development results and the spend cap | 5f693a6 |
+| `random_0.json`, `random_1.json`, `corners_0.json`, `corners_1.json`, `nemotron_0.json`, `nemotron_1.json` | Each search: every test's conditions and outcome, and Nemotron's reason for each of its tests | 5f693a6 |
+| `drawn_day.json` | The control: the drawn day on the same 40 valleys | 5f693a6 |
+| `calls_cache.jsonl` | Every Nemotron reply, and every call that failed, for replay without a key | 5f693a6 |
+| `recheck_forecast.json` | Every failing test re-flown under the pre-signed rules and under today's rule, paired | 5f693a6 |
+| `REPORT.md`, `summary.json` | The failures each searcher's conditions caused, every failing test and the re-flights | 5f693a6 |
+| `drawn_day_both_rules.json` | Added after the run by `tools/wildfire_valley_both_rules.py`: all 40 drawn-day valleys under both rules, paired | 5f693a6 |
 
 ```bash
 PYTHONPATH=src python3 tools/wildfire_valley_stress.py search --searcher random --search 0 --out results/valley_stress/random_0.json   # and --search 1; the same for corners
@@ -195,14 +195,14 @@ env -u NEBIUS_API_KEY PYTHONPATH=src python3 tools/wildfire_valley_both_rules.py
 
 ### Missing hiker (T11), held-out seeds (9200-9219), run once
 
-`hiker_search/` is search and rescue: one sweep of a 400 x 250 m meadow and forest edge for one missing person, with 1, 4 and 16 drones (today's controller and the rule supervisor), and one drone with the planned speed held (no supervisor). Flown from 902d69d, the commit that adds `PREREG.md`.
+`hiker_search/` is search and rescue: one sweep of a 400 x 250 m meadow and forest edge for one missing person, with 1, 4 and 16 drones (today's controller and the rule supervisor), and one drone with the planned speed held (no supervisor). Flown from 5f693a6, the commit that adds `PREREG.md`.
 
 | File | What it is | Commit |
 |---|---|---|
-| `PREREG.md` | The plan and the development results (seeds 2000-2005) | 902d69d |
-| `runs.jsonl` | One row per flight: 80 flights | 902d69d (added in 6d86fdc) |
-| `REPORT.md` | People found, time to find, sweeps completed and speed, by swarm size | 902d69d (added in 6d86fdc) |
-| `film.json` | The Mission tab's hiker request flown on seeds 0-9 to choose a seed for filming; not part of the measurement | 902d69d (added in 6d86fdc) |
+| `PREREG.md` | The plan and the development results (seeds 2000-2005) | 5f693a6 |
+| `runs.jsonl` | One row per flight: 80 flights | 5f693a6 (added in 9d0c497) |
+| `REPORT.md` | People found, time to find, sweeps completed and speed, by swarm size | 5f693a6 (added in 9d0c497) |
+| `film.json` | The Mission tab's hiker request flown on seeds 0-9 to choose a seed for filming; not part of the measurement | 5f693a6 (added in 9d0c497) |
 
 ```bash
 PYTHONPATH=src python3 tools/hiker_search_sweep.py fly --seeds 9200-9219 --out results/hiker_search/runs.jsonl
@@ -216,7 +216,7 @@ PYTHONPATH=src python3 tools/hiker_search_sweep.py film --seeds 0-9 --out result
 
 | File | What it is | Commit |
 |---|---|---|
-| `REPORT.md`, `summary.json` | The orders in the validator's log, how soon every drone was stopped at the hold altitude, the charge used while holding, and the sweep and fires with and without the hold | 2af5c5d |
+| `REPORT.md`, `summary.json` | The orders in the validator's log, how soon every drone was stopped at the hold altitude, the charge used while holding, and the sweep and fires with and without the hold | 5392c8d |
 
 ```bash
 PYTHONPATH=src python3 tools/airspace_hold_demo.py --out results/airspace_hold
@@ -228,7 +228,7 @@ PYTHONPATH=src python3 tools/airspace_hold_demo.py --out results/airspace_hold
 
 | File | What it is | Commit |
 |---|---|---|
-| `REPORT.md`, `compute.json` | Where each loop runs, how often, what it costs, and the link-drop check | 2af5c5d |
+| `REPORT.md`, `compute.json` | Where each loop runs, how often, what it costs, and the link-drop check | 5392c8d |
 
 ```bash
 PYTHONPATH=src python3 tools/compute_table.py --out results/compute

@@ -1,6 +1,6 @@
 # Valley compiler: held-out results
 
-Scored once on 20 October 2026, from commit 939fadc (the commit that froze the prompt, the planner, the baseline
+Scored once on 20 October 2026, from commit 994550a (the commit that froze the prompt, the planner, the baseline
 and the plan in `PREREG.md`), on the 48 held-out requests (ids 101-148, strike lists from seeds 9040-9087), with
 the 16 tuning requests run beside them. Nemotron 3 Nano (`nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B`), temperature 0.
 
