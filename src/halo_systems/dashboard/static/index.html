@@ -49,6 +49,10 @@
         </div>
         <button id="pause">Pause</button>
       </div>
+      <div id="aircraft-ctl" hidden>
+        <div class="row"><button id="aircraft" title="Crewed firefighting aircraft coming in: every drone stops low, out of their way">Aircraft inbound: hold low</button><span id="aircraft-state" class="muted small"></span></div>
+        <p class="muted small">When crewed firefighting aircraft come in, order the hold: every drone stops 10 m above the treetops (the ground where there are none), out of their way, until you resume the sweep. The safety validator checks each order and the station keeps watching. The simulator does not detect aircraft.</p>
+      </div>
 
       <details id="lab" class="lab">
         <summary><span class="lab-title">Lab controls</span> <span class="muted small">scenario, supervisor, seed, drones, disturbances</span></summary>

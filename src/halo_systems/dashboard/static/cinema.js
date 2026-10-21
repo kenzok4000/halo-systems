@@ -61,6 +61,12 @@ function rose(deg, cone) {
     `<path d="M${x} ${y} L${x - Math.cos(a - 0.5) * 7} ${y - Math.sin(a - 0.5) * 7} L${x - Math.cos(a + 0.5) * 7} ${y - Math.sin(a + 0.5) * 7} Z" class="head"/></svg>`;
 }
 
+// An airspace hold in force (aircraft inbound), after the counts: the order (not where the drones are yet; they take a
+// few seconds to get down) and since when.
+const PLANE = '<svg class="plane" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 1.5c.9 0 1.4.8 1.4 1.8v6l8.1 4.9v2.1l-8.1-2.6v5.1l2.4 1.8v1.7L12 21.4l-3.8.9v-1.7l2.4-1.8v-5.1l-8.1 2.6v-2.1l8.1-4.9v-6c0-1 .5-1.8 1.4-1.8z"/></svg>';
+const holdBadge = (a) => `<div class="s hold"><b>${PLANE}Hold at ${fmt(a.altitude_m, 0)}<small> m</small></b>` +
+  `<span>above the treetops, for crewed aircraft · operator's order · since ${clock(a.since_s)}</span></div>`;
+
 export class Cinema {
   constructor(root, view) {
     this.view = view;
@@ -188,7 +194,8 @@ export class Cinema {
         stat(`${m.flying}<small> / ${this.run.n}</small>`, "drones flying")
       : stat(`${fmt(m.formation_error_m, 2)}<small> m</small>`, "formation error") + stat(`${fmt(m.min_sep_m, 1)}<small> m</small>`, "closest pair") +
         stat(`${m.flying}<small> / ${this.run.n}</small>`, "drones flying", m.lost ? "warn" : "") + stat(`${fmt(m.leader_speed, 1)}<small> m/s</small>`, "speed");
-    if (html !== this.statsHtml) this.$(".cine-stats").innerHTML = this.statsHtml = html;
+    const hold = f.airspace && f.airspace.holding ? holdBadge(f.airspace) : "";   // aircraft inbound, until the sweep resumes
+    if (html + hold !== this.statsHtml) this.$(".cine-stats").innerHTML = this.statsHtml = html + hold;
     if (!valley && f.directive) this.plan(f.directive);
   }
 

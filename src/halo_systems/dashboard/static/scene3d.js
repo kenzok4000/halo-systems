@@ -1,10 +1,11 @@
 // Halo Systems dashboard: the 3D view. Draws what the run sends: terrain and land cover (the wildfire
-// valley), obstacles, path, drones (the scout's CAD model), hotspots, survey area, wind, camera
-// coverage and found events; wildfire3d.js adds the valley's fires, smoke, forecasts and alerts.
+// valley), obstacles, path, drones (the scout's CAD model), hotspots and missing people, survey area, wind,
+// camera coverage and found events; wildfire3d.js adds the valley's fires, smoke, forecasts and alerts.
 // Drawn for looks only, never touching the simulation: the scenery beyond the run (distant hills and
 // mountains, forests, and low shrubs under 1.5 m, also over the flight area where a run has no land
 // cover), the tree crowns above the simulated trunks, and each found hotspot's glow, embers and smoke
-// (the scorched patch marks every hotspot); the particles drift with the simulated wind.
+// (the scorched patch marks every hotspot); the particles drift with the simulated wind. A missing person
+// is a sitting hiker, under a clump of trees when the run hides them under tree crowns (their `cover`).
 import * as THREE from "three";
 import { OrbitControls } from "/static/vendor/OrbitControls.js";
 import { mergeGeometries, canvasTexture, hash, fbm, ridge, smooth, conifer, coniferFar, shrub, stoneColors } from "/static/util3d.js";
@@ -20,6 +21,11 @@ export const DRONE_SCALE = 4;   // drones are drawn up to this many times their 
 // DRONE_SCALE times beyond DRONE_FULL_M (evenly on a log scale in between).
 const DRONE_TRUE_M = 6, DRONE_FULL_M = 80;
 const droneSize = (dist) => Math.pow(DRONE_SCALE, smooth(0, 1, Math.log(Math.max(1, dist) / DRONE_TRUE_M) / Math.log(DRONE_FULL_M / DRONE_TRUE_M))) / DRONE_SCALE;
+// A missing person likewise: true size (about 1.7 m tall) within PERSON_TRUE_M, up to PERSON_SCALE times it
+// beyond PERSON_FULL_M, so the hiker still shows in the follow and top views.
+export const PERSON_SCALE = 2;
+const PERSON_TRUE_M = 12, PERSON_FULL_M = 150;
+const personSize = (dist) => Math.pow(PERSON_SCALE, smooth(0, 1, Math.log(Math.max(1, dist) / PERSON_TRUE_M) / Math.log(PERSON_FULL_M / PERSON_TRUE_M)));
 
 // Status codes from sim/engine.py: 0 active, 1 failed (motor out, falling), 2 crashed, 3 retired, 4 down.
 const STATUS_COLOR = { 0: new THREE.Color(0x3fe0c8), 1: new THREE.Color(0xff4d45), 2: new THREE.Color(0xff4d45),
@@ -1059,9 +1065,15 @@ export class SwarmView {
   _buildTargets(hello) {
     // Hotspots: a scorched patch; once found, a glow, embers and smoke, a ring, a beacon and a label.
     this.targets = [];
+    const people = (hello.targets || []).filter((t) => t.kind === "person").length;
+    let person = 0;
     for (const [i, t] of (hello.targets || []).entries()) {
       const g = this.groundAt(t.x, t.y);
       const r = Math.max(t.radius_m, 1.5);
+      if (t.kind === "person") {   // a missing person: drawn as a hiker, with no scorch, embers or smoke
+        this.targets.push(this._buildPerson(hello, t, g, r, people > 1 ? `Missing person ${++person}` : "Missing person"));
+        continue;
+      }
       const scorch = new THREE.Mesh(new THREE.CircleGeometry(r * 2.3, 32),
         new THREE.MeshLambertMaterial({ map: this.scorchTex, transparent: true, depthWrite: false, polygonOffset: true, polygonOffsetFactor: -2 }));
       scorch.rotation.x = -Math.PI / 2; scorch.rotation.z = hash(t.x, t.y) * 6.28; scorch.position.set(t.x, g + 0.05, -t.y);
@@ -1079,6 +1091,136 @@ export class SwarmView {
       label.position.set(t.x, g + 7, -t.y); label.visible = false;
       this.world.add(scorch, glow, ring, beacon, label);
       this.targets.push({ t, g, r, glow, ring, beacon, label, found: false });
+    }
+  }
+
+  // A missing person: a hiker sitting on the ground (_hiker), with their back to a clump of trees and under the
+  // edge of its crowns when the run hides them under cover (_buildCopse). Once found: a warm heat-signature glow,
+  // a ring, a beacon that shows above the crowns, and a label (_drawPeople).
+  _buildPerson(hello, t, g, r, name) {
+    const a = hash(t.x, t.y) * 6.28;   // from the person toward the trees (simulated x/y, radians); they face away
+    const hiker = this._hiker();
+    hiker.position.set(t.x, g, -t.y); hiker.rotation.y = a + Math.PI;
+    this.world.add(hiker);
+    // Drawn larger, the hiker grows about the crowns' edge (edge m along their legs), so the share under them holds.
+    const edge = t.cover > 0 ? this._buildCopse(hello, t, a) : 0;
+    const at = hiker.position.clone(), legs = new THREE.Vector3(-Math.cos(a), 0, Math.sin(a));
+    // The heat signature: a soft orange patch with a hotter core.
+    const glow = new THREE.Group();
+    for (const [rad, color, blending] of [[1.6, 0xff6a1a, THREE.NormalBlending], [0.8, 0xffc070, THREE.AdditiveBlending]]) {
+      const m = new THREE.Mesh(new THREE.CircleGeometry(rad, 24),
+        new THREE.MeshBasicMaterial({ map: this.dotTex, color, transparent: true, opacity: 0, blending, depthWrite: false }));
+      m.rotation.x = -Math.PI / 2; glow.add(m);
+    }
+    glow.position.set(t.x, g + 0.06, -t.y);
+    const ring = new THREE.Mesh(new THREE.RingGeometry(r * 2.6, r * 2.6 + 0.6, 64),
+      new THREE.MeshBasicMaterial({ color: 0xffc94a, transparent: true, opacity: 0, side: THREE.DoubleSide, depthWrite: false }));
+    ring.rotation.x = -Math.PI / 2; ring.position.set(t.x, g + 0.12, -t.y);
+    const beacon = new THREE.Mesh(new THREE.CylinderGeometry(0.25, 0.25, 50, 8, 1, true),
+      new THREE.MeshBasicMaterial({ color: 0xffc060, transparent: true, opacity: 0, blending: THREE.AdditiveBlending, depthWrite: false }));
+    beacon.position.set(t.x, g + 25, -t.y);
+    const label = this._label(`${name} found`, "#ffc94a");
+    label.position.set(t.x, g + 4.5, -t.y); label.visible = false;
+    this.world.add(glow, ring, beacon, label);
+    return { t, g, r, person: true, name, hiker, at, legs, edge, glow, ring, beacon, label, found: false };
+  }
+
+  // A low-poly hiker about 1.7 m tall, sitting with the right leg out and the left knee up, leaning back on one
+  // hand: red jacket, blue backpack with a rolled mat, dark trousers, boots and a beanie. Legs along +x, y up. The
+  // left arm (userData.arm, pivoting at the shoulder) rests on the knee. The simulation models only the person's
+  // heat, not whether they respond, so the hiker does not move when found.
+  _hiker() {
+    const mat = (color) => new THREE.MeshLambertMaterial({ color, flatShading: true });
+    const jacket = mat(0xe3321f), trousers = mat(0x34404f), boots = mat(0x4a3424), skin = mat(0xd39a74),
+      pack = mat(0x2a4f9c), roll = mat(0xf0c22e), hat = mat(0x2c3038);
+    const box = (parent, m, w, h, d, x, y, z, rz = 0) => {
+      const b = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), m);
+      b.position.set(x, y, z); b.rotation.z = rz; parent.add(b);
+    };
+    const root = new THREE.Group();
+    box(root, trousers, 0.3, 0.18, 0.36, 0, 0.11, 0);                  // seat
+    box(root, trousers, 0.9, 0.15, 0.16, 0.5, 0.08, 0.1);              // right leg, stretched out
+    box(root, boots, 0.14, 0.22, 0.13, 0.99, 0.11, 0.1);
+    box(root, trousers, 0.48, 0.16, 0.17, 0.235, 0.27, -0.1, 0.68);    // left thigh and shin, knee up
+    box(root, trousers, 0.47, 0.14, 0.15, 0.57, 0.24, -0.1, -0.876);
+    box(root, boots, 0.26, 0.12, 0.13, 0.79, 0.06, -0.1);
+    const torso = new THREE.Group();   // the upper body, leaning back a little
+    torso.position.set(0, 0.17, 0); torso.rotation.z = 0.22; root.add(torso);
+    box(torso, jacket, 0.27, 0.52, 0.42, 0, 0.27, 0);
+    box(torso, jacket, 0.14, 0.12, 0.3, -0.07, 0.53, 0);               // the hood, down
+    box(torso, pack, 0.2, 0.46, 0.34, -0.23, 0.28, 0);
+    box(torso, pack, 0.22, 0.08, 0.32, -0.22, 0.53, 0);
+    const mat2 = new THREE.Mesh(new THREE.CylinderGeometry(0.07, 0.07, 0.4, 8), roll);
+    mat2.rotation.x = Math.PI / 2; mat2.position.set(-0.25, 0.04, 0); torso.add(mat2);
+    const head = new THREE.Mesh(new THREE.IcosahedronGeometry(0.105, 1), skin);
+    head.position.set(0.02, 0.68, 0); torso.add(head);
+    const beanie = new THREE.Mesh(new THREE.SphereGeometry(0.112, 8, 4, 0, Math.PI * 2, 0, Math.PI / 2), hat);
+    beanie.position.set(0.01, 0.7, 0); torso.add(beanie);
+    const arm = (z, rz, rx) => {
+      const p = new THREE.Group();
+      p.position.set(0, 0.48, z); p.rotation.set(rx, 0, rz); torso.add(p);
+      box(p, jacket, 0.09, 0.5, 0.1, 0, -0.25, 0);
+      box(p, skin, 0.07, 0.09, 0.08, 0, -0.54, 0);
+      return p;
+    };
+    arm(0.25, -0.45, -0.15);                 // right hand on the ground behind
+    root.userData.arm = arm(-0.25, 0.95, 0); // left hand on the knee
+    root.traverse((m) => { if (m.isMesh) m.castShadow = m.receiveShadow = true; });
+    return root;
+  }
+
+  // The clump of trees over a person under cover, in direction `a` from them: the first tree's crown reaches over
+  // their back so that about `cover` of them (backpack first) is under it seen from straight above; the others
+  // stand behind it, none over the person. All top out well below the flight level. Looks only: the run has no
+  // trees here. Returns how far along the hiker's legs from the seat that crown's edge lies.
+  _buildCopse(hello, t, a) {
+    const alt = (hello.directive && hello.directive.altitude_m) || 30;
+    const top = Math.max(Math.min(7, alt - 4), Math.min(15, alt - 9));   // at least 4 m below the drones
+    const c = Math.min(0.9, t.cover), R0 = 4.2 + 0.8 * hash(t.y, t.x);
+    const D = 0.85 * R0 + 0.35 - 1.4 * c;   // seat to trunk; a crown's edge is about 0.85 R out, the hiker 1.4 m long
+    const trees = [[t.x + Math.cos(a) * D, t.y + Math.sin(a) * D, R0, top]];
+    for (let k = 1; k <= 14 && trees.length < 7; k++) {
+      const [px, py] = trees[Math.floor(hash(k, t.y) * trees.length)];
+      const b = a + (hash(k, t.x) - 0.5) * 3.2, d = 5 + 3.5 * hash(t.y, k);
+      const x = px + Math.cos(b) * d, y = py + Math.sin(b) * d, R = 3 + 1.4 * hash(x, y);
+      if (Math.hypot(x - t.x, y - t.y) < 0.85 * R + 2.5 || trees.some(([qx, qy]) => Math.hypot(x - qx, y - qy) < 4)) continue;
+      trees.push([x, y, R, top * (0.72 + 0.28 * hash(y, x))]);
+    }
+    const trunkGeo = new THREE.CylinderGeometry(1, 1.15, 1, 7, 1); trunkGeo.translate(0, 0.5, 0);
+    const leaf = new THREE.MeshLambertMaterial({ color: 0xffffff, vertexColors: true });
+    addSway(leaf, this.swayT);
+    const trunks = new THREE.InstancedMesh(trunkGeo, new THREE.MeshLambertMaterial({ color: 0x5a4636 }), trees.length);
+    const crowns = new THREE.InstancedMesh(conifer(), leaf, trees.length);
+    const m = new THREE.Object3D(), col = new THREE.Color();
+    trees.forEach(([x, y, R, h], i) => {
+      const gz = this.groundAt(x, y), base = Math.min(4.8, Math.max(3.4, h * 0.3)), ch = h - base, w = 0.16 + 0.03 * R;
+      m.rotation.set(0, hash(x, 7) * 6.28, 0);
+      m.position.set(x, gz, -y); m.scale.set(w, base + 0.3 * ch, w); m.updateMatrix(); trunks.setMatrixAt(i, m.matrix);
+      m.position.set(x, gz + base - 0.13 * ch, -y); m.scale.set(R, ch * 1.13, R); m.updateMatrix(); crowns.setMatrixAt(i, m.matrix);
+      col.setHSL(0.22 + 0.07 * hash(x, 3), 0.3 + 0.18 * hash(y, 5), 0.17 + 0.09 * hash(x, y));
+      crowns.setColorAt(i, col);
+    });
+    for (const im of [trunks, crowns]) { im.castShadow = im.receiveShadow = true; this.world.add(im); }
+    return 0.85 * R0 - D;
+  }
+
+  // Each missing person: drawn larger the further the camera is (personSize); once found, the glow, ring and
+  // beacon fade in. Timed by the view clock alone, so film frames are the same every take.
+  _drawPeople() {
+    for (const tg of this.targets || []) {
+      if (!tg.person) continue;
+      const s = personSize(this.camera.position.distanceTo(tg.at)), arm = tg.hiker.userData.arm;
+      tg.hiker.scale.setScalar(s);
+      tg.hiker.position.copy(tg.at).addScaledVector(tg.legs, tg.edge * (1 - s));
+      const [halo, core] = tg.glow.children;
+      arm.rotation.set(0, 0, 0.95);
+      if (!tg.found) { halo.material.opacity = core.material.opacity = 0; continue; }
+      const t = this.vt, age = t - tg.foundAt, heat = Math.min(1, age * 1.5) * (0.85 + 0.15 * Math.sin(t * 2.4));
+      tg.glow.scale.setScalar(s);
+      halo.material.opacity = 0.6 * heat; core.material.opacity = 0.9 * heat;
+      tg.ring.material.opacity = Math.min(1, age * 2) * (0.6 + 0.3 * Math.sin(t * 3));
+      tg.ring.scale.setScalar(1 + 0.06 * Math.sin(t * 3));
+      tg.beacon.material.opacity = Math.min(0.32, age * 0.4);
     }
   }
 
@@ -1435,7 +1577,7 @@ export class SwarmView {
   event(e) {
     if (e.kind === "target_found") {
       const tg = this.targets[e.target];
-      if (tg) tg.label.userData.setText(`Hotspot ${e.target + 1} found at ${Number(e.t).toFixed(1)} s`);
+      if (tg && !tg.person) tg.label.userData.setText(`Hotspot ${e.target + 1} found at ${Number(e.t).toFixed(1)} s`);
     }
     if (this.squads && e.kind === "squad_changed") this._updateSquads(e.squads);
     if (this.squads && e.kind === "squad_joined") this._updateSquads([e.squad_now]);
@@ -1512,6 +1654,7 @@ export class SwarmView {
     }
     this._camera(dtView);
     this.controls.update();
+    this._drawPeople();
     if (this.squads) this._setFog(FOG_DENSITY * Math.min(1, 520 / Math.max(1, this.camera.position.distanceTo(this.focus))));
     this.sun.position.copy(this.focus).add(this.sunOffset);   // the shadow box follows what the camera looks at
     this.sun.target.position.copy(this.focus);
@@ -1653,6 +1796,7 @@ export class SwarmView {
     const chance = (rate) => { const e = rate * dt; return Math.floor(e) + (Math.random() < e - Math.floor(e) ? 1 : 0); };
     for (const tg of this.targets || []) {
       // A hotspot is only a scorched patch until a camera finds it; then it glows, smokes and gets a ring.
+      if (tg.person) continue;   // drawn by _drawPeople
       if (!tg.found) { tg.glow.material.opacity = 0; continue; }
       const pulse = 0.55 + 0.25 * Math.sin(t * 7 + tg.t.x) + 0.15 * Math.sin(t * 13.7 + tg.t.y);
       tg.glow.material.opacity = pulse;

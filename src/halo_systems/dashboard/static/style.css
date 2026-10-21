@@ -267,3 +267,17 @@ body.cinema #wind svg { width: 22px; height: 22px; fill: #7fb6ff; }
 .cine-cards .sq-line .join { color: #ffd28a; font-size: 14px; margin-left: -3px; }
 .cine-request .plan-grid.patrol { grid-template-columns: 1fr 1.6fr .8fr 1.1fr 1.3fr; }   /* "drones, 4 in reserve" on one line */
 .cine-request .plan-grid b small { font-size: 17px; font-weight: 500; color: #b6c0cc; }
+
+/* Aircraft inbound (wildfire valley): the operator's airspace hold. The control shows only in valley runs, and the
+   cinema badge only while a hold is in force, so other runs look as before. */
+#aircraft-ctl .row { align-items: center; margin-bottom: 4px; }
+#aircraft-ctl button { flex: none; }
+#aircraft-ctl p { margin: 0 0 8px; }
+#aircraft.holding { border-color: #a3b8ff; }
+#aircraft-state .refused { display: block; color: var(--bad); }
+.chip.aircraft { background: #a3b8ff; color: #0b1640; }
+#log li.aircraft { border-left-color: #a3b8ff; }
+.notice.aircraft { border-left-color: #a3b8ff !important; }
+.cine-stats .s.hold { padding-left: 26px; border-left: 1px solid rgba(255, 255, 255, .16); }
+.cine-stats .s.hold b { color: #c9d4ff; white-space: nowrap; }
+.cine-stats .plane { width: 26px; height: 26px; margin-right: 9px; vertical-align: -3px; fill: #c9d4ff; }

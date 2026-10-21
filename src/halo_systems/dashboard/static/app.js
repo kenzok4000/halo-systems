@@ -1,5 +1,5 @@
 // Halo Systems dashboard: live controls and logs. Talks to the local Python server; the 3D view is scene3d.js.
-import { SwarmView, DRONE_SCALE } from "/static/scene3d.js";
+import { SwarmView, DRONE_SCALE, PERSON_SCALE } from "/static/scene3d.js";
 import { Cinema, dispatchFacts, dispatchHead } from "/static/cinema.js";
 
 const $ = (s) => document.querySelector(s);
@@ -140,6 +140,7 @@ function onAi(a) {
 
 function onEvent(e) {
   view.event(e);
+  if (onAirspaceEvent(e)) return;   // aircraft inbound: the hold's orders and outcomes
   // Directive changes are logged from the "directive" stream, which has the reason and any validator
   // violations. Injections are logged by the button handlers ("you injected ...").
   const skip = { directive: 1, injected: 1 };
@@ -153,11 +154,15 @@ function onEvent(e) {
     collision: () => `collision: drones ${e.drone} and ${e.other}`,
     obstacle_crash: () => `drone ${e.drone} hit an obstacle`, ground_crash: () => `drone ${e.drone} hit the ground`,
     retired_low_battery: () => `drone ${e.drone} left at ${e.battery_pct}% battery`, mission_complete: () => "mission complete",
-    target_found: () => `drone ${e.drone} found ${e.what || "target"} ${e.target + 1} at (${fmt(e.x, 0)}, ${fmt(e.y, 0)}) m`,
+    target_found: () => e.what === "person" ? `missing person found by drone ${e.drone} at (${fmt(e.x, 0)}, ${fmt(e.y, 0)}) m`
+      : `drone ${e.drone} found ${e.what || "target"} ${e.target + 1} at (${fmt(e.x, 0)}, ${fmt(e.y, 0)}) m`,
     directive_rejected: () => "a directive was rejected" }[e.kind];
   const what = text ? text() : e.kind;
   logItem("event", `t=${fmt(e.t)} s ${esc(what)}`);
-  if (cine) cine.notice({ motor_failure: "bad", collision: "bad", obstacle_crash: "bad", ground_crash: "bad", target_found: "fire", mission_complete: "plan" }[e.kind] || "event",
+  if (cine && e.kind === "target_found" && e.what === "person") {   // a missing person: who found them, then where
+    const hidden = ((run && run.targets) || [])[e.target]?.cover > 0;
+    cine.notice("station", `Missing person found by drone ${e.drone}`, `At (${fmt(e.x, 0)}, ${fmt(e.y, 0)}) m, ${hidden ? "partly under tree crowns" : "in the open"}`);
+  } else if (cine) cine.notice({ motor_failure: "bad", collision: "bad", obstacle_crash: "bad", ground_crash: "bad", target_found: "fire", mission_complete: "plan" }[e.kind] || "event",
     what.charAt(0).toUpperCase() + what.slice(1));
 }
 
@@ -411,6 +416,7 @@ function drawValley() {
     }).join("");
     if (html !== sr.html) $("#squads").innerHTML = sr.html = html;
   }
+  drawAir();
   if (cine) cine.valley(valley);
 }
 
@@ -445,6 +451,103 @@ async function squadMove(from, to, k, at_s = null) {
 }
 window.haloSquadMove = squadMove;
 
+// ---------------------------------------------------------------- aircraft inbound (wildfire valley)
+// When crewed firefighting aircraft come into the valley, the operator orders an airspace hold: every drone stops and
+// drops low, out of their way, until the operator resumes the sweep. The simulator does not detect aircraft; the order
+// is the operator's. The safety validator checks it in the simulator, so the outcome arrives as an event
+// (airspace_hold, airspace_resume or airspace_rejected). In film mode the control appears with the first of those, as
+// a film draws only what plays at its simulated time.
+let air = null;   // the hold's state for the panel (wildfire valley runs)
+const heldFor = (s) => { const k = Math.round(s); return k < 60 ? `${k} s` : `${Math.floor(k / 60)} min${k % 60 ? ` ${k % 60} s` : ""}`; };
+function airReset() {
+  air = run && run.wildfire ? { holding: false, altitude_m: null, since_s: null, pending: null, note: "", shown: !FILM, key: "" } : null;
+  drawAir();
+}
+function drawAir() {
+  $("#aircraft-ctl").hidden = !(air && air.shown);
+  if (!air) return;
+  const ended = !!(valley && valley.ended);
+  if (ended) air.pending = null;   // an order still waiting when the flight ends is never carried out
+  const label = air.pending === "hold" ? "Hold ordered…" : air.pending === "resume" ? "Resume ordered…" : air.holding ? "Resume sweep" : "Aircraft inbound: hold low";
+  const state = air.holding ? `Holding ${fmt(air.altitude_m, 0)} m above the treetops since t=${fmt(air.since_s, 0)} s` : "";
+  const key = [label, ended, state, air.note].join("|");
+  if (key === air.key) return;
+  air.key = key;
+  const b = $("#aircraft");
+  b.textContent = label;
+  b.disabled = ended || !!air.pending;
+  b.classList.toggle("holding", air.holding);
+  $("#aircraft-state").innerHTML = `${esc(state)}${air.note ? `<span class="refused">${esc(air.note)}</span>` : ""}`;
+}
+// op "hold" (altitude_m: metres above the treetops, or the ground where there are none; the validator's default when
+// null) or "resume"; at_s (simulated seconds) has the run carry it out at its first step at or after then, as the
+// recorder does.
+async function aircraftOrder(op, at_s = null, altitude_m = null) {
+  if (!run) return { ok: false, reason: "no flight" };
+  if (!run.wildfire) return { ok: false, reason: "the aircraft hold is for wildfire valley runs" };
+  if (valley && valley.ended) return { ok: false, reason: "the flight has ended" };
+  if (op !== "hold" && op !== "resume") return { ok: false, reason: "op must be hold or resume" };
+  if (at_s != null && !Number.isFinite(Number(at_s))) return { ok: false, reason: "at_s must be a time in seconds" };
+  if (altitude_m != null && !Number.isFinite(Number(altitude_m))) return { ok: false, reason: "altitude_m must be metres above the treetops" };
+  const body = { kind: "aircraft", op }, mine = air;
+  if (at_s != null) body.at_s = Number(at_s);
+  if (altitude_m != null) body.altitude_m = Number(altitude_m);
+  // Live only (a film shows what plays): the button waits from the click, as the outcome's event can come before the
+  // server's reply; onAirspaceEvent clears it.
+  const live = !FILM && mine;
+  if (live) { air.pending = op; air.note = ""; drawAir(); }
+  try {
+    const out = await api(`/api/runs/${run.id}/inject`, body);
+    return { ok: true, ...out };
+  } catch (err) {
+    if (live && mine === air) { air.pending = null; drawAir(); }
+    alert(err.message); return { ok: false, reason: err.message, alerted: true };
+  }
+}
+window.haloAircraft = aircraftOrder;
+$("#aircraft").addEventListener("click", async () => {
+  if (!air || air.pending) return;
+  const r = await aircraftOrder(air.holding ? "resume" : "hold");
+  if (!r.ok && !r.alerted) alert(`No order: ${r.reason}.`);
+});
+// The hold's events, in the log and as cinema notices. Returns true when the event is one of them.
+function onAirspaceEvent(e) {
+  const byOperator = !e.source || e.source === "operator", t = `t=${fmt(e.t)} s`, by = byOperator ? "the operator" : esc(e.source);
+  const who = byOperator ? "Operator" : e.source;   // named in cinema notices: the order is a person's, not a detection
+  if (e.kind === "injected") {
+    if (e.what !== "aircraft") return false;
+    // Its arrival time depends on the machine, so a film leaves it out; airspace_hold and airspace_resume report it exactly.
+    if (!FILM) logItem("aircraft", `<span class="chip aircraft">you</span> ${t} ordered ${e.op === "resume" ? "the sweep resumed"
+      : `a hold${e.altitude_m != null ? ` at ${fmt(e.altitude_m, 0)} m` : ""}: crewed firefighting aircraft inbound`}`);
+    return true;
+  }
+  if (!["airspace_hold", "airspace_resume", "airspace_rejected"].includes(e.kind)) return false;
+  const lower = !!(air && air.holding && e.kind === "airspace_hold");
+  if (air) { air.shown = true; air.pending = null; air.note = ""; }
+  if (e.kind === "airspace_hold") {
+    const alt = fmt(e.altitude_m, 0);
+    if (air) Object.assign(air, { holding: true, altitude_m: e.altitude_m, since_s: lower ? air.since_s : e.t });
+    logItem("aircraft", `<span class="chip aircraft">airspace</span> ${t} ${lower ? `hold lowered: every drone down to ${alt} m above the treetops`
+      : `hold for crewed firefighting aircraft: every drone stops ${alt} m above the treetops, out of their way`}; ordered by ${by}, checked by the safety validator` +
+      '<div class="why">The station keeps watching for smoke; the sweep resumes when the operator says the airspace is clear</div>');
+    if (cine) cine.notice("aircraft", lower ? `${who}: swarm holding lower` : `${who}: aircraft inbound, swarm holding low`, lower
+      ? `Every drone down to ${alt} m above the treetops · checked by the safety validator`
+      : `Every drone stops ${alt} m above the treetops, out of the aircraft's way · checked by the safety validator · the station keeps watching`);
+  } else if (e.kind === "airspace_resume") {
+    if (air) Object.assign(air, { holding: false, altitude_m: null, since_s: null });
+    logItem("aircraft", `<span class="chip aircraft">airspace</span> ${t} airspace clear: sweep resumed by ${by} after holding ${heldFor(e.held_s)}` +
+      '<div class="why">The drones climb back to their working altitude and carry on from where they stopped</div>');
+    if (cine) cine.notice("aircraft", `${who}: airspace clear, sweep resumed`, `Held ${heldFor(e.held_s)} · the drones climb back and carry on the sweep from where they stopped`);
+  } else {
+    const why = (e.violations || []).join("; ");
+    if (air) air.note = `${e.op === "resume" ? "Resume" : "Hold"} refused by the safety validator: ${why}`;
+    logItem("rejected", `<span class="chip">refused</span> ${t} airspace order (${esc(e.op)}) refused by the safety validator: ${esc(why)}`);
+    if (cine) cine.notice("bad", `${e.op === "resume" ? "Resume" : "Hold"} refused by the safety validator`, why);
+  }
+  drawAir();
+  return true;
+}
+
 function drawSpark() {
   const cv = $("#spark");
   const w = cv.width = cv.clientWidth * devicePixelRatio, h = cv.height = 70 * devicePixelRatio;
@@ -470,7 +573,10 @@ function onFrame(f) {
   $("#m-batt").textContent = fmt(m.battery_mean, 0, "%");
   $("#m-speed").textContent = fmt(m.leader_speed, 1, " m/s");
   $("#m-progress").style.width = `${Math.min(100, (100 * m.progress_m) / Math.max(1, m.path_m))}%`;
-  let scout = m.targets_total != null ? `, hotspots ${m.targets_found}/${m.targets_total}, area ${fmt(m.coverage_pct, 0)}%` : "";
+  const people = run && run.targets && run.targets.length && run.targets.every((t) => t.kind === "person");
+  const finds = !people ? `hotspots ${m.targets_found}/${m.targets_total}` : m.targets_total === 1
+    ? `missing person ${m.targets_found ? "found" : "not found yet"}` : `missing people found ${m.targets_found}/${m.targets_total}`;
+  let scout = m.targets_total != null ? `, ${finds}, area ${fmt(m.coverage_pct, 0)}%` : "";
   if (valley) {
     valley.located = (f.located || []).length;
     valley.warned = (f.phones_alerted || []).filter((l) => l > 0).length;
@@ -504,6 +610,8 @@ async function start(extra = {}) {
     run.alertRule = body.alert_rule || "forecast";   // the rule the valley's alerts go out under (the server's default)
   } catch (err) { alert(err.message); return; }
   view.build(run);
+  const hiker = (run.targets || []).some((t) => t.kind === "person");   // a missing person, drawn larger too, not a hotspot
+  $("#scale-note").textContent = `Drones drawn up to ${DRONE_SCALE}x${hiker ? ` and the missing person up to ${PERSON_SCALE}x` : ""} actual size`;
   // What is flying, above the run controls: the lab controls that chose it may be folded away.
   $("#run-desc").innerHTML = `<b>${esc(run.scenario.title)}</b>, in simulation: ${plural(run.n, "drone")}, ` +
     `${esc($("#config").selectedOptions[0].textContent)}, seed ${run.seed}<span class="desc">${esc(run.scenario.description)}</span>`;
@@ -513,7 +621,7 @@ async function start(extra = {}) {
     cine.setRun(run, $("#config").selectedOptions[0].textContent, `${replay}${$("#scale-note").textContent}`);
   }
   $$(".scout-only").forEach((el) => { el.style.display = run.sensor ? "" : "none"; });
-  $$(".hotspot-only").forEach((el) => { el.style.display = run.sensor && !run.wildfire ? "" : "none"; });
+  $$(".hotspot-only").forEach((el) => { el.style.display = run.sensor && !run.wildfire && !hiker ? "" : "none"; });
   $$(".valley-only").forEach((el) => { el.hidden = !run.wildfire; });
   const squads = (run.wildfire && run.scenario.squads) || [];
   $$(".squads-only").forEach((el) => { el.hidden = !squads.length; });
@@ -538,6 +646,7 @@ async function start(extra = {}) {
     squadRun: squads.length ? { names: Object.fromEntries([...(run.scenario.squad_areas || []), ...squads].map((a) => [a.code, a.name])),
       defs: new Map(squads.map((s) => [s.code, { code: s.code, name: s.name, n: s.n, lanes: s.lanes }])), laps: {}, now: null,
       patrolS: run.scenario.patrol_s, html: "" } : null } : null;
+  airReset();
   drawValley();
   view.setSpeed(speed); view.setPaused(false);
   setHud(run.scenario.title, run.directive);

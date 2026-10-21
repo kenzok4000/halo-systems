@@ -7,7 +7,7 @@
 //
 // Options: --n (drones, blank = the scenario's own), --url (default http://127.0.0.1:8765, where halo serve listens), --tab fly|mission|results|about,
 // --inject gust@6,motor_failure@12 (kinds gust, motor_failure or blackout; seconds after the start),
-// --mission "text" (Mission tab: compile, then fly it; --no-fly stops after compiling; --type [ms] types the
+// --mission "text" (Mission tab: compile, then fly it, on --seed N when given; --no-fly stops after compiling; --type [ms] types the
 // request key by key, 45 ms apart unless given; with --film the typing, a moment of compiling and --hold S
 // seconds (default 3) of the compiled plan are filmed before the flight, or end the video with --no-fly, and
 // the wait for the compiler is cut),
@@ -54,6 +54,12 @@
 // alerts under that rule: presigned sends smouldering finds to fire dispatch as cards and public alerts only for fires
 // believed spreading, each under its trigger rule; forecast is today's rule, the scenario's default (a --valley
 // patrol defaults to presigned).
+// --aircraft "hold@90,resume@390" (with --film; wildfire valley runs) orders the "aircraft inbound" airspace hold, as the
+// operator does when crewed firefighting aircraft come into the valley (the simulator does not detect aircraft): at 90
+// simulated seconds every drone stops and drops to 10 m above the treetops (hold:8@90 holds at 8 m), and at 390 s the sweep
+// resumes, through window.haloAircraft, the page's hold button. As with --squad-move, each order is sent a little early
+// with its time, the run carries it out at its first step at or after then, and the safety validator may refuse it (both
+// show as events). A valley run still ends at its own time limit (about 400 s on seed 3000), held or not.
 // Needs Playwright (`npm install playwright && npx playwright install chromium`, or a global install
 // with NODE_PATH set).
 const { chromium } = require("playwright");
@@ -79,7 +85,7 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 (async () => {
   mkdirSync(dirname(out), { recursive: true });
   if (args.film) return film();
-  for (const k of ["approve", "cancel", "allclear", "from", "ride-drone", "fire", "zoom", "panel", "cinema", "camera", "hold", "squad-move"]) if (args[k]) console.warn(`--${k} needs --film; ignored`);
+  for (const k of ["approve", "cancel", "allclear", "from", "ride-drone", "fire", "zoom", "panel", "cinema", "camera", "hold", "squad-move", "aircraft"]) if (args[k]) console.warn(`--${k} needs --film; ignored`);
   if (args.mission && args.valley) throw new Error("--mission and --valley are two kinds of request: give one");
   if (args["squad-focus"] && !["F", "N", "S"].includes(args["squad-focus"])) throw new Error("--squad-focus takes a squad: F, N or S");
   const browser = await chromium.launch({ args: ["--use-angle=swiftshader", "--enable-unsafe-swiftshader", "--ignore-gpu-blocklist"] });
@@ -97,6 +103,8 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
     await page.click(`nav.tabs button[data-tab="${args.tab}"]`);
   }
   if (args.mission || args.valley) {
+    // A mission flies on the Fly tab's seed box, filled here while that tab is showing.
+    if (args.seed && !args.valley) await page.fill("#seed", String(args.seed));
     await page.click('nav.tabs button[data-tab="mission"]');
     if (args.valley) {   // the valley patrol request, on its seed
       await page.click('#mission-mode button[data-mode="valley"]');
@@ -193,6 +201,23 @@ async function film() {
     }
     injects.push({ kind: "squad", at: Number(at), from, to, k: Number(k) });
   }
+  // Airspace orders, "hold[:altitude]@at" or "resume@at", sent SQUAD_LEAD early with at_s like the squad moves. The
+  // safety validator's plain refusals are caught here: a resume with no hold in force or within 3 s of it, and a
+  // further hold that is not lower (10 m when no altitude is given).
+  const air = (args.aircraft || "").split(",").filter(Boolean).map((s) => {
+    const m = /^(hold|resume)(?::(\d+(?:\.\d+)?))?@(\d+(?:\.\d+)?)$/i.exec(s.trim());
+    if (!m || (m[1].toLowerCase() === "resume" && m[2] !== undefined)) throw new Error(`--aircraft takes hold@90,resume@390 (hold:8@90 for a hold at 8 m); not ${s}`);
+    return { kind: "aircraft", op: m[1].toLowerCase(), alt: m[2] !== undefined ? Number(m[2]) : null, at: Number(m[3]) };
+  }).sort((a, b) => a.at - b.at);
+  if (air.length && !(args.valley || args.scenario === "wildfire_valley")) throw new Error("--aircraft needs a wildfire valley run (--scenario wildfire_valley or --valley)");
+  let held = null;
+  for (const o of air) {
+    if (o.op === "hold" && held && !((o.alt ?? 10) < held.alt)) throw new Error(`--aircraft: the hold at ${o.at} s comes while holding at ${held.alt} m; a further hold must be lower`);
+    if (o.op === "resume" && !held) throw new Error(`--aircraft: the resume at ${o.at} s has no hold to end`);
+    if (o.op === "resume" && o.at - held.at < 3) throw new Error(`--aircraft: the resume at ${o.at} s comes within 3 s of the hold, which the safety validator refuses`);
+    held = o.op === "hold" ? { at: held ? held.at : o.at, alt: o.alt ?? 10 } : null;
+    injects.push(o);
+  }
   injects.sort((a, b) => a.at - b.at);
   if (args["squad-focus"] && !["F", "N", "S"].includes(args["squad-focus"])) throw new Error("--squad-focus takes a squad: F, N or S");
   await page.goto(`${url}/?film=1${args.cinema ? "&cinema=1" : ""}${pageOpts}`);
@@ -248,6 +273,7 @@ async function film() {
       console.log(await page.textContent("#compile-out"));
       return encode(browser, dir, fps);
     }
+    if (args.seed && !args.valley) await set("#seed", String(args.seed));   // a mission flies on the Fly tab's seed
     if (await page.evaluate(() => document.querySelector("#fly-mission").disabled)) throw new Error(`${args.valley ? "patrol" : "mission"} not flyable: ${await page.textContent("#compile-out")}`);
     await click("#fly-mission");
   } else {
@@ -287,13 +313,17 @@ async function film() {
   const buffered = () => page.evaluate(() => window.haloFilm.status());
   const SQUAD_LEAD = 2;   // simulated seconds; the page buffers at 5x, so about 0.4 s of wall time to spare
   for (const inj of injects) {
-    const at = inj.kind === "squad" ? Math.max(0, inj.at - SQUAD_LEAD) : inj.at;
+    const at = inj.kind === "squad" || inj.kind === "aircraft" ? Math.max(0, inj.at - SQUAD_LEAD) : inj.at;
     await page.waitForFunction((t) => { const s = window.haloFilm.status(); return s.ended || s.buffered_s >= t; }, at, { polling: 50, timeout: 0 });
     if ((await buffered()).ended) { console.warn(`run ended before ${inj.kind}@${inj.at}; skipped`); break; }
     if (inj.kind === "squad") {
       const r = await page.evaluate(([f, t, k, a]) => window.haloSquadMove(f, t, k, a), [inj.from, inj.to, inj.k, inj.at]);
       if (!r || !r.ok) console.warn(`squad move ${inj.from} to ${inj.to} (${inj.k}) at ${inj.at} s failed: ${r && r.reason}`);
       else if (r.t > inj.at + 0.5) console.warn(`squad move at ${inj.at} s carried out at ${r.t} s (the run was ahead)`);
+    } else if (inj.kind === "aircraft") {
+      const r = await page.evaluate(([op, a, alt]) => window.haloAircraft(op, a, alt), [inj.op, inj.at, inj.alt]);
+      if (!r || !r.ok) console.warn(`aircraft ${inj.op} at ${inj.at} s failed: ${r && r.reason}`);
+      else if (r.t > inj.at + 0.5) console.warn(`aircraft ${inj.op} at ${inj.at} s carried out at ${r.t} s (the run was ahead)`);
     } else if (commander[inj.kind]) {
       const r = await page.evaluate(([fn, id]) => window[fn](id), [commander[inj.kind], inj.id]);
       if (!r || !r.ok) console.warn(`${inj.kind} ${inj.id} at ${inj.at} s failed: ${r && r.reason}`);
