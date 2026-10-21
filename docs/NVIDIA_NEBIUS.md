@@ -1,11 +1,12 @@
 # NVIDIA Nemotron on Nebius Token Factory
 
-Halo Systems uses NVIDIA Nemotron models, served by Nebius Token Factory's OpenAI-compatible API, in three roles. Each role has a conventional baseline that gets the same inputs, so every claim about the model is a measured comparison.
+Halo Systems uses NVIDIA Nemotron models, served by Nebius Token Factory's OpenAI-compatible API, in four roles. Each role has a conventional baseline that gets the same inputs, so every claim about the model is a measured comparison.
 
 | Role | Input | Output | Baseline |
 |---|---|---|---|
 | Supervisor | Status report every 5 s of simulated time | Directive (formation, spacing, speed, altitude, safety margin) | Rule supervisor; fixed plan |
 | Mission compiler | Operator's plain-language request | Mission plan JSON, or a refusal for non-civilian use | Regex and keyword parser |
+| Valley compiler | Operator's valley job in plain words | A patrol spec (drones, areas, patrol length, which strikes to check), or a refusal | Hand-written rules |
 | Test engineer | Every stress test so far, with outcomes | The next batch of tests, each with a reason | Random search; corner search; cross-entropy method |
 
 Nebius services used: Token Factory only, through its OpenAI-compatible chat completions API at `https://api.tokenfactory.nebius.com/v1`. The simulations are numpy on an ordinary CPU and ran outside Nebius.
@@ -14,6 +15,7 @@ Nebius services used: Token Factory only, through its OpenAI-compatible chat com
 |---|---|---|---|---|---|---|
 | Supervisor | Nemotron 3 Nano (`nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B`); Super (`nvidia/nemotron-3-super-120b-a12b`) as a comparison | Off | 0.2 | 1,200 | 15 s per call, 8 s per attempt | `ai/prompts.py` |
 | Mission compiler | Nano, reasoning off and on; Super | Off, or on in one Nano run | 0 | 1,500; 6,000 with reasoning | 60 s per attempt | `ai/mission.py` |
+| Valley compiler | Nano, reasoning on and off | On; off as a comparison | 0 | 800; 6,000 with reasoning | 90 s per attempt | `ai/valley.py` |
 | Test engineer | Nano, reasoning off and on | Off, or on in one run | 0.7 | 2,500; 8,000 with reasoning | 180 s per attempt | `ai/tester.py` |
 
 Our feedback on Token Factory and the models, with the numbers behind it, is in [DEVPOST.md](DEVPOST.md#feedback-on-nebius-token-factory-and-nvidia-models).
@@ -43,7 +45,7 @@ Nothing the model says reaches the motors directly. Every directive passes the s
 
 Nemotron 3 models reason before they answer unless told not to. The reasoning comes back in `message.reasoning` and counts against `max_tokens`; if it uses them all, `content` is empty and `finish_reason` is `length`. Halo Systems sends `chat_template_kwargs: {"enable_thinking": false}` unless a role asks for reasoning (`nemotron-think:<model>` in a config), in which case `max_tokens` is at least 4096. A reply cut off at the limit is not retried, because the same request would be cut off again.
 
-With reasoning off, Nemotron 3 Nano answered in about 1 s but, before the status report spelled out its corridor and energy checks in words, it ignored them: it kept a grid formation that the report said did not fit. With reasoning on, it used those checks, but answers took several seconds each, the slowest over 100 s before the 60 s deadline was added, and in the last tuning round it completed only 3 of 5 forest flights. Once the report spelled the checks out, reasoning off did as well or better in eight of nine scenarios in that round. The exception was degraded radio, where 12 reasoning-off calls timed out within two and a half minutes, a pattern that suggests a short slowdown at the provider, and the rules took those steps. So the supervisor runs with reasoning off. The mission compiler is different: a plan is a one-off answer, and reasoning on took Nano from 18 to 20 of 20 held-out requests fully right, at a median of 12 s instead of 5 s. The tuning rounds are in `results/tuning/`.
+With reasoning off, Nemotron 3 Nano answered in about 1 s but, before the status report spelled out its corridor and energy checks in words, it ignored them: it kept a grid formation that the report said did not fit. With reasoning on, it used those checks, but answers took several seconds each, the slowest over 100 s before the 60 s deadline was added, and in the last tuning round it completed only 3 of 5 forest flights. Once the report spelled the checks out, reasoning off did as well or better in eight of nine scenarios in that round. The exception was degraded radio, where 12 reasoning-off calls timed out within two and a half minutes, a pattern that suggests a short slowdown at the provider, and the rules took those steps. So the supervisor runs with reasoning off. The mission compiler is different: a plan is a one-off answer, and reasoning on took Nano from 18 to 20 of 20 held-out requests fully right, at a median of 12 s instead of 5 s. The valley compiler likewise: reasoning on took Nano from 39 to 47 of 48 held-out valley jobs right, at a median of 4.7 s instead of 1.1 s ([valley_eval](../results/valley_eval/REPORT.md)). The tuning rounds are in `results/tuning/`.
 
 ## Spend guard
 
@@ -64,7 +66,7 @@ Every Nemotron supervisor call in a benchmark can be recorded to a cache keyed o
 halo bench ... --configs improved+nemotron:<model> --cache results/nemotron_cache.jsonl --cache-mode replay
 ```
 
-A benchmark replay that misses the cache stops that run with an error rather than letting the rules fill in; in the dashboard the rules take that step and the log shows the fallback. The mission compiler's and test engineer's calls are not cached: they are kept in call logs (`results/mission_calls.jsonl.gz`, `results/stress/nemotron_calls.jsonl.gz`), and their results are scored from the committed outputs.
+A benchmark replay that misses the cache stops that run with an error rather than letting the rules fill in; in the dashboard the rules take that step and the log shows the fallback. The mission compiler's and test engineer's calls are not cached: they are kept in call logs (`results/mission_calls.jsonl.gz`, `results/stress/nemotron_calls.jsonl.gz`), and their results are scored from the committed outputs. The valley compiler's calls are cached like the supervisor's (`results/valley_compile_cache.jsonl`), so `halo valley-eval --replay` gives the same scores with no key.
 
 ## Evidence
 

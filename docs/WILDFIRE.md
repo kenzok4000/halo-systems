@@ -187,7 +187,7 @@ are refused until the resume. The ground station, smoke watch and alerts keep ru
 back and carries on the sweep where it stopped. A demonstration on development seed 3000 with 16 drones (a
 5-minute hold 42% of the way along the sweep): every drone was stopped at the hold altitude 6.1 s after the order, the
 hold cost 29% of a battery, the sweep finished 305 s later and found the same 5 fires
-([results/airspace_hold/REPORT.md](../results/airspace_hold/REPORT.md)). Runs without an order are unchanged.
+([results/airspace_hold/REPORT.md](../results/airspace_hold/REPORT.md)). Runs without an order are unchanged. What flying it for real would need is in the README's [Flying it legally](../README.md#flying-it-legally).
 
 **A job in plain words (Nemotron).** The operator types the job, for example "We had dry lightning last night.
 Put 16 drones over the whole valley for 12 minutes and check last night's strikes." Nemotron 3 Nano, with
