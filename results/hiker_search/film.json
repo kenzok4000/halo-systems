@@ -1,0 +1,116 @@
+{
+ "text": "Search the 400 by 250 m meadow for a missing hiker with 12 drones line abreast, 8 m apart, at 30 m.",
+ "plan": "regex baseline (the same fields as the recorded Nemotron plan: 12 drones, line, 8 m, 30 m, 400 x 250 m survey)",
+ "flights": [
+  {
+   "seed": 0,
+   "person": {
+    "x": 229.4,
+    "y": 35.9,
+    "cover": 0.0
+   },
+   "found_t": 43.8,
+   "by_drone": 5,
+   "flight_s": 293.8
+  },
+  {
+   "seed": 1,
+   "person": {
+    "x": 369.3,
+    "y": 220.8,
+    "cover": 0.0
+   },
+   "found_t": 278.3,
+   "by_drone": 7,
+   "flight_s": 293.8
+  },
+  {
+   "seed": 2,
+   "person": {
+    "x": 332.8,
+    "y": 49.0,
+    "cover": 0.0
+   },
+   "found_t": 64.5,
+   "by_drone": 6,
+   "flight_s": 293.8
+  },
+  {
+   "seed": 3,
+   "person": {
+    "x": 176.1,
+    "y": 58.8,
+    "cover": 0.63
+   },
+   "found_t": 34.1,
+   "by_drone": 8,
+   "flight_s": 293.8
+  },
+  {
+   "seed": 4,
+   "person": {
+    "x": 338.2,
+    "y": 100.2,
+    "cover": 0.69
+   },
+   "found_t": 114.7,
+   "by_drone": 9,
+   "flight_s": 293.8
+  },
+  {
+   "seed": 5,
+   "person": {
+    "x": 127.1,
+    "y": 95.9,
+    "cover": 0.0
+   },
+   "found_t": 24.4,
+   "by_drone": 11,
+   "flight_s": 293.8
+  },
+  {
+   "seed": 6,
+   "person": {
+    "x": 32.0,
+    "y": 18.3,
+    "cover": 0.57
+   },
+   "found_t": 5.0,
+   "by_drone": 3,
+   "flight_s": 293.8
+  },
+  {
+   "seed": 7,
+   "person": {
+    "x": 149.6,
+    "y": 29.3,
+    "cover": 0.0
+   },
+   "found_t": 27.9,
+   "by_drone": 4,
+   "flight_s": 293.8
+  },
+  {
+   "seed": 8,
+   "person": {
+    "x": 40.7,
+    "y": 71.2,
+    "cover": 0.4
+   },
+   "found_t": 6.4,
+   "by_drone": 9,
+   "flight_s": 293.8
+  },
+  {
+   "seed": 9,
+   "person": {
+    "x": 71.2,
+    "y": 177.2,
+    "cover": 0.68
+   },
+   "found_t": 168.7,
+   "by_drone": 0,
+   "flight_s": 293.8
+  }
+ ]
+}
