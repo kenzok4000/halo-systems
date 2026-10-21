@@ -107,6 +107,8 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
     await sleep(4000);
     if (!args["no-fly"] && await page.isEnabled("#fly-mission")) {
       await page.click("#fly-mission");
+    } else if (!args["no-fly"] && args.valley) {
+      throw new Error(`the valley request cannot fly: ${(await page.textContent("#compile-out")).trim().slice(0, 200)}`);
     }
   } else if (args.scenario) {
     await page.selectOption("#scenario", args.scenario);
@@ -151,6 +153,7 @@ async function film() {
   const page = await browser.newPage({ viewport: { width: 1920, height: 1080 } });
   page.on("pageerror", (e) => console.error("page error:", e.message));
   if (args.mission && args.valley) throw new Error("--mission and --valley are two kinds of request: give one");
+  if ((args["squad-focus"] || args["squad-move"]) && !args.valley) throw new Error("--squad-focus and --squad-move need a squad patrol (--valley)");
   const request = args.valley || args.mission;
   const typed = Boolean((args.mission && args.type) || args.valley);   // a valley request is always typed
   // Every option is checked before anything is filmed, so a typo does not cost minutes of rendering.

@@ -35,7 +35,7 @@ const usd = (c) => (c > 0 && c < 0.0001 ? "under $0.0001" : `$${Number(c).toFixe
 // fire's last card (moved_m, an update sent because the fix moved; 0 otherwise).
 export function dispatchFacts(e) {
   const t = String(e.text || "");
-  const near = /\bnear (.+?) at x -?\d/.exec(t), within = /\(within (\d+) m[,)]/.exec(t), head = /Head running ([a-z-]+)/.exec(t);
+  const near = /\bnear (.+?) at x -?\d/.exec(t), within = /\(within (\d+) m[,)]/.exec(t), head = /Head running ([^.]+)\./.exec(t);
   return { near: near ? near[1] : null, within: within ? within[1] : String(Math.max(1, Math.round(e.err_m || 0))), head: head ? head[1] : null,
     moved: e.moved_m > 0 ? Math.round(e.moved_m) : 0 };
 }
@@ -134,16 +134,17 @@ export class Cinema {
     this.$(".cine-sub").textContent = (this.requestHead || REQUEST_HEAD).sub;
     if (c.error) { out.innerHTML = `<div class="state bad"><b>Not compiled</b><span>${esc(c.error)}</span></div>`; return; }
     const s = c.spec || {}, p = c.plan || {}, nemotron = c.source === "nemotron";
-    const by = nemotron ? `Nemotron (${esc(String(c.model || "").split("/").pop())})` : c.source === "guard" ? "the keyword guard" : "the regex baseline (no key)";
+    const by = nemotron ? `Nemotron (${esc(String(c.model || "").split("/").pop())})` : c.source === "guard" ? "the keyword guard" : "the regex baseline";
     if (p.refused || s.refused) {   // the keyword guard's reason already says it was the guard
       out.innerHTML = `<div class="state bad"><b>Refused</b><span>${c.source === "guard" ? "" : `by ${by}: `}${esc(p.reason || s.refusal_reason || "outside civilian use")}</span></div>`;
       this.$(".cine-sub").textContent = "Refused before take-off";
       return;
     }
     if (!flyable) this.$(".cine-sub").textContent = "Parsed, not flown";
+    else if (c.source === "regex-baseline") this.$(".cine-sub").textContent = "A request in plain words, read by fixed rules before take-off";
     const call = c.call || null, problems = [...(c.problems || []), ...(p.problems || [])];
-    const facts = [`by ${by}`, ...(call && call.latency_s != null ? [`${fmt(call.latency_s, 2)} s`] : []),
-      ...(call && call.cost_usd != null ? [usd(call.cost_usd)] : []), ...(c.how === "replayed" ? ["recorded call, replayed"] : [])];
+    const spent = [...(call && call.latency_s != null ? [`${fmt(call.latency_s, 2)} s`] : []), ...(call && call.cost_usd != null ? [usd(call.cost_usd)] : [])];
+    const facts = [`by ${by}`, ...(c.how === "replayed" ? [`recorded call, replayed${spent.length ? ` (${spent.join(", ")} when recorded)` : ""}`] : spent)];
     const state = !flyable ? '<div class="state"><b>Parsed, not flown</b>' : !nemotron ? '<div class="state"><b>Patrol plan</b>'
       : problems.length ? '<div class="state"><b>Patrol plan, with problems</b>' : '<div class="state ok"><b>Checked patrol plan</b>';
     const counts = p.counts || {}, areas = ["F", "N", "S"].filter((a) => counts[a] > 0);

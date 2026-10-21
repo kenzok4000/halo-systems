@@ -267,7 +267,7 @@ function onValleyEvent(e) {
         const rank = (c) => (c.update ? (c.was !== c.status ? 0 : 2) : c.status === "spreading" ? 1 : 3);
         const [lead, ...rest] = all.slice().sort((a, b) => rank(a) - rank(b) || a.id - b.id);
         const d = dispatchFacts(lead), near = d.near ? `, near ${d.near}` : "";
-        const sub = [lead.update && !d.moved ? (d.head ? `Head running ${d.head}` : "") : `Within ${d.within} m, located by ${lead.by}`,
+        const sub = [lead.update && !d.moved ? (d.head ? (d.head.startsWith("not ") ? `Head ${d.head}` : `Head running ${d.head}`) : "") : `Within ${d.within} m, located by ${lead.by}`,
           rest.length ? `also ${rest.map((c) => (c.update ? `update on fire ${c.fire + 1}` : `new fire ${c.fire + 1}`)).join(", ")}` : "",
           "initial attack requested (simulated)"].filter(Boolean).join(" · ");
         cine.notice("dispatch", `Fire dispatch${lead.update ? " " : ": "}${dispatchHead(lead, lead.was)}${near}`,
@@ -277,6 +277,8 @@ function onValleyEvent(e) {
       return true;
     }
     case "injected":   // a squad order sent from this page or the recorder; the run carries it out at its next step
+      // Its arrival time depends on the machine, so a film leaves it out; squad_changed reports the order exactly.
+      if (FILM) return true;
       logItem("squad", `<span class="chip squad">you</span> ${t} ordered ${esc(e.k)} ${e.k === 1 ? "drone" : "drones"} from the ${esc(squadName(e.from))} squad to the ${esc(squadName(e.to))}`);
       return true;
     case "squad_changed": {   // drones left one squad for another, which they fly across to join; the source is re-planned
@@ -284,9 +286,9 @@ function onValleyEvent(e) {
       for (const s of e.squads || []) squadDef(s);
       const src = (e.squads || []).find((s) => s.code === e.from), one = k === 1;
       logItem("squad", `<span class="chip squad">squads</span> ${t} ${plural(k, "drone")} (${esc((e.drones || []).join(", "))}) ${one ? "leaves" : "leave"} the ${esc(from)} for the ${esc(to)}` +
-        `${src ? `<div class="why">The ${esc(from)} squad flies on with ${plural(src.n, "drone")} on ${src.lanes} lanes; the moved ${one ? "drone joins" : "drones join"} the ${esc(to)} squad in flight</div>` : ""}`);
+        `${src ? `<div class="why">The ${esc(from)} squad is re-planned on ${plural(src.lanes, "lane")}; the moved ${one ? "drone joins" : "drones join"} the ${esc(to)} squad in flight</div>` : ""}`);
       if (cine) cine.notice(`squad sq-${sqCode(e.to)}`, `${plural(k, "drone")}: ${from} to ${to}`,
-        src ? `${from} re-planned for ${plural(src.n, "drone")} on ${src.lanes} lanes · the moved ${one ? "drone flies" : "drones fly"} across to join` : "");
+        src ? `${from} re-planned on ${plural(src.lanes, "lane")} · the moved ${one ? "drone flies" : "drones fly"} across to join` : "");
       drawValley();
       return true;
     }
@@ -431,7 +433,7 @@ async function squadMove(from, to, k, at_s = null) {
   if (at_s != null) body.at_s = Number(at_s);
   try {
     return { ok: true, ...(await api(`/api/runs/${run.id}/inject`, body)) };
-  } catch (err) { alert(err.message); return { ok: false, reason: err.message }; }
+  } catch (err) { alert(err.message); return { ok: false, reason: err.message, alerted: true }; }
 }
 window.haloSquadMove = squadMove;
 
@@ -505,6 +507,10 @@ async function start(extra = {}) {
   $$(".valley-only").forEach((el) => { el.hidden = !run.wildfire; });
   const squads = (run.wildfire && run.scenario.squads) || [];
   $$(".squads-only").forEach((el) => { el.hidden = !squads.length; });
+  if (squads.length) {
+    $("#squads-legend").innerHTML = squads.map((s) => `<i class="dot sq-${sqCode(s.code)}"></i>`).join("") +
+      `squads: ${squads.map((s) => esc(String(s.name || AREA_NAME[s.code] || s.code).toLowerCase())).join(", ")}`;
+  }
   if (squads.length) {   // the Move drones control lists this patrol's squads
     const opts = squads.map((s) => `<option value="${esc(s.code)}">${esc(s.name)}</option>`).join("");
     $("#move-from").innerHTML = opts;
@@ -627,10 +633,11 @@ $("#zones").addEventListener("click", (e) => {
   const b = e.target.closest("[data-allclear]");
   if (b) { b.disabled = true; allClear(b.dataset.allclear); }
 });
-$("#move-go").addEventListener("click", () => {
+$("#move-go").addEventListener("click", async () => {
   const k = Number($("#move-k").value);
   if (!Number.isInteger(k) || k < 1) { alert("Move a whole number of drones, at least 1."); return; }
-  squadMove($("#move-from").value, $("#move-to").value, k);
+  const r = await squadMove($("#move-from").value, $("#move-to").value, k);
+  if (!r.ok && !r.alerted) alert(`No move: ${r.reason}.`);
 });
 $("#order").addEventListener("click", async () => {
   if (!run) return;
@@ -769,8 +776,8 @@ function valleyHtml(c) {
   const s = c.spec || {}, p = c.plan || {}, call = c.call;
   const who = c.source === "nemotron"
     ? `Nemotron (${esc(String(c.model || "").split("/").pop())}), ${c.how === "replayed" ? "a recorded call, replayed" : "a live call"}` +
-      (call ? `: ${fmt(call.latency_s, 2)} s, ${call.total_tokens} tokens${call.cost_usd != null ? `, ${usd(call.cost_usd)}` : ""}` : "")
-    : c.source === "guard" ? "the keyword guard (the model was not called)" : "the regex baseline (no key)";
+      (call ? `: ${fmt(call.latency_s, 2)} s, ${call.total_tokens} tokens${call.cost_usd != null ? `, ${usd(call.cost_usd)}` : ""}${c.how === "replayed" ? " when recorded" : ""}` : "")
+    : c.source === "guard" ? "the keyword guard (the model was not called)" : "the regex baseline";
   const name = (a) => esc(AREA_NAME[a] || a);
   if (p.refused || s.refused) {
     // The keyword guard's reason already says it was the guard and that the model was not called.
