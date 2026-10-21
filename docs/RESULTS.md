@@ -150,7 +150,7 @@ Nobody fights the fires during the flights. Afterwards, [tools/wildfire_initial_
 | Median size when the first crew arrives (ha) | 0.62 | 0.07 |
 | Share of today's escapes prevented, one Type 3 engine | | 37% |
 
-| Sensitivity | Share of today's escapes prevented | First crew on a smoulder, with the drones |
+| Sensitivity | Share of today's escapes prevented | First crew on a smoulder with the drones, share of all 197 fires |
 |---|---|---|
 | Response drawn per fire, median 30 min (as above) | 37% | 40% |
 | Response fixed at 15 / 60 / 120 min | 47% / 23% / 8% | 52% / 23% / 8% |
