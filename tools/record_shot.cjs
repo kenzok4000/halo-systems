@@ -38,6 +38,18 @@
 // only). Pick times inside the flight (a valley flight lasts a few hundred simulated seconds); an action
 // after the flight has ended is skipped. --approval manual makes each alert wait for a tap instead, and
 // --approve 0@40,1@44 then approves them (with --film; without it, approve on the page yourself).
+// --valley "text" [--seed N] switches the Mission tab to "Valley patrol after lightning", puts N (default 4012; the
+// night's strike ids belong to one seed) in its seed box, and types the request key by key as --mission --type does
+// (--type ms sets the pace; with --film the same typing frames, the compiling frame and --hold S seconds of the
+// plan, or the end of the video with --no-fly); then it flies the plan as a squad patrol of the valley, its alerts
+// under the pre-signed rules, as the page's Fly button does. A patrol lasts patrol_min x 60 simulated seconds (12
+// minutes unless the request says), so keep --from and --seconds x --speed inside it. A plan the compiler refused
+// stops the recorder before anything flies.
+// --squad-move "300:F:N:4,420:N:S:2" (with --film; squad patrols only) orders squad moves: at 300 simulated seconds,
+// 4 drones from the valley floor squad (F) to the north slopes (N), and so on, through window.haloSquadMove, the
+// page's Move drones action; the run carries each out at its first step at or after that second, and the safety
+// check may refuse it (both show as events). --squad-focus F|N|S frames that squad in the follow, orbit, chase, ride
+// and close-up views from the start of the flight (window.haloView.squadFocus).
 // Needs Playwright (`npm install playwright && npx playwright install chromium`, or a global install
 // with NODE_PATH set).
 const { chromium } = require("playwright");
@@ -50,6 +62,9 @@ const args = Object.fromEntries(process.argv.slice(2).reduce((acc, a, i, all) =>
   return acc;
 }, []));
 const url = args.url || "http://127.0.0.1:8765";
+// Squad codes are the areas' letters, F, N and S, in either case.
+if (args["squad-focus"]) args["squad-focus"] = args["squad-focus"].toUpperCase();
+if (args["squad-move"]) args["squad-move"] = args["squad-move"].toUpperCase();
 const out = args.out || (args.film ? "video/shot.mp4" : "video/shot.webm");
 const seconds = Number(args.seconds || 15);
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
@@ -57,7 +72,9 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 (async () => {
   mkdirSync(dirname(out), { recursive: true });
   if (args.film) return film();
-  for (const k of ["approve", "cancel", "allclear", "from", "ride-drone", "fire", "zoom", "panel", "cinema", "camera", "hold"]) if (args[k]) console.warn(`--${k} needs --film; ignored`);
+  for (const k of ["approve", "cancel", "allclear", "from", "ride-drone", "fire", "zoom", "panel", "cinema", "camera", "hold", "squad-move"]) if (args[k]) console.warn(`--${k} needs --film; ignored`);
+  if (args.mission && args.valley) throw new Error("--mission and --valley are two kinds of request: give one");
+  if (args["squad-focus"] && !["F", "N", "S"].includes(args["squad-focus"])) throw new Error("--squad-focus takes a squad: F, N or S");
   const browser = await chromium.launch({ args: ["--use-angle=swiftshader", "--enable-unsafe-swiftshader", "--ignore-gpu-blocklist"] });
   const context = await browser.newContext({ viewport: { width: 1920, height: 1080 },
     recordVideo: { dir: dirname(out), size: { width: 1920, height: 1080 } } });
@@ -72,15 +89,21 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
   if (args.tab && args.tab !== "fly") {
     await page.click(`nav.tabs button[data-tab="${args.tab}"]`);
   }
-  if (args.mission) {
+  if (args.mission || args.valley) {
     await page.click('nav.tabs button[data-tab="mission"]');
-    if (args.type) {   // type the request key by key, as a person would, instead of pasting it
+    if (args.valley) {   // the valley patrol request, on its seed
+      await page.click('#mission-mode button[data-mode="valley"]');
+      await page.fill("#valley-seed", String(args.seed || 4012));
+    }
+    const text = args.valley || args.mission;
+    if (args.type || args.valley) {   // type the request key by key, as a person would, instead of pasting it
       await page.fill("#mission-text", "");
-      await page.type("#mission-text", args.mission, { delay: Number(args.type) > 1 ? Number(args.type) : 45 });
-    } else await page.fill("#mission-text", args.mission);
+      await page.type("#mission-text", text, { delay: Number(args.type) > 1 ? Number(args.type) : 45 });
+    } else await page.fill("#mission-text", text);
     await sleep(1500);
     await page.click("#compile");
-    await page.waitForFunction(() => document.querySelector("#compile-out").textContent.trim().length > 0, null, { timeout: 120000 });
+    // Until the answer is in (a live Nemotron call can take longer than the pause below).
+    await page.waitForFunction(() => { const t = document.querySelector("#compile-out").textContent.trim(); return t && !/^Compiling/.test(t); }, null, { timeout: 120000 });
     await sleep(4000);
     if (!args["no-fly"] && await page.isEnabled("#fly-mission")) {
       await page.click("#fly-mission");
@@ -96,6 +119,7 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
     await page.click(`#speed button[data-speed="${args.speed}"]`);
   }
   if (args.view) await page.click(`#view-${args.view === "follow" ? "reset" : args.view}`);
+  if (args["squad-focus"]) await page.evaluate((c) => { window.haloView.squadFocus = c; }, args["squad-focus"]);
 
   const injects = (args.inject || "").split(",").filter(Boolean).map((s) => {
     const [kind, at] = s.split("@");
@@ -126,7 +150,9 @@ async function film() {
   const browser = await chromium.launch({ args: ["--use-angle=swiftshader", "--enable-unsafe-swiftshader", "--ignore-gpu-blocklist"] });
   const page = await browser.newPage({ viewport: { width: 1920, height: 1080 } });
   page.on("pageerror", (e) => console.error("page error:", e.message));
-  const typed = Boolean(args.mission && args.type);
+  if (args.mission && args.valley) throw new Error("--mission and --valley are two kinds of request: give one");
+  const request = args.valley || args.mission;
+  const typed = Boolean((args.mission && args.type) || args.valley);   // a valley request is always typed
   // Every option is checked before anything is filmed, so a typo does not cost minutes of rendering.
   // The camera program: [{ mode, zoom, at }] in video seconds; without --camera, --view and --zoom for the whole shot.
   const program = (args.camera || "").split(",").filter(Boolean).map((s) => {
@@ -148,6 +174,17 @@ async function film() {
   ].sort((a, b) => a.at - b.at);
   const bad = injects.find((i) => (i.kind === "approve" || i.kind === "cancel") && !Number.isInteger(i.id));
   if (bad) throw new Error(`--${bad.kind} takes alert numbers, as in 0@40,1@44`);
+  // Squad moves, "at:from:to:k": each is sent SQUAD_LEAD simulated seconds early with at_s, so the run carries it
+  // out at that second, as a headless run of the same orders would.
+  for (const s of (args["squad-move"] || "").split(",").filter(Boolean)) {
+    const [at, from, to, k] = s.split(":");
+    if (!(Number.isFinite(Number(at)) && Number(at) >= 0 && ["F", "N", "S"].includes(from) && ["F", "N", "S"].includes(to) && Number.isInteger(Number(k)) && Number(k) >= 1)) {
+      throw new Error(`--squad-move takes at:from:to:k, as in 300:F:N:4,420:N:S:2 (areas F, N, S); not ${s}`);
+    }
+    injects.push({ kind: "squad", at: Number(at), from, to, k: Number(k) });
+  }
+  injects.sort((a, b) => a.at - b.at);
+  if (args["squad-focus"] && !["F", "N", "S"].includes(args["squad-focus"])) throw new Error("--squad-focus takes a squad: F, N or S");
   await page.goto(`${url}/?film=1${args.cinema ? "&cinema=1" : ""}${args.approval ? `&approval=${encodeURIComponent(args.approval)}` : ""}`);
   await page.waitForFunction(() => document.querySelectorAll("#scenario option").length > 0);
   await page.waitForFunction(() => !/checking/.test(document.querySelector("#ai-pill").textContent));
@@ -165,11 +202,16 @@ async function film() {
   const hold = async (s) => {
     for (let k = 0; k < Math.round(s * fps); k++) { await page.evaluate((dv) => window.haloFilm.idle(dv), 1 / fps); await shoot(); }
   };
-  if (args.mission) {
+  if (request) {
     await click('nav.tabs button[data-tab="mission"]');
+    if (args.valley) {   // the valley patrol request, on its seed (the night's strike ids belong to one seed)
+      await click('#mission-mode button[data-mode="valley"]');
+      await set("#valley-seed", String(args.seed || 4012));
+      if (args.config) await set("#config", args.config);
+    }
     if (typed) {
       // Type the request one video frame at a time, key by key at --type ms apart.
-      const text = args.mission, ms = Number(args.type) > 1 ? Number(args.type) : 45;
+      const text = request, ms = Number(args.type) > 1 ? Number(args.type) : 45;
       const box = (t) => page.evaluate((t) => { const el = document.querySelector("#mission-text"); el.value = t; el.focus(); el.setSelectionRange(t.length, t.length);
         el.scrollTop = el.scrollHeight; el.dispatchEvent(new Event("input")); }, t);
       await box("");
@@ -196,7 +238,7 @@ async function film() {
       console.log(await page.textContent("#compile-out"));
       return encode(browser, dir, fps);
     }
-    if (await page.evaluate(() => document.querySelector("#fly-mission").disabled)) throw new Error(`mission not flyable: ${await page.textContent("#compile-out")}`);
+    if (await page.evaluate(() => document.querySelector("#fly-mission").disabled)) throw new Error(`${args.valley ? "patrol" : "mission"} not flyable: ${await page.textContent("#compile-out")}`);
     await click("#fly-mission");
   } else {
     await set("#scenario", args.scenario);
@@ -208,6 +250,10 @@ async function film() {
   // The run exists, and the drone model has loaded (or failed, and simple drones are drawn).
   await page.waitForFunction(() => { const s = window.haloFilm.status(); return s !== null && s.model !== "loading"; }, null, { timeout: 120000 });
   if ((usesFire || args.fire) && !(await page.evaluate(() => !!window.haloView.wildfire))) throw new Error("--view fire and --fire need the wildfire valley");
+  if ((args["squad-focus"] || args["squad-move"]) && await page.evaluate(() => document.querySelector(".squads-only").hidden)) {
+    throw new Error("--squad-focus and --squad-move need a squad patrol (--valley)");
+  }
+  if (args["squad-focus"]) await page.evaluate((c) => { window.haloView.squadFocus = c; }, args["squad-focus"]);
   await click('#speed button[data-speed="5"]');   // buffer as fast as the server's pacing allows
   if (args.view) await click(`#view-${args.view === "follow" ? "reset" : args.view}`);
   if (args["ride-drone"]) await page.evaluate((i) => { window.haloView.rideDrone = i; window.haloView.ride = null; }, Number(args["ride-drone"]));
@@ -229,10 +275,16 @@ async function film() {
   const need = from + seconds * playback;
   const commander = { approve: "haloApprove", cancel: "haloCancel", allclear: "haloAllClear" };
   const buffered = () => page.evaluate(() => window.haloFilm.status());
+  const SQUAD_LEAD = 2;   // simulated seconds; the page buffers at 5x, so about 0.4 s of wall time to spare
   for (const inj of injects) {
-    await page.waitForFunction((t) => { const s = window.haloFilm.status(); return s.ended || s.buffered_s >= t; }, inj.at, { polling: 50, timeout: 0 });
+    const at = inj.kind === "squad" ? Math.max(0, inj.at - SQUAD_LEAD) : inj.at;
+    await page.waitForFunction((t) => { const s = window.haloFilm.status(); return s.ended || s.buffered_s >= t; }, at, { polling: 50, timeout: 0 });
     if ((await buffered()).ended) { console.warn(`run ended before ${inj.kind}@${inj.at}; skipped`); break; }
-    if (commander[inj.kind]) {
+    if (inj.kind === "squad") {
+      const r = await page.evaluate(([f, t, k, a]) => window.haloSquadMove(f, t, k, a), [inj.from, inj.to, inj.k, inj.at]);
+      if (!r || !r.ok) console.warn(`squad move ${inj.from} to ${inj.to} (${inj.k}) at ${inj.at} s failed: ${r && r.reason}`);
+      else if (r.t > inj.at + 0.5) console.warn(`squad move at ${inj.at} s carried out at ${r.t} s (the run was ahead)`);
+    } else if (commander[inj.kind]) {
       const r = await page.evaluate(([fn, id]) => window[fn](id), [commander[inj.kind], inj.id]);
       if (!r || !r.ok) console.warn(`${inj.kind} ${inj.id} at ${inj.at} s failed: ${r && r.reason}`);
     } else await click(`button[data-inject="${inj.kind}"]`);

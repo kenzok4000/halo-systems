@@ -1,9 +1,10 @@
 // Halo Systems dashboard: the cinema layout (?cinema=1), for the demo video and for showing a flight on a big
 // screen. The 3D view fills the window and the side panel is hidden; over the view go a title card, the
 // flight clock, a few live counts, cards for the fire crew brief and the raised evacuation zones (wildfire
-// valley) or the swarm's current plan (other scenarios), and short notices for what just happened. Every line
-// comes from the same run messages as the side panel. Notices fade in and out on the view's own clock, so they
-// move the same way in film mode, where each frame takes seconds to draw.
+// valley, with the squads and the fire dispatch cards on a patrol that has them) or the swarm's current plan (other
+// scenarios), and short notices for what just happened. Every line comes from the same run messages as the side
+// panel. Notices fade in and out on the view's own clock, so they move the same way in film mode, where each frame
+// takes seconds to draw.
 
 const esc = (s) => String(s ?? "").replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
 const fmt = (x, d = 1) => (x === null || x === undefined ? "–" : Number(x).toFixed(d));
@@ -18,6 +19,34 @@ const word = (deg) => CW[Math.round((((deg % 360) + 360) % 360) / 22.5) % 16];
 const LEVEL_HEAD = { 3: "Prepare to leave", 4: "Evacuate now", 5: "Emergency" };
 const NOTICE_S = 6.5;   // how long a notice stays up, in view seconds
 const MAX_NOTICES = 3;
+const REQUEST_HEAD = { title: "Operator mission", sub: "A request in plain words, compiled before take-off" };
+// The valley's patrol areas (eval/scenarios.py valley_areas), short, for the request card and the squads card.
+export const SQUAD_SHORT = { F: "floor", N: "north", S: "south" };
+// The right column with squads or dispatch cards, fullest first: fires in the crew brief, dispatch cards, raised
+// zones, and the squads card in full, as one line, or left out. The first that fits the frame is shown: dispatch
+// cards and the squads are cut first, the crew brief and the raised zones last.
+const FIT = [[3, 3, 5, "full"], [3, 2, 5, "full"], [3, 2, 5, "line"], [3, 2, 4, "line"], [3, 1, 4, "line"], [2, 2, 5, "line"],
+  [2, 1, 5, "line"], [2, 1, 4, "line"], [2, 1, 4, null], [2, 1, 3, null], [1, 1, 3, null]];
+const code = (c) => (/^[A-Z]$/.test(String(c)) ? c : "x");
+const usd = (c) => (c > 0 && c < 0.0001 ? "under $0.0001" : `$${Number(c).toFixed(4)}`);
+
+// What a fire dispatch card says, read from its own text (sim/wildfire.py _dispatch): the place it is near, how
+// close the station located it, the way the head runs (spreading fires only), and how far the fix moved since the
+// fire's last card (moved_m, an update sent because the fix moved; 0 otherwise).
+export function dispatchFacts(e) {
+  const t = String(e.text || "");
+  const near = /\bnear (.+?) at x -?\d/.exec(t), within = /\(within (\d+) m[,)]/.exec(t), head = /Head running ([a-z-]+)/.exec(t);
+  return { near: near ? near[1] : null, within: within ? within[1] : String(Math.max(1, Math.round(e.err_m || 0))), head: head ? head[1] : null,
+    moved: e.moved_m > 0 ? Math.round(e.moved_m) : 0 };
+}
+// A dispatch card in a few words, for a notice: "new fire 2, smouldering" or "UPDATE: fire 2 now spreading, moved 45 m".
+// was: the status of the fire's card before this one, when known.
+export function dispatchHead(e, was = null) {
+  const d = dispatchFacts(e);
+  if (!e.update) return `new fire ${e.fire + 1}, ${e.status}`;
+  const now = was !== e.status || !d.moved ? ` now ${e.status}` : "";
+  return `UPDATE: fire ${e.fire + 1}${now}${d.moved ? `${now ? "," : ""} moved ${d.moved} m` : ""}`;
+}
 
 // A small map compass: north up, the arrow pointing where the fire's head runs (degrees anticlockwise from east),
 // with the forecast's uncertainty as a wedge of half-width cone degrees (a full ring when 90 or more).
@@ -55,15 +84,20 @@ export class Cinema {
   }
 
   // Before a mission flight: the operator's request as it is typed, then what the mission compiler made of it.
-  request(text) {
-    const card = this.$(".cine-request");
-    if (card.hidden) {
+  // head: the title card's {title, sub} for another kind of request (a valley patrol); a search mission by default.
+  request(text, head = null) {
+    const card = this.$(".cine-request"), h = head || REQUEST_HEAD;
+    if (card.hidden || h !== this.requestHead) {
+      if (!card.hidden) this.$(".cine-request .out").innerHTML = "";   // an answer to the other kind of request
       card.hidden = false;
-      this.$(".cine-scn").textContent = "Operator mission";
-      this.$(".cine-sub").textContent = "A request in plain words, compiled before take-off";
-    }
+      this.requestHead = h;
+      this.$(".cine-scn").textContent = h.title;
+      this.$(".cine-sub").textContent = h.sub;
+    } else if (h !== REQUEST_HEAD) this.$(".cine-sub").textContent = h.sub;   // a valley request typed after a refusal
     this.$(".cine-request .text").innerHTML = `${esc(text)}<span class="caret"></span>`;
   }
+  // The Mission tab switched to another kind of request: show its draft, if a request is on screen.
+  switchRequest(text, head = null) { if (!this.$(".cine-request").hidden) this.request(text, head); }
   compiling() {
     this.$(".cine-request .caret")?.remove();
     this.$(".cine-request .out").innerHTML = '<div class="state busy">Compiling the request<span class="dots"></span></div>';
@@ -91,6 +125,40 @@ export class Cinema {
         : "<p class=\"why\">Flying a typed request needs Nemotron's civilian check, which did not run here; the default request and the examples can be flown</p>");
   }
 
+  // The valley patrol compiler's answer (POST /api/valley/compile): who read the request and the patrol it plans,
+  // all from the response. flyable: the page's verdict (a refused request cannot fly).
+  valleyCompiled(c, flyable = true) {
+    const out = this.$(".cine-request .out");
+    // The title card's line under the title starts from the request's own each time, so a refusal's "Refused before
+    // take-off" does not stay up over the next request's plan.
+    this.$(".cine-sub").textContent = (this.requestHead || REQUEST_HEAD).sub;
+    if (c.error) { out.innerHTML = `<div class="state bad"><b>Not compiled</b><span>${esc(c.error)}</span></div>`; return; }
+    const s = c.spec || {}, p = c.plan || {}, nemotron = c.source === "nemotron";
+    const by = nemotron ? `Nemotron (${esc(String(c.model || "").split("/").pop())})` : c.source === "guard" ? "the keyword guard" : "the regex baseline (no key)";
+    if (p.refused || s.refused) {   // the keyword guard's reason already says it was the guard
+      out.innerHTML = `<div class="state bad"><b>Refused</b><span>${c.source === "guard" ? "" : `by ${by}: `}${esc(p.reason || s.refusal_reason || "outside civilian use")}</span></div>`;
+      this.$(".cine-sub").textContent = "Refused before take-off";
+      return;
+    }
+    if (!flyable) this.$(".cine-sub").textContent = "Parsed, not flown";
+    const call = c.call || null, problems = [...(c.problems || []), ...(p.problems || [])];
+    const facts = [`by ${by}`, ...(call && call.latency_s != null ? [`${fmt(call.latency_s, 2)} s`] : []),
+      ...(call && call.cost_usd != null ? [usd(call.cost_usd)] : []), ...(c.how === "replayed" ? ["recorded call, replayed"] : [])];
+    const state = !flyable ? '<div class="state"><b>Parsed, not flown</b>' : !nemotron ? '<div class="state"><b>Patrol plan</b>'
+      : problems.length ? '<div class="state"><b>Patrol plan, with problems</b>' : '<div class="state ok"><b>Checked patrol plan</b>';
+    const counts = p.counts || {}, areas = ["F", "N", "S"].filter((a) => counts[a] > 0);
+    const strikes = c.strikes || [], off = p.uncovered || [], check = (p.strike_ids || []).filter((i) => !off.includes(i)).length;
+    const outside = strikes.filter((k) => off.includes(k.id)).every((k) => k.area === "-");
+    const cell = (v, k) => `<div><b>${v}</b><span>${k}</span></div>`;
+    // Each fact on one line (a long model name can push the last one to a second line, but never split it).
+    out.innerHTML = `${state}<span>${facts.map((f) => f.replace(/ /g, " ")).join(" · ")}</span></div>` +
+      `<div class="plan-grid patrol">${cell(esc(p.drones), counts.R ? `drones, ${esc(counts.R)} in reserve` : "drones")}` +
+      `${cell(areas.map((a) => esc(counts[a])).join(" · "), `squads: ${areas.map((a) => SQUAD_SHORT[a]).join(" · ")}`)}` +
+      `${cell(`${esc(p.patrol_min)} min`, "patrol")}${cell(`${check}<small> of ${strikes.length}</small>`, "strikes to check")}` +
+      `${cell(off.length, outside ? "outside every area" : "outside the areas flown")}</div>` +
+      (problems.length ? `<p class="why">${esc(problems.join("; "))}</p>` : "");
+  }
+
   // note: the disclosures the side panel would show (replayed calls, the drones' drawn size).
   setRun(run, supervisor, note = "") {
     this.run = run;
@@ -100,6 +168,7 @@ export class Cinema {
     this.notices.forEach((n) => n.el.remove());
     this.notices = [];
     this.cards.html = "";
+    this.cards.key = "";
     this.$(".cine-cards").innerHTML = "";
     this.$(".cine-scn").textContent = run.scenario.title;
     this.$(".cine-sub").textContent = `${run.n} drones · ${supervisor}${run.wildfire ? " · alerts to simulated phones only" : ""}`;
@@ -113,7 +182,7 @@ export class Cinema {
     this.$(".cine-clock .speed").textContent = speed && speed !== 1 ? `×${speed}` : "";
     const stat = (v, k, cls = "") => `<div class="s ${cls}"><b>${v}</b><span>${k}</span></div>`;
     const html = valley
-      ? stat(valley.located, "fires located", valley.located ? "hot" : "") + stat(`${fmt(m.coverage_pct, 0)}%`, "survey block searched") +
+      ? stat(valley.located, "fires located", valley.located ? "hot" : "") + stat(`${fmt(m.coverage_pct, 0)}%`, valley.squadRun ? "patrol area searched" : "survey block searched") +
         stat(`${valley.warned}<small> of ${(this.run.scenario.wildfire?.phones || []).length}</small>`, "phones alerted", valley.warned ? "warn" : "") +
         stat(`${m.flying}<small> / ${this.run.n}</small>`, "drones flying")
       : stat(`${fmt(m.formation_error_m, 2)}<small> m</small>`, "formation error") + stat(`${fmt(m.min_sep_m, 1)}<small> m</small>`, "closest pair") +
@@ -133,10 +202,69 @@ export class Cinema {
   }
   planBy(src, why) { this.planSrc = src; this.planWhy = why || ""; }
 
-  // The fire crew brief and the raised zones (wildfire valley).
+  // The fire crew brief and the raised zones (wildfire valley); with squads or fire dispatch cards (valley patrols),
+  // those cards too, shortened until the column fits the frame.
   valley(valley) {
+    if (valley.squadRun || (valley.dispatch && valley.dispatch.length)) { this._fit(valley); return; }
+    const html = this._brief(valley) + this._zones(valley);
+    if (html !== this.cards.html) this.$(".cine-cards").innerHTML = this.cards.html = html;
+  }
+
+  // The column at the fullest level of FIT that fits above the frame's bottom edge. Measured only when what it
+  // would show changes; layout depends on nothing but the page, so film mode draws the same every time.
+  _fit(valley) {
+    const build = ([b, d, z, s]) => this._brief(valley, b) + this._dispatch(valley, d) + this._zones(valley, z) + this._squads(valley, s);
+    const key = build(FIT[0]);
+    if (key === this.cards.key) return;
+    this.cards.key = key;
+    const box = this.$(".cine-cards"), edge = parseFloat(getComputedStyle(this.el).getPropertyValue("--edge")) || 28;
+    const room = this.el.clientHeight - edge;
+    for (let i = 0; i < FIT.length; i++) {
+      const html = i ? build(FIT[i]) : key;
+      if (html !== this.cards.html) box.innerHTML = this.cards.html = html;
+      if (box.offsetTop + box.offsetHeight <= room) break;
+    }
+  }
+
+  // Fire dispatch (pre-signed alert rule): the newest cards the station sent, newest first (simulated).
+  _dispatch(valley, max) {
+    const cards = valley.dispatch || [];
+    if (!cards.length) return "";
+    const rows = cards.slice(-max).reverse().map((e) => {
+      const d = dispatchFacts(e);
+      return `<li><b>Fire ${e.fire + 1}</b>${e.update ? '<span class="upd">UPDATE</span>' : ""}<span class="st ${esc(e.status)}">${esc(e.status)}</span>` +
+        `${d.moved ? `<span class="mv">moved ${d.moved} m</span>` : ""}` +
+        `<div class="line">${d.near ? `near ${esc(d.near)} · ` : ""}within ${esc(d.within)} m · located by ${esc(e.by)}</div></li>`;
+    });
+    const more = cards.length > max ? `<li class="more">and ${cards.length - max} earlier</li>` : "";
+    return `<div class="card glass"><h4>Fire dispatch <span class="when">simulated · initial attack</span></h4><ul class="dispatch">${rows.join("")}${more}</ul></div>`;
+  }
+
+  // The squads of a valley patrol: per area, drones flying, laps of its circuit and drones flying across to join it.
+  // form: "full" (a row per squad), "line" (one line of counts) or null (left out).
+  _squads(valley, form) {
+    const sq = valley.squadRun;
+    if (!sq || !form) return "";
+    const now = new Map((sq.now || []).map((s) => [s.code, s])), defs = [...sq.defs.values()];
+    const patrol = sq.patrolS ? `<span class="when">${esc(+(sq.patrolS / 60).toFixed(1))} min patrol</span>` : "";
+    const flying = (d) => (now.get(d.code) ? now.get(d.code).flying : d.n);
+    if (form === "line") {   // drones flying, and "+k" on their way to join
+      const joining = (d) => { const j = now.get(d.code)?.joining?.length || 0; return j ? `<span class="join">+${j}</span>` : ""; };
+      return `<div class="card glass"><h4>Squads ${patrol}</h4><div class="sq-line">` +
+        defs.map((d) => `<span><i class="sqdot sq-${code(d.code)}"></i>${esc(SQUAD_SHORT[d.code] || d.name)} ${flying(d)}${joining(d)}</span>`).join("") + "</div></div>";
+    }
+    const rows = defs.map((d) => {
+      const f = now.get(d.code), l = sq.laps[d.code], join = f && f.joining ? f.joining.length : 0;
+      return `<li><i class="sqdot sq-${code(d.code)}"></i><b>${esc(d.name)}</b><span class="k">${flying(d)} flying</span>` +
+        `${l ? `<span class="k">${fmt(l.base + l.last)} laps</span>` : ""}${join ? `<span class="join">+${join} joining</span>` : ""}</li>`;
+    });
+    return `<div class="card glass"><h4>Squads ${patrol}</h4><ul class="squads">${rows.join("")}</ul></div>`;
+  }
+
+  // The fire crew brief: the max fires that matter most (spreading first, then the fastest).
+  _brief(valley, max = 3) {
     const fires = (valley.brief || []).slice().sort((a, b) => (b.state === "spreading") - (a.state === "spreading") || b.head_m_per_min - a.head_m_per_min);
-    const rows = fires.slice(0, 3).map((b) => {
+    const rows = fires.slice(0, max).map((b) => {
       // Direction: the brief's compass bearing when it sends one, else its compass word.
       const k = COMPASS.indexOf(b.direction), compass = b.head_bearing_deg != null;
       const deg = compass ? 90 - b.head_bearing_deg : k >= 0 ? k * 22.5 : null;
@@ -161,17 +289,19 @@ export class Cinema {
         `<div class="line">${b.head_m_per_min > 0 ? `${ifs ? "if it takes off:" : sure ? "head runs" : "head most likely"} <b>${dir}</b>${within} at ${fmt(b.head_m_per_min)} m/min` : esc(b.direction || "not spreading")}${b.area_1h_ha != null ? ` · ${fmt(b.area_1h_ha)} ha in 1 h` : ""}</div>` +
         (drive.length ? `<div class="line why-line">${drive.join(" · ")}</div>` : "") + (where.length ? `<div class="line">${where[0]}</div>` : "") + "</div></li>";
     });
-    const more = fires.length > 3 ? `<li class="more">and ${fires.length - 3} more</li>` : "";
-    const brief = `<div class="card glass"><h4>Fire crew brief <span class="when">${valley.briefT != null ? `forecast at ${clock(valley.briefT)}` : ""}</span></h4>` +
+    const more = fires.length > max ? `<li class="more">and ${fires.length - max} more</li>` : "";
+    return `<div class="card glass"><h4>Fire crew brief <span class="when">${valley.briefT != null ? `forecast at ${clock(valley.briefT)}` : ""}</span></h4>` +
       (rows.length ? `<ul class="brief">${rows.join("")}${more}</ul>` : '<p class="why">Waiting for the first fire to be located…</p>') +
       `<div class="bands"><i class="b30"></i><i class="b60"></i><i class="b120"></i><i class="b180"></i>fire likely within 30, 60, 120, 180 min</div></div>`;
+  }
+
+  // The raised evacuation zones, highest level first (at most max of them).
+  _zones(valley, max = 5) {
     const up = (valley.zones || []).map((z, i) => ({ ...z, level: (valley.zonesLevel || [])[i] || 0 })).filter((z) => z.level > 0).sort((a, b) => b.level - a.level);
-    const zones = up.length ? `<div class="card glass"><h4>Evacuation alerts <span class="when">simulated phones</span></h4><ul class="zones">` +
-      up.slice(0, 5).map((z) => `<li><span class="lvl l${z.level}">Level ${z.level}</span><b>${esc(z.code)}</b><span class="name">${esc(z.name || "")}</span></li>`).join("") +
-      (up.length > 5 ? `<li class="more">and ${up.length - 5} more zones</li>` : "") + "</ul>" +
+    return up.length ? `<div class="card glass"><h4>Evacuation alerts <span class="when">simulated phones</span></h4><ul class="zones">` +
+      up.slice(0, max).map((z) => `<li><span class="lvl l${z.level}">Level ${z.level}</span><b>${esc(z.code)}</b><span class="name">${esc(z.name || "")}</span></li>`).join("") +
+      (up.length > max ? `<li class="more">and ${up.length - max} more zones</li>` : "") + "</ul>" +
       `<div class="key">${[...new Set(up.map((z) => z.level))].sort().map((l) => `Level ${l}: ${LEVEL_HEAD[l].toLowerCase()}`).join(" · ")}</div></div>` : "";
-    const html = brief + zones;
-    if (html !== this.cards.html) this.$(".cine-cards").innerHTML = this.cards.html = html;
   }
 
   clearNotices() { this.notices.forEach((n) => n.el.remove()); this.notices = []; }
@@ -183,7 +313,8 @@ export class Cinema {
     return n ? n.data : null;
   }
 
-  // A short notice of something that just happened: kind picks its colour (station, alert, crew, plan, event).
+  // A short notice of something that just happened: kind picks its colour (station, alert, crew, plan, event, and
+  // in valley patrols dispatch, or "squad sq-<code>" in the colour of the squad that drones join).
   // With a key, a notice still up under that key is rewritten in place (and kept up a little longer) instead.
   notice(kind, title, sub = "", key = null, data = null) {
     const html = `<b>${esc(title)}</b>${sub ? `<span>${esc(sub)}</span>` : ""}`;

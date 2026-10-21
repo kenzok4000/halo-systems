@@ -225,3 +225,45 @@ body.cinema #wind svg { width: 22px; height: 22px; fill: #7fb6ff; }
 .cine-request .why { color: #b6c0cc; margin: 10px 0 0; font-size: 15px; }
 .cine-note { margin-top: 3px; font-size: 13px; color: #9aa6b2; }
 .cine-request .dflt { font-style: normal; font-weight: 500; color: #8f9aa6; }
+
+/* Valley patrols with squads, and the fire dispatch cards of the pre-signed alert rule. Everything here appears only
+   when a run has squads or sends dispatch cards, so other runs look as before. Squad colours: valley floor,
+   north slopes, south slopes. */
+.search-only[hidden], .valley-mode-only[hidden], .squads-only[hidden], .row.move[hidden] { display: none; }
+.mode-switch { margin-bottom: 10px; }
+.mode-switch button { flex: 1; font-size: 13px; }
+.valley-examples button { font-size: 12px; }
+.seed-note { margin: 0 0 9px; flex: 1; }
+.dot.sq-F, .sqdot.sq-F { background: #4fc3f7; } .dot.sq-N, .sqdot.sq-N { background: #9ccc65; } .dot.sq-S, .sqdot.sq-S { background: #ffd54f; }
+.dot.sq-F, .dot.sq-N { margin-right: 2px; }
+.sqdot { display: inline-block; width: 10px; height: 10px; border-radius: 50%; flex: none; }
+.chip.squad { background: #4fc3f7; color: #04212d; } .chip.dispatch { background: #ff4f81; color: #2a0010; }
+#log li.squad { border-left-color: #4fc3f7; }
+#log li.dispatch { border-left-color: #ff4f81; }
+.squads { list-style: none; padding: 0; margin: 0 0 8px; font-size: 13px; }
+.squads li { display: flex; align-items: center; gap: 8px; padding: 3px 0; }
+.squads li .k { color: var(--muted); }
+.row.move label { margin-bottom: 0; }
+.row.move button { flex: none; }
+#compile-out h4 { font-size: 12px; text-transform: uppercase; letter-spacing: .04em; color: var(--muted); margin: 12px 0 2px; }
+#compile-out .refused { color: var(--bad); }
+.notice.dispatch { border-left-color: #ff4f81 !important; }
+.notice.squad { border-left-color: #4fc3f7 !important; } .notice.squad.sq-N { border-left-color: #9ccc65 !important; }
+.notice.squad.sq-S { border-left-color: #ffd54f !important; }
+.cine-cards .dispatch li, .cine-cards .squads li { padding: 5px 0; border-top: 1px solid rgba(255, 255, 255, .08); font-size: 16px; }
+.cine-cards .dispatch li:first-child, .cine-cards .squads li:first-child { border-top: 0; padding-top: 0; }
+.cine-cards .dispatch .line { color: #d3dae2; font-size: 14px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.cine-cards .dispatch .st, .cine-cards .dispatch .upd { font-size: 12px; padding: 1px 7px; border-radius: 4px; margin-left: 6px; background: rgba(255, 255, 255, .12); }
+.cine-cards .dispatch .st.spreading { background: rgba(255, 110, 50, .85); color: #fff; }
+.cine-cards .dispatch .upd { background: rgba(255, 79, 129, .8); color: #fff; font-weight: 600; letter-spacing: .04em; }
+.cine-cards .dispatch .mv { font-size: 13px; color: #ffd28a; margin-left: 8px; }
+.cine-cards .dispatch .more, .cine-cards .squads .more { color: #b6c0cc; font-size: 14px; }
+.cine-cards .squads li { display: flex; align-items: center; gap: 10px; padding: 4px 0; }
+.cine-cards .squads li b { font-weight: 600; min-width: 128px; }
+.cine-cards .squads li .k { color: #d3dae2; font-size: 15px; font-variant-numeric: tabular-nums; }
+.cine-cards .squads li .join { color: #ffd28a; font-size: 14px; margin-left: auto; }
+.cine-cards .sq-line { display: flex; gap: 22px; font-size: 16px; color: #d3dae2; }
+.cine-cards .sq-line > span { display: flex; align-items: center; gap: 7px; }
+.cine-cards .sq-line .join { color: #ffd28a; font-size: 14px; margin-left: -3px; }
+.cine-request .plan-grid.patrol { grid-template-columns: 1fr 1.6fr .8fr 1.1fr 1.3fr; }   /* "drones, 4 in reserve" on one line */
+.cine-request .plan-grid b small { font-size: 17px; font-weight: 500; color: #b6c0cc; }
