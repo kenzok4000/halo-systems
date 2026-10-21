@@ -332,7 +332,7 @@ def _valley_options(body: dict) -> dict:
     if body.get("alert_rule") in ("forecast", "presigned", "distance"):
         opts["alert_rule"] = body["alert_rule"]
         if body["alert_rule"] == "presigned" and body.get("smoulder_alerts") is not False:
-            opts["smoulder_alerts"] = True          # the entry's design (Kenzo's choice, 21 October 2026)
+            opts["smoulder_alerts"] = True          # the entry's design (the entrant's choice, 21 October 2026)
     strikes = body.get("strikes")
     if strikes == "all":
         opts["strikes"] = "all"

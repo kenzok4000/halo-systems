@@ -164,7 +164,7 @@ degrees, hour-to-hour errors and a fuel moisture error).
 
 These are options in the scenario. Its defaults are one sweep and today's alert rule, and the headline results
 (seeds 4000 to 4019, and 7000 to 7019 for which way the fire runs) use them. Pre-signed rules are the entry's alert
-design, chosen by Kenzo, the entrant, on 20 October 2026; on 21 October, after T5b, Kenzo chose that their Level 3
+design, chosen by the entrant on 20 October 2026; on 21 October, after T5b, the entrant chose that their Level 3
 rule also counts smoulders (`smoulder_alerts`, below). The first crew's results use the pre-signed rules' cards
 to fire dispatch as the drones' reports, and the squads' results use squads.
 
@@ -251,7 +251,7 @@ smoulder as if it took off now, as today's rule does. Levels 4 and 5 still need 
 located fire still goes to fire dispatch as a card. On development seeds 3000 to 3007 (16 drones), its public
 alerts were exactly today's rule's, and its cards matched the pre-signed rules' in time, place and status; in two
 valleys two cards named a different head direction, because alert deliveries share a random stream with the
-forecast ensemble. On 21 October Kenzo, the entrant, chose this as the entry's alert design: the dashboard's
+forecast ensemble. On 21 October the entrant chose this as the entry's alert design: the dashboard's
 pre-signed mode counts smoulders unless a run asks otherwise (`"smoulder_alerts": false`). It drafts public alerts
 exactly as today's rule does (identical on the development seeds above), so today's-rule alert results carry over,
 and its cards go out as in the first crew's study.

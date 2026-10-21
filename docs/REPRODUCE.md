@@ -172,7 +172,7 @@ HALO_BUDGET_USD=8.73 halo valley-eval --sets heldout,tuning --model $NANO \
 gzip results/valley_eval/calls.jsonl
 ```
 
-`HALO_BUDGET_USD` is the spend guard's cap on the shared ledger ([NVIDIA_NEBIUS.md](NVIDIA_NEBIUS.md)); the committed runs set it to 8.73 to stay within the spend Kenzo approved. Each file also scores the regex baseline on the same requests, and without `--model` the command scores the baseline only, with no key. With `--replay` (and a new `--out`), every call is answered from `results/valley_compile_cache.jsonl`, with no key and no cost, and the scores come out as committed. `valley-eval` writes only the JSON files; `results/valley_eval/REPORT.md` was written from them.
+`HALO_BUDGET_USD` is the spend guard's cap on the shared ledger ([NVIDIA_NEBIUS.md](NVIDIA_NEBIUS.md)); the committed runs set it to 8.73 to stay within the spend the entrant approved. Each file also scores the regex baseline on the same requests, and without `--model` the command scores the baseline only, with no key. With `--replay` (and a new `--out`), every call is answered from `results/valley_compile_cache.jsonl`, with no key and no cost, and the scores come out as committed. `valley-eval` writes only the JSON files; `results/valley_eval/REPORT.md` was written from them.
 
 ## Pre-signed alerts and the first crew (no key needed)
 

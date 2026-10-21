@@ -2,8 +2,8 @@
 ground station misses a fire, warns people too late, or sends a public alert it should not have.
 
 The system under test is today's flight (16 drones by default, the improved controller with the rule supervisor,
-one sweep of the survey block) with the station's spread forecast and Kenzo's chosen alerts: pre-signed trigger
-rules, sent automatically. No language model takes part in any alert, card or flight decision; the model only
+one sweep of the survey block) with the station's spread forecast and pre-signed trigger rules as T3 flew them
+(public alerts only for fires believed spreading), sent automatically. No language model takes part in any alert, card or flight decision; the model only
 proposes test conditions, as in ``ai/tester.py``.
 
 A test is a valley seed plus the conditions in ``SPACE``. ``build`` makes the committed valley for that seed and
