@@ -109,7 +109,9 @@ def chart(aggs: dict, path: Path) -> None:
     matplotlib.use("Agg")
     import matplotlib.pyplot as plt
     colours = {"A": "#8c8c8c", "B": "#4e79a7", "D": "#d9542b"}
-    fig, axes = plt.subplots(1, 2, figsize=(12.5, 4.8), dpi=130, sharey=True)
+    k = max(1, len(aggs))            # one panel per ground station flown
+    fig, axes = plt.subplots(1, k, figsize=(6.4 * k, 4.8), dpi=130, sharey=True, squeeze=False)
+    axes = axes[0]
     for ax, (station, agg) in zip(axes, aggs.items()):
         ns = sorted(agg)
         for arm in ("A", "B", "D"):

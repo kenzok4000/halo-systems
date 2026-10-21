@@ -1,0 +1,243 @@
+{
+ "what": "wildfire valley flown without and with an airspace hold (crewed firefighting aircraft inbound)",
+ "scenario": "wildfire_valley",
+ "seed": 3000,
+ "n": 16,
+ "config": "improved+rule",
+ "caveat": "one development seed: a demonstration of the control, not a measurement",
+ "timeline": {
+  "route_m": 1138.7,
+  "mission_speed_mps": 6.0,
+  "planned_sweep_s": 189.8,
+  "scenario_limit_s": 396.7,
+  "duration_limit_s": 696.7,
+  "hold_at_s": 90.0,
+  "resume_at_s": 390.0,
+  "hold_s": 300.0,
+  "hold_altitude_m": 10.0,
+  "note": "the 16-drone sweep is planned as about 3.2 min of flying (1139 m at the nominal 6 m/s), so an order 10 minutes in would come after the sweep; the hold was ordered at 90 s instead, halfway through the planned sweep, and resumed 5 minutes later as planned"
+ },
+ "orders": [
+  {
+   "t": 90.0,
+   "op": "hold"
+  },
+  {
+   "t": 390.0,
+   "op": "resume"
+  }
+ ],
+ "progress": {
+  "at_order": {
+   "t": 89.92,
+   "progress_m": 473.533,
+   "leader_speed_mps": 1.8
+  },
+  "route_m": 1138.7,
+  "stopped_at_m": 474.4,
+  "moved_again_s": 396.42,
+  "behind_s": {
+   "524": 306.5,
+   "600": 306.5,
+   "700": 306.3,
+   "800": 306.7,
+   "900": 305.2,
+   "1000": 305.0,
+   "1100": 305.1
+  }
+ },
+ "flights": {
+  "no_hold": {
+   "completed": true,
+   "completion_time_s": 247.48,
+   "duration_s": 252.48,
+   "progress_m": 1138.7,
+   "drones_retired": 0,
+   "drones_lost": 0,
+   "drones_flying_end": 16,
+   "collisions": 0,
+   "obstacle_crashes": 0,
+   "ground_crashes": 0,
+   "near_misses": 0,
+   "min_separation_m": 7.984,
+   "energy_wh": 155.691,
+   "targets_found": 3,
+   "targets_total": 5,
+   "area_covered_pct": 99.6,
+   "fires_total": 5,
+   "fires_located": 5,
+   "fires_located_by_smoke": 4,
+   "fires_located_by_thermal": 1,
+   "false_locations": 1,
+   "all_located_s": 218.1,
+   "fire_table": [
+    {
+     "shelter": "open",
+     "located": true,
+     "t": 0.1,
+     "by": "smoke"
+    },
+    {
+     "shelter": "canopy",
+     "located": true,
+     "t": 218.1,
+     "by": "thermal"
+    },
+    {
+     "shelter": "overhang",
+     "located": true,
+     "t": 52.1,
+     "by": "smoke"
+    },
+    {
+     "shelter": "open",
+     "located": true,
+     "t": 48.1,
+     "by": "smoke"
+    },
+    {
+     "shelter": "open",
+     "located": true,
+     "t": 0.1,
+     "by": "smoke"
+    }
+   ],
+   "battery_end_mean_pct": 76.3,
+   "capacity_wh": 41.0,
+   "wall_s": 73.7,
+   "validator_log": [],
+   "events": [],
+   "retired_events": []
+  },
+  "hold": {
+   "completed": true,
+   "completion_time_s": 552.5,
+   "duration_s": 557.5,
+   "progress_m": 1138.7,
+   "drones_retired": 0,
+   "drones_lost": 0,
+   "drones_flying_end": 16,
+   "collisions": 0,
+   "obstacle_crashes": 0,
+   "ground_crashes": 0,
+   "near_misses": 0,
+   "min_separation_m": 7.984,
+   "energy_wh": 346.189,
+   "targets_found": 3,
+   "targets_total": 5,
+   "area_covered_pct": 99.7,
+   "fires_total": 5,
+   "fires_located": 5,
+   "fires_located_by_smoke": 4,
+   "fires_located_by_thermal": 1,
+   "false_locations": 1,
+   "all_located_s": 523.1,
+   "airspace_held_s": 300.0,
+   "airspace_clear_s_max": 6.12,
+   "airspace_holds": [
+    {
+     "from_s": 90.0,
+     "to_s": 390.0,
+     "altitude_m": 10.0,
+     "source": "operator",
+     "flying_at_start": 16,
+     "clear_s": 6.12,
+     "clear_from_s": 90.0,
+     "charge_used_wh": 188.036,
+     "retired_during": 0
+    }
+   ],
+   "fire_table": [
+    {
+     "shelter": "open",
+     "located": true,
+     "t": 0.1,
+     "by": "smoke"
+    },
+    {
+     "shelter": "canopy",
+     "located": true,
+     "t": 523.1,
+     "by": "thermal"
+    },
+    {
+     "shelter": "overhang",
+     "located": true,
+     "t": 52.1,
+     "by": "smoke"
+    },
+    {
+     "shelter": "open",
+     "located": true,
+     "t": 48.1,
+     "by": "smoke"
+    },
+    {
+     "shelter": "open",
+     "located": true,
+     "t": 0.1,
+     "by": "smoke"
+    }
+   ],
+   "battery_end_mean_pct": 47.2,
+   "capacity_wh": 41.0,
+   "wall_s": 159.0,
+   "validator_log": [
+    {
+     "t": 90.0,
+     "source": "operator",
+     "kind": "airspace",
+     "order": {
+      "t": 90.0,
+      "op": "hold"
+     },
+     "action": "accepted",
+     "violations": [],
+     "altitude_m": 10.0
+    },
+    {
+     "t": 390.0,
+     "source": "operator",
+     "kind": "airspace",
+     "order": {
+      "t": 390.0,
+      "op": "resume"
+     },
+     "action": "accepted",
+     "violations": [],
+     "altitude_m": null
+    }
+   ],
+   "events": [
+    {
+     "t": 90.0,
+     "kind": "airspace_hold",
+     "altitude_m": 10.0,
+     "source": "operator"
+    },
+    {
+     "t": 390.0,
+     "kind": "airspace_resume",
+     "held_s": 300.0,
+     "source": "operator"
+    }
+   ],
+   "retired_events": []
+  }
+ },
+ "difference": {
+  "sweep_finished_later_s": 305.02,
+  "fires_located": {
+   "no_hold": 5,
+   "hold": 5
+  },
+  "drones_retired": {
+   "no_hold": 0,
+   "hold": 0
+  },
+  "energy_wh": {
+   "no_hold": 155.691,
+   "hold": 346.189
+  }
+ }
+}

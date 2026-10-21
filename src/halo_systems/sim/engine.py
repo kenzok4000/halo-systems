@@ -7,8 +7,14 @@ reading. Two controllers run with the same seed therefore face exactly the
 same gusts, sensor noise and radio losses (a paired comparison).
 
 Each step, in order: wind, motor failures, sensing and radio, formation
-membership, supervisor and operator script, controller, thrust and physics,
-collisions, energy, ground sensor, recording, end check.
+membership, supervisor and operator script (directives, squad orders and
+airspace orders), controller, thrust and physics, collisions, energy, ground
+sensor, recording, end check.
+
+Airspace orders are the operator's "aircraft inbound" control: when crewed
+firefighting aircraft (air tankers, helicopters, a lead plane) come into the
+area, a hold stops every flying drone where it is and lowers it to a hold
+altitude, out of the aircraft's way, until the operator resumes the sweep.
 
 Physics and the metrics use the true state. Controllers work from navigation
 estimates and radio messages, and the status report's separation, wind and
@@ -18,6 +24,7 @@ formation error are estimates too.
 from __future__ import annotations
 
 import math
+import numbers
 import time
 from collections import deque
 from dataclasses import dataclass, field
@@ -207,6 +214,14 @@ class Simulation:
         self.wall_start = time.perf_counter()
         self._script = sorted(scenario.script, key=lambda s: s.t)
         self._failures = sorted(scenario.failures, key=lambda f: f.t)
+        # Airspace orders (hold and resume). ``airspace`` is true once any order exists for this run, scripted or
+        # injected; every airspace branch is guarded by it or by an order, so runs without one are unchanged.
+        self._airspace_orders = sorted((dict(o) for o in scenario.airspace_script), key=lambda o: float(o["t"]))
+        self.airspace = bool(self._airspace_orders)
+        self.holds: list[dict] = []          # one record per hold, in order (see airspace_order)
+        self._hold: dict | None = None       # the hold in force
+        self._hold_e0 = 0.0
+        self._hold_r0 = 0
         # Fires, smoke, forecasts and alerts (the wildfire valley only).
         self.wildfire = None
         if scenario.wildfire is not None:
@@ -287,6 +302,8 @@ class Simulation:
         if self.squads:
             while self._squad_orders and self._squad_orders[0]["t"] <= t:
                 self.squad_order(self._squad_orders.pop(0), obs)
+        while self._airspace_orders and float(self._airspace_orders[0]["t"]) <= t:
+            self.airspace_order(self._airspace_orders.pop(0), obs=obs)
 
         # Control (fast loop).
         a_cmd = self.ctrl.command(obs, dt)
@@ -308,6 +325,8 @@ class Simulation:
 
         self._collisions(p0, airborne)
         self._energy(thrust, powered, np.linalg.norm(self.v - wind, axis=1))
+        if self._hold is not None:
+            self._track_hold()
         if self.wildfire is not None and self.k % SENSE_EVERY == 0:
             self.wildfire.tick(self, SENSE_EVERY * dt)
         if self.sc.sensor.enabled and self.k % SENSE_EVERY == 0:
@@ -623,7 +642,8 @@ class Simulation:
         k = order.get("k")
         incoming = {sq.code: sum(1 for d, tr in plan.transit.items() if tr["to"] == sq.id and act[d])
                     for sq in plan.squads}
-        bad = self.validator.check_squads(order, flying, caps, self.t, source, incoming)
+        bad = self.validator.check_squads(order, flying, caps, self.t, source, incoming,
+                                          airspace_hold=self._hold is not None)
         if bad:
             self.event("squad_change_rejected", None, by=source, order=dict(order), reasons=bad)
             return {"ok": False, "reasons": bad, "t": round(self.t, 2), "drones": []}
@@ -636,6 +656,82 @@ class Simulation:
         self.event("squad_changed", None, by=source, op="move", **{"from": order["from"]}, to=order["to"],
                    drones=movers, squads=[sq.to_dict() for sq in plan.squads])
         return {"ok": True, "reasons": [], "t": round(self.t, 2), "drones": movers}
+
+    # -- airspace orders ("aircraft inbound") ------------------------------------------------------------------------
+    def airspace_order(self, order: dict, source: str | None = None, obs: Observation | None = None) -> dict:
+        """Apply an airspace order: {"op": "hold", "altitude_m": optional} or {"op": "resume"}, from ``source`` (or
+        the order's "by", or "operator"). Checked by the safety validator first (``check_airspace``) and logged.
+
+        A hold stops every flying drone where it is and lowers it to the hold altitude above the ground under it
+        (the plan's ``hold``, starting from where the drones are in ``obs``, by default the last step's); a
+        further, lower hold lowers it again. The hold altitude is never above the swarm's altitude now. Resume
+        climbs back to the directive's altitude and carries on the sweep. Each hold is recorded in ``holds``:
+        from_s, to_s (None while it lasts), altitude_m, source, flying_at_start, clear_s (from clear_from_s, the
+        order that set the altitude held, until every active drone is within 1.5 m of the hold altitude and slower
+        than 0.5 m/s; None until then), clear_from_s (from_s, or the time of a later, lower hold),
+        charge_used_wh by the active drones and retired_during. Returns {ok, reasons, t, altitude_m}.
+        """
+        source = source or str(order.get("by") or "operator")
+        self.airspace = True
+        h = self._hold
+        op = order.get("op")
+        obs = obs if obs is not None else self.obs
+        positions, active = (obs.p_est, obs.active) if obs is not None else (None, None)
+        plan = self.ctrl.plan
+        check = self.validator.check_airspace(
+            order, held_since_s=h["from_s"] if h else None, hold_altitude_m=h["altitude_m"] if h else None,
+            directive_altitude_m=self.directive.altitude_m, t=self.t, source=source,
+            current_altitude_m=plan.altitude_now(positions, active))
+        if not check.ok:
+            self.event("airspace_rejected", None, op=op, violations=check.violations, source=source)
+            return {"ok": False, "reasons": check.violations, "t": round(self.t, 2), "altitude_m": None}
+        if op == "hold":
+            alt = round(check.altitude_m, 2)
+            if h is None:
+                h = {"from_s": round(self.t, 2), "to_s": None, "altitude_m": alt, "source": source,
+                     "flying_at_start": int(self.active_mask().sum()), "clear_s": None,
+                     "clear_from_s": round(self.t, 2), "charge_used_wh": 0.0, "retired_during": 0}
+                self.holds.append(h)
+                self._hold = h
+                self._hold_e0 = float(np.sum(self.energy_wh))
+                self._hold_r0 = int(np.sum(self.status == RETIRED))
+            else:
+                # A lower hold: clear_s now counts from this order until every drone is down at the new altitude.
+                h["altitude_m"] = alt
+                h["clear_s"] = None
+                h["clear_from_s"] = round(self.t, 2)
+            plan.hold(check.altitude_m, positions, active)
+            self.event("airspace_hold", None, altitude_m=alt, source=source)
+        else:
+            h["to_s"] = round(self.t, 2)
+            self._hold = None
+            plan.resume()
+            self.event("airspace_resume", None, held_s=round(self.t - h["from_s"], 2), source=source)
+        return {"ok": True, "reasons": check.violations, "t": round(self.t, 2),
+                "altitude_m": round(check.altitude_m, 2) if check.altitude_m is not None else None}
+
+    def _track_hold(self) -> None:
+        """Charge used, drones retired and, until every active drone is stopped at the hold altitude, clear_s."""
+        h = self._hold
+        h["charge_used_wh"] = round(float(np.sum(self.energy_wh)) - self._hold_e0, 3)
+        h["retired_during"] = int(np.sum(self.status == RETIRED)) - self._hold_r0
+        act = self.active_mask()
+        if h["clear_s"] is not None or not act.any():
+            return
+        p = self.p[act]
+        surface = self.ctrl.plan.surface
+        ground = surface.follow(p[:, 0], p[:, 1])[0] if surface is not None else 0.0
+        goal = min(h["altitude_m"], self.directive.altitude_m)
+        down = np.abs(p[:, 2] - ground - goal) <= 1.5
+        slow = np.linalg.norm(self.v[act], axis=1) < 0.5
+        if (down & slow).all():
+            h["clear_s"] = round(self.t - h["clear_from_s"], 2)
+
+    def airspace_state(self) -> dict:
+        """For frames and the supervisor's report (only once an airspace order exists for the run)."""
+        h = self._hold
+        return {"holding": h is not None, "altitude_m": h["altitude_m"] if h else None,
+                "since_s": h["from_s"] if h else None}
 
     def _estimated_min_sep(self, obs: Observation) -> float:
         act = obs.active
@@ -661,6 +757,7 @@ class Simulation:
                if self.sc.sensor.enabled else {}),
             **(self.wildfire.frame(self) if self.wildfire is not None else {}),
             **(self.squad_state() if self.squads else {}),
+            **({"airspace": self.airspace_state()} if self.airspace else {}),
         }
 
     def _check_end(self) -> None:
@@ -671,7 +768,7 @@ class Simulation:
         if self.ctrl.plan.done() and self.done_t is None:
             self.done_t = self.t
             self.event("mission_complete", None)
-        if self.sc.end_when_done and self.done_t is not None and self.t >= self.done_t + 5.0:
+        if self.sc.end_when_done and self.done_t is not None and self.t >= self.done_t + 5.0 and self._hold is None:
             self.ended = True
 
     # ------------------------------------------------------------------------
@@ -679,8 +776,11 @@ class Simulation:
         """Add a disturbance or operator command during a live run (used by the dashboard).
 
         ``motor_failure`` (drone), ``gust`` (velocity_mps, duration_s), ``blackout``
-        (drones, duration_s) or ``directive`` (changes). Unspecified values are
-        drawn at random. Returns what was injected; it is also logged as an event.
+        (drones, duration_s), ``directive`` (changes), ``squad`` (op, from, to, k,
+        at_s) or ``aircraft`` (op "hold" or "resume", altitude_m for a hold, at_s,
+        by): crewed firefighting aircraft inbound, so the swarm holds low and
+        later resumes (see ``airspace_order``). Unspecified values are drawn at
+        random. Returns what was injected; it is also logged as an event.
         """
         from .scenario import MotorFailure, ScriptedDirective
         from .sensing import Blackout
@@ -715,11 +815,41 @@ class Simulation:
             if not self.squads:
                 raise ValueError("this run has no squads")
             # Applied at the first step at or after at_s, so a recorded take reproduces a headless run.
-            at = max(float(kw["at_s"]), start) if kw.get("at_s") is not None else start
+            at = start
+            if kw.get("at_s") is not None:
+                try:
+                    at_s = float(kw["at_s"])
+                except (TypeError, ValueError, OverflowError):
+                    at_s = math.nan
+                if not math.isfinite(at_s):
+                    raise ValueError("at_s must be a time in seconds")
+                at = max(at_s, start)
             order = {"t": round(at, 10), "op": kw.get("op", "move"), "from": kw.get("from"), "to": kw.get("to"),
                      "k": kw.get("k")}
             self._squad_orders.append(order)
             self._squad_orders.sort(key=lambda o: o["t"])
+            start = order["t"]
+            detail = {k: v for k, v in order.items() if k != "t"}
+        elif kind == "aircraft":
+            # Applied at the first step at or after at_s, like squad orders; the validator then checks it.
+            op, alt, at_s = kw.get("op"), kw.get("altitude_m"), kw.get("at_s")
+            if not isinstance(op, str):
+                raise ValueError("op must be 'hold' or 'resume'")
+            if alt is not None and (isinstance(alt, bool) or not isinstance(alt, numbers.Real)):
+                raise ValueError("altitude_m must be a number of metres above the ground")
+            if at_s is not None:
+                try:
+                    at_ok = not isinstance(at_s, bool) and isinstance(at_s, numbers.Real) and math.isfinite(float(at_s))
+                except OverflowError:                 # an integer too large for a float
+                    at_ok = False
+                if not at_ok:
+                    raise ValueError("at_s must be a time in seconds")
+            at = max(float(at_s), start) if at_s is not None else start
+            order = {"t": round(at, 10), "op": op, **({"altitude_m": alt} if alt is not None else {}),
+                     "by": str(kw.get("by") or "operator")}
+            self._airspace_orders.append(order)
+            self._airspace_orders.sort(key=lambda o: float(o["t"]))
+            self.airspace = True
             start = order["t"]
             detail = {k: v for k, v in order.items() if k != "t"}
         else:
@@ -732,7 +862,8 @@ class Simulation:
 
         Sections: mission, swarm, mission_directive, current_directive,
         formation, safety, environment, comms, energy, limits,
-        formation_widths_at_current_spacing_m and checks. Separation, wind,
+        formation_widths_at_current_spacing_m and checks, then airspace (hold
+        state) only in runs that have an airspace order. Separation, wind,
         gusts and formation error come from the drones' estimates and a noisy
         wind reading. Lost drones, battery, near misses and collisions come from
         the simulator's own bookkeeping, and the corridor and obstacle density
@@ -865,6 +996,9 @@ class Simulation:
             },
         }
         out["checks"] = self._checks(line, width_free, wh_table, remaining, out["energy"]["usable_wh_mean"])
+        if self.airspace:
+            # Only once an airspace order exists, so the report (a model prompt) is unchanged for other runs.
+            out["airspace"] = self.airspace_state()
         return out
 
     def _checks(self, flying: int, free: float | None, wh_table: dict, remaining: float | None, usable: float) -> dict:

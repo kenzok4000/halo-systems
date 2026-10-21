@@ -4,6 +4,7 @@ The client tests use a fake HTTP transport defined here; they test retry,
 parsing and logging logic only. Real calls are made by ``halo doctor``.
 """
 
+import http.client
 import json
 import math
 import os
@@ -361,6 +362,53 @@ class BudgetTest(unittest.TestCase):
         self.assertEqual(r.record.prompt_tokens, 200)
         other = Budget(self.ledger, 1.0)  # a second process reading the same file
         self.assertAlmostEqual(other.spent_usd(), sum(e["cost_usd"] for e in entries), places=6)
+
+    def test_bad_base_url_is_fatal_and_charges_nothing(self):
+        """A malformed base URL fails before anything is sent: fatal, no retries, nothing in the ledger."""
+        c, t = self.client([http.client.InvalidURL("nonnumeric port"), ok(DIRECTIVE_JSON)])
+        with self.assertRaises(NebiusError) as ctx:
+            c.chat("nvidia/nemotron-nano-test", [{"role": "user", "content": "x"}], max_tokens=1200)
+        self.assertTrue(ctx.exception.fatal)
+        self.assertEqual(len(t.calls), 1)
+        self.assertEqual(ctx.exception.record.cost_usd, 0)
+        self.assertEqual(Budget(self.ledger, 1.0).spent_usd(), 0)
+
+    def test_malformed_200_is_charged_at_worst_case_not_a_crash(self):
+        """A 200 whose message is null or whose content is not text is billed by its usage and raises a
+        NebiusError, not a crash; usage that cannot be read is billed at the worst case."""
+        def reply(obj):
+            return 200, {}, json.dumps(obj).encode()
+        price = Pricing.for_model("nvidia/nemotron-nano-test")
+        bad = [
+            reply({"choices": [{"message": None, "finish_reason": "stop"}],
+                   "usage": {"prompt_tokens": 100, "completion_tokens": 20}}),
+            reply({"choices": [{"message": {"content": ["a", "b"]}, "finish_reason": "stop"}],
+                   "usage": {"prompt_tokens": 100, "completion_tokens": 20}}),
+            reply({"choices": [{"message": {"content": DIRECTIVE_JSON}, "finish_reason": "stop"}],
+                   "usage": {"prompt_tokens": "many", "completion_tokens": 20}}),
+        ]
+        for i, r in enumerate(bad):
+            c, _ = self.client([r], max_retries=0)
+            try:
+                res = c.chat("nvidia/nemotron-nano-test", [{"role": "user", "content": "x"}], max_tokens=1200)
+            except NebiusError as exc:
+                self.assertIn("malformed", exc.reason, i)
+                rec = exc.record
+            else:
+                self.assertEqual(i, 2)          # readable answer, unreadable usage: answered, charged worst case
+                rec = res.record
+            if i < 2:                           # usage readable: charged what was used
+                self.assertAlmostEqual(rec.cost_usd, price.cost(100, 20), places=6, msg=i)
+            else:                               # usage unreadable: charged the worst case
+                self.assertGreaterEqual(rec.cost_usd, price.cost(0, 1200) - 1e-9, i)
+            self.ledger.unlink()
+
+    def test_timeout_then_answer_shows_the_worst_case_in_the_record(self):
+        c, _ = self.client([TimeoutError("read timed out"), ok(DIRECTIVE_JSON, 100, 20)])
+        r = c.chat("nvidia/nemotron-nano-test", [{"role": "user", "content": "x"}], max_tokens=1200)
+        price = Pricing.for_model("nvidia/nemotron-nano-test")
+        self.assertGreater(r.record.cost_usd, price.cost(100, 20) + price.cost(0, 1200) - 1e-9)
+        self.assertAlmostEqual(Budget(self.ledger, 1.0).spent_usd(), r.record.cost_usd, places=6)
 
     def test_ceilings_and_env_prices(self):
         self.assertGreater(Pricing.for_model("nvidia/some-new-model").output_per_m,

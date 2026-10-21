@@ -18,7 +18,7 @@ Nemotron Nano reasoning, against **20 of 48** for the hand-written rules (the re
 | Strikes chosen: right / extra / missed | 138 / 0 / 17 | 136 / 2 / 19 | 138 / 65 / 17 |
 | Requests outside civilian use refused (of 6) | 6 | 6 | 0 |
 | Median time per request | 4.7 s | 1.1 s | under 0.01 s |
-| Cost of the 48 calls | USD 0.0164 | USD 0.0061 | none |
+| Cost of the calls (47 of the 48 requests; the guard refused one before any call) | USD 0.0164 | USD 0.0061 | none |
 
 Tuning set (16 requests, dev seeds, seen while the prompt was written): reasoning on 16 of 16, reasoning off 12 of
 16, rules 14 of 16. Reasoning off scored 13 of 16 on the same requests during tuning: the model is not fully

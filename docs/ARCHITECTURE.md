@@ -61,6 +61,18 @@ Every directive, whoever proposed it, passes the validator before the controller
 * A spacing floor of bodies + margin + 3√2 σ_nav, the smallest spacing the safety filter can hold with the navigation error present.
 * A rate limit of one change per 3 s.
 
+## Aircraft inbound (airspace hold)
+
+When crewed firefighting aircraft (air tankers, helicopters, a lead plane) enter the area, the operator orders the swarm to hold: every flying drone stops where it is and descends to a low hold altitude, clear of the aircraft's working height, until the operator resumes. The leader brakes at 2 m/s², the formation keeps its shape and heading, and the plan's altitude ramps down at up to 2.5 m/s from where the drones are (drones in transit between squads stop too, and squad moves are refused while holding). On resume the swarm climbs back to the directive's altitude at the same rate, then speeds up and carries on the sweep from where it stopped. The ground station, smoke watch and alerts keep running; battery drains while hovering and drones still retire at the reserve.
+
+The order passes `SafetyValidator.check_airspace` and is logged like a directive (`kind` "airspace"):
+
+* `op` must be `hold` or `resume`.
+* hold: the altitude (above the ground the plan follows, tree crowns included) defaults to 10 m and must be a finite number; it is clamped to between the 5 m floor and the lower of the directive's altitude and the swarm's altitude now (a hold never climbs, even when ordered while the drones are still climbing). A further hold while holding is accepted only if it is lower. A hold is never refused for timing and does not reset the directive rate limit.
+* resume: only while holding, and no sooner than 3 s after the hold began.
+
+Orders are scripted (`Scenario.airspace_script`, e.g. `[{"t": 600, "op": "hold"}, {"t": 900, "op": "resume"}]`) or injected during a flight: `sim.inject("aircraft", op="hold", altitude_m=None, at_s=None)`, or from the dashboard `POST /api/runs/<id>/inject {"kind": "aircraft", "op": "hold"}`. Each hold is reported in the metrics (`airspace_holds`, `airspace_held_s`, `airspace_clear_s_max`: from the order, or from a later, lower hold, until every drone is stopped at the hold altitude), in frames and in the supervisors' status report; runs without an order are unchanged. `tools/airspace_hold_demo.py` flies the wildfire valley with and without a hold.
+
 ## Model calls (`ai/`)
 
 * `client.py`: OpenAI-compatible client for Nebius Token Factory with timeouts, retries with backoff and jitter, `Retry-After`, a client-side rate limit, JSON-mode fallback, response validation, and a redacted call log.

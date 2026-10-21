@@ -13,6 +13,10 @@ Moving drones between squads mid-flight (``move``): the movers leave their squad
 receiving squad in the world frame, 10 m above the formation layer, and join it (a normal re-assignment and blend)
 once within JOIN_RADIUS_M of its centre. Both squads' circuits are re-planned for their new sizes from where they
 are, so a smaller squad leaves no unseen stripes and a bigger one does not spill out of its strip.
+
+An airspace hold (``hold``; see plan.py) stops every squad where it is and lowers it to the hold altitude; drones in
+transit stop too, their transit frozen, and descend the same way from the height each is at (never climbing on toward
+the transit layer). ``resume`` climbs every part, and every drone in transit, back and they carry on.
 """
 
 from __future__ import annotations
@@ -25,7 +29,7 @@ import numpy as np
 
 from .directive import Directive
 from .formations import Path
-from .plan import FormationPlan
+from .plan import FormationPlan, ramp
 
 MIN_SQUAD = 3                # smallest squad the default split flies
 MIN_LANE_PITCH_M = 12.0     # the two lanes of a one-lane circuit are at least this far apart, so it has no cusp
@@ -297,6 +301,10 @@ class SquadPlan:
         self.transit: dict[int, dict] = {}  # drone -> {"to": squad id, "pos": (3,), "vel": (3,)}
         self._arrived: list[int] = []
         self.changes = 0
+        # Airspace hold: the hold altitude while holding (None otherwise). A drone in transit during a hold carries
+        # its own ramped altitude above the followed surface ("alt", "rate" in its transit record) until it is back
+        # at its transit layer (directive altitude + TRANSIT_LIFT_M) after the resume.
+        self.hold_alt_m: float | None = None
 
     def _plan(self, sq: Squad, members: np.ndarray) -> FormationPlan:
         fp = FormationPlan(Path(sq.waypoints, loop=True), self.directive, self.n, reassign=self.reassign,
@@ -340,6 +348,41 @@ class SquadPlan:
 
     def done(self) -> bool:
         return False                      # a patrol ends on time, not at the end of a route
+
+    @property
+    def holding(self) -> bool:
+        return self.hold_alt_m is not None
+
+    def altitude_now(self, positions: np.ndarray | None = None, active: np.ndarray | None = None) -> float:
+        """The lowest squad's altitude now (FormationPlan.altitude_now): a hold below it never makes a squad climb."""
+        alts = [p.altitude_now(positions, active) for p in self.parts if len(p.members)]
+        return min(alts) if alts else float(self.directive.altitude_m)
+
+    def hold(self, altitude_m: float, positions: np.ndarray | None = None, active: np.ndarray | None = None) -> None:
+        """Airspace hold for every squad and every drone in transit (see FormationPlan.hold). A drone in transit
+        stops where it is and descends from its own height now (``positions``), never climbing on."""
+        for p in self.parts:
+            p.hold(altitude_m, positions, active)
+        self.hold_alt_m = float(altitude_m)
+        self._hold_from(positions)
+
+    def _hold_from(self, positions: np.ndarray | None) -> None:
+        """Start the hold's altitude ramp of every drone in transit that has none: from its height above the followed
+        surface (``positions``, else its transit point), at most its transit layer; any climb in progress stops."""
+        layer = self.directive.altitude_m + TRANSIT_LIFT_M
+        for d, tr in self.transit.items():
+            if "alt" not in tr:
+                pos = tr["pos"] if positions is None else positions[d]
+                ground = 0.0
+                if self._surface is not None:
+                    ground = float(self._surface.follow(np.array([pos[0]]), np.array([pos[1]]))[0][0])
+                tr["alt"], tr["rate"] = min(float(layer), float(pos[2]) - ground), 0.0
+            tr["rate"] = min(tr["rate"], 0.0)
+
+    def resume(self) -> None:
+        for p in self.parts:
+            p.resume()
+        self.hold_alt_m = None
 
     def part_masks(self) -> list[np.ndarray]:
         """Per squad, a boolean mask of its members (drones in transit belong to none)."""
@@ -404,6 +447,7 @@ class SquadPlan:
         fp.heading = old.heading
         fp.heading_rate = old.heading_rate
         fp.speed_now = old.speed_now
+        fp.copy_hold(old)
         fp.adopt(positions, t)
         self.parts[i] = fp
 
@@ -416,6 +460,8 @@ class SquadPlan:
             if src >= 0 and d in self.squads[src].drones:
                 self.squads[src].drones.remove(d)
             self.transit[d] = {"to": to, "pos": positions[d].copy(), "vel": np.zeros(3)}
+        if self.holding:
+            self._hold_from(positions)          # the validator refuses moves during a hold; this is a safeguard
         for i in froms:
             p = self.parts[i]
             p.set_members(np.sort(np.array([m for m in p.members if self.squad_of[m] == i], dtype=int)), positions, t)
@@ -427,6 +473,9 @@ class SquadPlan:
             return
         arrived = []
         for d, tr in self.transit.items():
+            if "alt" in tr:
+                self._hold_transit(tr, dt)
+                continue
             target = self.parts[tr["to"]].centre()
             gap = target[:2] - tr["pos"][:2]
             dist = float(np.linalg.norm(gap))
@@ -445,6 +494,22 @@ class SquadPlan:
             tr["pos"] = np.array([xy[0], xy[1], z])
             tr["vel"] = v
         self._arrived = arrived
+
+    def _hold_transit(self, tr: dict, dt: float) -> None:
+        """A drone in transit during a hold, or climbing back after one: it stays where it is (progress frozen, no
+        horizontal speed) while its altitude ramps down to the hold altitude (never up) and, after the resume, back
+        to its transit layer; there it carries on to its squad."""
+        layer = self.directive.altitude_m + TRANSIT_LIFT_M
+        goal = layer if self.hold_alt_m is None else min(self.hold_alt_m, layer, tr["alt"])
+        tr["alt"], tr["rate"], arrived = ramp(tr["alt"], tr["rate"], goal, dt)
+        x, y = tr["pos"][0], tr["pos"][1]
+        z = tr["alt"]
+        if self._surface is not None:
+            z += float(self._surface.follow(np.array([x]), np.array([y]))[0][0])
+        tr["pos"] = np.array([x, y, z])
+        tr["vel"] = np.array([0.0, 0.0, tr["rate"]])
+        if arrived and self.hold_alt_m is None:
+            del tr["alt"], tr["rate"]
 
     def join_arrivals(self, positions: np.ndarray, t: float) -> list[tuple[int, int]]:
         """Make drones that reached their squad its members; returns [(drone, squad)]. Called by the simulator."""

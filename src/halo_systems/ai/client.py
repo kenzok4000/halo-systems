@@ -21,6 +21,7 @@ fall back to the last safe directive, so the swarm never waits on the API.
 
 from __future__ import annotations
 
+import http.client
 import json
 import os
 import random
@@ -302,10 +303,19 @@ class NebiusClient:
                 status, headers, body = self.transport(f"{self.base_url}/chat/completions", self._headers(),
                                                        json.dumps(payload).encode(),
                                                        min(timeout_s or self.timeout_s, left()))
-            except (urllib.error.URLError, TimeoutError, ConnectionError, OSError) as exc:
-                # Network error or timeout: back off and retry while attempts and time are left.
+            except http.client.InvalidURL as exc:
+                # A bad base URL fails before anything is sent: nothing to charge, and every retry would fail too.
+                record.status, record.error = "error", f"invalid base URL: {exc}"
+                record.latency_s = round(self.clock() - t0, 3)
+                self._log(record)
+                raise NebiusError(record.error, record=record, fatal=True) from None
+            except (urllib.error.URLError, TimeoutError, ConnectionError, OSError, http.client.HTTPException) as exc:
+                # Network error or timeout (a reply cut off mid-body included): back off and retry while attempts
+                # and time are left.
                 last_error, last_status = f"network error: {type(exc).__name__}: {exc}", None
-                # The server may have done the work before the connection broke: count the worst case.
+                # The server may have done the work before the connection broke: count the worst case, in the
+                # ledger and in the call's record alike.
+                record.cost_usd = round(record.cost_usd + worst_case, 6)
                 self.budget.add(model=model, role=role, cost_usd=worst_case, status="unknown", call_id=record.call_id,
                                 pricing=pricing.source, note=f"no usage returned ({type(exc).__name__}); counted at worst case")
                 if attempt <= self.max_retries and wait(self._backoff(attempt, None)):
@@ -323,18 +333,26 @@ class NebiusClient:
                     data = json.loads(text)
                     choice = data["choices"][0]
                     content = choice["message"].get("content") or ""
+                    if not isinstance(content, str):
+                        raise TypeError("message content is not text")
                     last_error = "" if content.strip() else "empty message content"
                     if not content.strip() and choice.get("finish_reason") == "length":
                         # The token limit ran out (usually spent on reasoning): the same request would
                         # be cut off again, so do not pay for retries.
                         last_error = "reply cut off at max_tokens before any answer (reasoning used the budget)"
-                except (ValueError, KeyError, IndexError, TypeError) as exc:
+                except (ValueError, KeyError, IndexError, TypeError, AttributeError) as exc:
                     last_error = f"malformed response: {type(exc).__name__}"
                 # A 200 is billed even when the reply turns out empty or malformed (a reasoning model can
-                # spend all of max_tokens thinking), so charge it before deciding whether to retry.
+                # spend all of max_tokens thinking), so charge it before deciding whether to retry. Usage that
+                # cannot be read is charged at the worst case.
                 usage = data.get("usage") if isinstance(data, dict) else None
-                used_p = int((usage or {}).get("prompt_tokens") or 0)
-                used_c = int((usage or {}).get("completion_tokens") or 0)
+                try:
+                    used_p = int(usage.get("prompt_tokens") or 0) if isinstance(usage, dict) else 0
+                    used_c = int(usage.get("completion_tokens") or 0) if isinstance(usage, dict) else 0
+                except (TypeError, ValueError, OverflowError):
+                    usage, used_p, used_c = None, 0, 0
+                if not isinstance(usage, dict) or not usage:
+                    usage = None
                 cost = pricing.cost(used_p, used_c) if usage else worst_case
                 record.prompt_tokens += used_p
                 record.completion_tokens += used_c
