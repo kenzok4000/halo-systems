@@ -4,7 +4,7 @@ This page explains how the numbers in `results/REPORT.md` are produced and how t
 
 ## Scenarios
 
-Ten scenarios, each with 16 drones (12 in the field survey; the wildfire scout is also flown with 1 and 4, see below). Each tests one thing a supervisor might need to handle, except the wildfire scout, which measures what a swarm is for. The wildfire valley, an eleventh scenario, has its own seeds, sweep and scoring ([WILDFIRE.md](WILDFIRE.md)).
+Ten scenarios, each with 16 drones (12 in the field survey; the wildfire scout is also flown with 1 and 4, see below). Each tests one thing a supervisor might need to handle, except the wildfire scout, which measures what a swarm is for. The wildfire valley and the missing-hiker search, an eleventh and a twelfth scenario, have their own seeds, sweeps and scoring ([WILDFIRE.md](WILDFIRE.md), [hiker_search](../results/hiker_search/REPORT.md)).
 
 | Scenario | Use case | What makes it hard |
 |---|---|---|
@@ -80,6 +80,8 @@ Each searcher gets 5 searches of 40 short flights against the improved controlle
 * stress level, from 0 (every parameter at its easy end) to 1 (every parameter at its hard end). A failure at a low stress level is the more useful find.
 
 Corner search, which tests random corners of the parameter box, is the boundary-value baseline. It was added after the first Nemotron searches showed that the model mostly set every parameter near its limit, to check whether that alone explained its results.
+
+A second search, on fresh held-out valleys, asks the same question of the wildfire valley's ground station (`ai/valley_tester.py`, [results/valley_stress](../results/valley_stress/REPORT.md)). Random search, corner search and Nemotron 3 Nano with reasoning each get 2 searches of 20 tests over wind, wind shift, fuel moisture, forecast error, smoulder times, patchiness, visibility, smoke range and swarm size. A test fails on a late warning, a missed fire, a false alarm, a needless evacuation or a lost drone. Test i of search s flies valley seed 9100 + 50 s + i for every searcher, and the same valleys are flown on the drawn day, so a failure counts as caused by the conditions only when that valley did not fail the same way on the drawn day.
 
 ## Checks on the numbers
 

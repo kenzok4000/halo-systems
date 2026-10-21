@@ -7,7 +7,7 @@ Halo Systems uses NVIDIA Nemotron models, served by Nebius Token Factory's OpenA
 | Supervisor | Status report every 5 s of simulated time | Directive (formation, spacing, speed, altitude, safety margin) | Rule supervisor; fixed plan |
 | Mission compiler | Operator's plain-language request | Mission plan JSON, or a refusal for non-civilian use | Regex and keyword parser |
 | Valley compiler | Operator's valley job in plain words | A patrol spec (drones, areas, patrol length, which strikes to check), or a refusal | Hand-written rules |
-| Test engineer | Every stress test so far, with outcomes | The next batch of tests, each with a reason | Random search; corner search; cross-entropy method |
+| Test engineer | Every stress test so far, with outcomes, in the formation scenarios or the wildfire valley | The next batch of tests, each with a reason | Random search; corner search; cross-entropy method (formation scenarios only) |
 
 Nebius services used: Token Factory only, through its OpenAI-compatible chat completions API at `https://api.tokenfactory.nebius.com/v1`. The simulations are numpy on an ordinary CPU and ran outside Nebius.
 
@@ -17,6 +17,7 @@ Nebius services used: Token Factory only, through its OpenAI-compatible chat com
 | Mission compiler | Nano, reasoning off and on; Super | Off, or on in one Nano run | 0 | 1,500; 6,000 with reasoning | 60 s per attempt | `ai/mission.py` |
 | Valley compiler | Nano, reasoning on and off | On; off as a comparison | 0 | 800; 6,000 with reasoning | 90 s per attempt | `ai/valley.py` |
 | Test engineer | Nano, reasoning off and on | Off, or on in one run | 0.7 | 2,500; 8,000 with reasoning | 180 s per attempt | `ai/tester.py` |
+| Valley test engineer | Nano | On | 0.7 | 12,000 | 180 s per attempt | `ai/valley_tester.py` |
 
 Our feedback on Token Factory and the models, with the numbers behind it, is in [DEVPOST.md](DEVPOST.md#feedback-on-nebius-token-factory-and-nvidia-models).
 
@@ -66,7 +67,7 @@ Every Nemotron supervisor call in a benchmark can be recorded to a cache keyed o
 halo bench ... --configs improved+nemotron:<model> --cache results/nemotron_cache.jsonl --cache-mode replay
 ```
 
-A benchmark replay that misses the cache stops that run with an error rather than letting the rules fill in; in the dashboard the rules take that step and the log shows the fallback. The mission compiler's and test engineer's calls are not cached: they are kept in call logs (`results/mission_calls.jsonl.gz`, `results/stress/nemotron_calls.jsonl.gz`), and their results are scored from the committed outputs. The valley compiler's calls are cached like the supervisor's (`results/valley_compile_cache.jsonl`), so `halo valley-eval --replay` gives the same scores with no key.
+A benchmark replay that misses the cache stops that run with an error rather than letting the rules fill in; in the dashboard the rules take that step and the log shows the fallback. The mission compiler's and test engineer's calls are not cached: they are kept in call logs (`results/mission_calls.jsonl.gz`, `results/stress/nemotron_calls.jsonl.gz`), and their results are scored from the committed outputs. The valley compiler's calls are cached like the supervisor's (`results/valley_compile_cache.jsonl`), so `halo valley-eval --replay` gives the same scores with no key, and so are the valley test engineer's (`results/valley_stress/calls_cache.jsonl`): `tools/wildfire_valley_stress.py search --searcher nemotron --replay` reproduces a recorded search with no key.
 
 ## Evidence
 
