@@ -1,7 +1,9 @@
 """Fly the wildfire valley with squads of each size and write one row per flight.
 
-    PYTHONPATH=src python3 tools/wildfire_valley_squads_sweep.py --seeds 8000-8019 \
-        --out results/wildfire_valley_squads/runs.jsonl
+    PYTHONPATH=src python3 tools/wildfire_valley_squads_sweep.py --seeds 8000-8019 --arms A,B,D \
+        --sizes 4,8,16,32,64 --stations legacy --out results/wildfire_valley_squads/runs.jsonl
+
+These are the flags of the committed held-out run (PREREG.md); seeds 8000-8019 are now spent.
 
 Three ways to fly n drones, on the same seeds (results/wildfire_valley_squads/PREREG.md has the plan):
 
@@ -11,9 +13,11 @@ Three ways to fly n drones, on the same seeds (results/wildfire_valley_squads/PR
 * D, squads per area: the default split ("auto") over the valley floor and the north and south slopes, each
   squad patrolling its own area for the patrol; drones left over stay in reserve.
 
-Each is flown with the ground station as committed ("legacy") and with the tighter thermal-to-smoke merge
-("tight"), and every row carries the own-evidence scoring keys (report_v2). All flights use the improved
-controller with no supervisor (improved+fixed), so the squads are compared without a supervisor's changes.
+By default each is flown with the ground station as committed ("legacy") and with the tighter thermal-to-smoke
+merge ("tight"). The held-out run flew the legacy station only (--stations legacy): on the development seeds the
+tight merge changed no flight's result. Every row carries the own-evidence scoring keys (report_v2). All flights
+use the improved controller with no supervisor (improved+fixed), so the squads are compared without a
+supervisor's changes.
 Rows already in the output are skipped, so an interrupted sweep resumes.
 """
 

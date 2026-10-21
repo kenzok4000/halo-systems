@@ -41,7 +41,11 @@ What the ground station knows, and does with it:
    cell broadcast to every phone in the zone (simulated phones only). Sending at once by fixed rules follows
    the idea of Japan's earthquake early warning, which is fully automatic; Japan's Levels 3 to 5
    are decided by mayors (docs/WILDFIRE.md). An operator can cancel an alert or give a zone the
-   all-clear; a manual approval mode is kept for drills.
+   all-clear; a manual approval mode is kept for drills. Under the pre-signed rules (``AlertPolicy.rule`` of
+   "presigned") public alerts go out only under trigger rules the alerting authority signed in advance, for
+   fires believed spreading, and each located fire also goes to fire dispatch as a card; with
+   ``smoulder_alerts`` the Level 3 rule counts smoulders too, as above, so a smoulder near homes brings a public
+   "prepare" as well as its card.
 
 Nothing here calls a language model; the forecast and the alert rules are deterministic given the seed.
 """
@@ -147,6 +151,9 @@ class AlertPolicy:
     # alerting authority signed in advance; a newly located fire goes to fire dispatch as a card); or "distance"
     # (the ablation: alert by distance alone)
     rule: str = "forecast"
+    # "presigned" only: the Level 3 rule (T3) also counts each located smoulder as if it took off now, as today's
+    # rule does, so a smoulder near homes brings a public "prepare" as well as its card to fire dispatch
+    smoulder_alerts: bool = False
     prob_threshold: float = 0.3
     evacuate_within_s: float = 3600.0      # Level 4
     warn_within_s: float = 3 * 3600.0      # Level 3
@@ -177,7 +184,9 @@ class AlertPolicy:
                     f"in the zone within {self.emergency_within_s / 60:.0f} minutes")
         else:
             within = self.evacuate_within_s if level == 4 else self.warn_within_s
-            text = (f"a fire believed spreading has at least a {self.prob_threshold:.0%} chance of reaching a phone "
+            which = ("a located fire, spreading or smouldering (counted as if it took off now),"
+                     if level == 3 and self.smoulder_alerts else "a fire believed spreading")
+            text = (f"{which} has at least a {self.prob_threshold:.0%} chance of reaching a phone "
                     f"in the zone within {within / 3600:.0f} hour{'s' if within != 3600 else ''}")
         return {"rule": f"T{level}", "text": text, "signed_by": self.authority, "signed": "in advance (simulated)"}
 
@@ -214,6 +223,7 @@ class WildfireConfig:
             "smoke_model": {"rise_mps": self.smoke.rise_mps, "top_ref_m": self.smoke.top_ref_m,
                             "ref_area_m2": self.smoke.ref_area_m2, "top_max_m": self.smoke.top_max_m},
             "alert_rule": self.alerts.rule,
+            **({"smoulder_alerts": True} if self.alerts.smoulder_alerts else {}),
             **({"station": self.station} if self.station != "legacy" else {}),
             **({"report_v2": True} if self.report_v2 else {}),
         }
@@ -611,6 +621,9 @@ class Wildfire:
             raise ValueError(f"station must be 'legacy' or 'tight', not {cfg.station!r}")
         if cfg.alerts.rule not in ("forecast", "presigned", "distance"):
             raise ValueError(f"alert rule must be 'forecast', 'presigned' or 'distance', not {cfg.alerts.rule!r}")
+        if cfg.alerts.smoulder_alerts and cfg.alerts.rule != "presigned":
+            raise ValueError("smoulder_alerts applies to the 'presigned' rule only (the forecast rule already warns "
+                             "for smoulders)")
         self._wind_now = np.zeros(2)
         self.forecasts: list[dict] = []
         self._measured_wind = (0.0, 0.0)          # the wind the swarm measured for the latest forecast
@@ -1547,7 +1560,9 @@ class Wildfire:
             prob[level > 0] = 1.0
         else:
             p3 = (act["phone_arrivals"] <= t0 + pol.warn_within_s).mean(axis=0)
-            if pol.rule != "presigned":         # the forecast rule also warns for smoulders, as if they took off now
+            if pol.rule != "presigned" or pol.smoulder_alerts:
+                # The forecast rule (and pre-signed T3 with smoulder_alerts) also warns for smoulders, as if they
+                # took off now.
                 p3 = np.maximum((pot["phone_arrivals"] <= t0 + pol.warn_within_s).mean(axis=0), p3)
             p4 = (act["phone_arrivals"] <= t0 + pol.evacuate_within_s).mean(axis=0)
             p5 = (act["phone_arrivals"] <= t0 + pol.emergency_within_s).mean(axis=0)
@@ -1599,8 +1614,8 @@ class Wildfire:
             if pol.rule == "presigned":
                 alert["trigger"] = pol.trigger(target)
             if self.cfg.report_v2:
-                # Scoring only: the located fires this level rests on (all of them for a forecast-rule Level 3).
-                smoulders_count = pol.rule == "forecast" and target == 3
+                # Scoring only: the located fires this level rests on (all of them for a Level 3 that counts smoulders).
+                smoulders_count = (pol.rule == "forecast" or pol.smoulder_alerts) and target == 3
                 alert["drivers"] = [{"id": l["id"], "truth": l["truth"]} for l in fc["located"]
                                     if smoulders_count or l["area_m2"] >= SMOULDER_AREA_M2]
             recent = [a for a in self.alerts if a["state"] not in ("rejected",)]

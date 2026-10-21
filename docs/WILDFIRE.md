@@ -4,16 +4,23 @@ The morning after dry lightning, a few fires smoulder in a mountain valley. Some
 tree crowns, one is under a rock overhang where no camera looking down can see it, and one is across the valley.
 A swarm of scout drones sweeps the valley floor. The ground station finds the fires from the drones' thermal
 images and smoke sightings, forecasts which way and how far each will spread and how soon, tells the fire crews
-which way each fire's head is running and why, and drafts evacuation alerts for the zones in the fire's path. Alerts go out automatically by fixed rules, at levels
-modelled on Japan's evacuation scale, once each passes a check; an operator can cancel them or give the
-all-clear. They go to simulated phones only.
+which way each fire's head is running and why, and drafts evacuation alerts for the zones in the fire's path. By
+default (today's rule) alerts go out automatically by fixed rules, at levels modelled on Japan's evacuation scale,
+once each passes a check, and Level 3 also counts smouldering fires as if they took off now. The entry's alert
+design uses pre-signed rules instead: public alerts go out automatically only under trigger rules the alerting
+authority signed in advance, and each located fire also goes to fire dispatch as a card. Either way an operator
+can cancel an alert or give the all-clear. Alerts go to simulated phones only, and cards to a simulated dispatch.
 
 This page describes the scenario (`wildfire_valley` in `src/halo_systems/eval/scenarios.py`), what the
 simulation treats as true, what the station is allowed to know, how each result is scored, and every assumption
 with its source. Results are in [results/wildfire_valley/REPORT.md](../results/wildfire_valley/REPORT.md); the
 fire-direction results, on a second held-out set, in
 [results/wildfire_valley_7000/REPORT.md](../results/wildfire_valley_7000/REPORT.md).
-Nothing in this scenario calls a language model, so it costs nothing to run.
+The station, the crew briefs, the cards and the alerts call no language model, and neither does the flight unless
+it is given a Nemotron supervisor; no result on this page uses one, so each flight behind them cost nothing to run.
+Two optional extras use Nemotron on Nebius Token Factory: reading a job in plain words into a patrol
+([results/valley_eval/REPORT.md](../results/valley_eval/REPORT.md)) and a test engineer that looks for conditions
+under which the station fails ([results/valley_stress/REPORT.md](../results/valley_stress/REPORT.md)).
 
 ![One flight: the true spread against the forecast, the fires found and the phones alerted](../results/wildfire_valley/map.png)
 
@@ -154,8 +161,10 @@ degrees, hour-to-hour errors and a fuel moisture error).
 
 ## Squads, jobs in plain words, and alerts under pre-signed rules
 
-These are options. The results above use none of them (one sweep, today's alert rule), except the first
-crew's, which uses pre-signed rules (their cards to fire dispatch are the drones' reports).
+These are options in the scenario. Its defaults are one sweep and today's alert rule, and the headline results
+(seeds 4000 to 4019, and 7000 to 7019 for which way the fire runs) use them. Pre-signed rules are the entry's alert
+design, chosen by Kenzo, the entrant, on 20 October 2026. The first crew's results use the pre-signed rules' cards
+to fire dispatch as the drones' reports, and the squads' results use squads.
 
 **Squads.** `squads` flies the drones as squads over the valley's three areas, the valley floor (F, the survey
 block), the north slopes (N) and the south slopes (S), each squad patrolling its own area on a circuit, line
@@ -186,7 +195,7 @@ altitude (10 m above the treetops by default); squads and drones flying between 
 are refused until the resume. The ground station, smoke watch and alerts keep running. On resume the swarm climbs
 back and carries on the sweep where it stopped. A demonstration on development seed 3000 with 16 drones (a
 5-minute hold 42% of the way along the sweep): every drone was stopped at the hold altitude 6.1 s after the order, the
-hold cost 29% of a battery, the sweep finished 305 s later and found the same 5 fires
+hold cost 28.7% of a battery, the sweep finished 305 s later and found the same 5 fires
 ([results/airspace_hold/REPORT.md](../results/airspace_hold/REPORT.md)). Runs without an order are unchanged. What flying it for real would need is in the README's [Flying it legally](../README.md#flying-it-legally).
 
 **A job in plain words (Nemotron).** The operator types the job, for example "We had dry lightning last night.
@@ -201,6 +210,18 @@ refused the other request before any call):
 [results/valley_eval/REPORT.md](../results/valley_eval/REPORT.md). Without a key, the page replays recorded calls,
 and any other request falls back to the hand-written rules, saying so.
 
+**A test engineer (Nemotron).** `tools/wildfire_valley_stress.py` varies nine conditions of the day, from the
+wind and fuel moisture to haze and the number of drones, to find where the station fails: a late warning, a missed
+fire, a false alarm, a needless evacuation or a lost drone. Nemotron 3 Nano sees every test so far and proposes the
+next batch; random search and corner search fly the same number of tests on the same held-out valleys (seeds 9100
+to 9119 and 9150 to 9169), all under the pre-signed rules as T3 flew them (public alerts only for fires believed
+spreading, sent automatically). Nemotron was no better than either: in 40 tests each, its tests caused 11 failures
+(3 of them from random tests drawn when a reply gave none), against 10 for random search and 13 for corner search
+(ten calls, USD 0.026). Late warnings were the commonest failure for every searcher. Under the pre-signed
+rules as tested, a smoulder that takes off near homes brings no public alert until the station believes it is
+spreading; re-flown under today's rule, 31 of the 43 failing tests with late warnings warned every phone in time:
+[results/valley_stress/REPORT.md](../results/valley_stress/REPORT.md).
+
 **Public alerts under pre-signed rules.** With `alert_rule="presigned"`, a public alert goes out only for fires
 the station believes are spreading, each under a trigger rule the alerting authority signed in advance: Level 3
 at 30% or more within 3 hours, Level 4 at 30% or more within an hour, Level 5 at even odds within 15 minutes. A
@@ -214,6 +235,21 @@ still smouldered, and warned 336 phones the fire did not reach within 3 h, again
 fire reached got no warning in time, against none. All three were hikers reached hours later by a fire the drones
 had found smouldering and carded to fire dispatch, which took off after the swarm had landed. The median lead was
 the same (128 minutes).
+
+**Smoulders under pre-signed rules (`smoulder_alerts`).** After T5b's run, its 40 drawn-day valleys (seeds 9100 to
+9119 and 9150 to 9169) were flown again under both rules on the same draw. The pre-signed rules warned 50 of the
+1,176 phones the fire reached late or never, in 9 valleys; today's rule warned none late. As first searched, the
+pre-signed rules had warned 26 late, so the count moves with the draw
+([results/valley_stress/REPORT.md](../results/valley_stress/REPORT.md)). With T3, that is 29 to 53 of 1,836 phones
+(about 1 in 63 to 1 in 35) against none, for about 13% more public alerts under today's rule (432 against 383). On
+the same draw only the alerts differ, so today's extra Level 3 alerts, for located smoulders, are what warned those
+phones in time. With `smoulder_alerts=True` (`--smoulder-alerts` on the command line; `"smoulder_alerts": true`
+with `"alert_rule": "presigned"` on the dashboard API), the pre-signed Level 3 rule (T3) also counts each located
+smoulder as if it took off now, as today's rule does. Levels 4 and 5 still need a fire believed spreading, and every
+located fire still goes to fire dispatch as a card. On development seeds 3000 to 3007 (16 drones), its public
+alerts were exactly today's rule's, and its cards matched the pre-signed rules' in time, place and status; in two
+valleys two cards named a different head direction, because alert deliveries share a random stream with the
+forecast ensemble.
 
 **Getting the first crew there (modelled).** `tools/wildfire_initial_attack.py` takes each true fire's report
 time, today's (the earliest of today's methods as deployed) and with the drones' card to fire dispatch added,
@@ -315,7 +351,8 @@ means it is already too late to leave safely (Cabinet Office and Fire and Disast
 decide Levels 3 to 5. Japan's earthquake early warning, by contrast, is fully automatic: in 2011 it was issued
 8.6 s after the first station detected the quake (JMA), and cell broadcast reaches phones within 4 s of reaching
 the network (ETSI TS 122 268). Halo issues its fire levels the way the earthquake warning is issued, by fixed
-rules with no one in the loop, and keeps a person able to cancel or clear.
+rules with no one in the loop when an alert goes out; under the pre-signed rules the alerting authority signs those
+rules in advance, and a person can always cancel or clear.
 
 ## Which way the fire runs
 
@@ -453,7 +490,10 @@ and say when the head simply follows the fuel; this changes the wording of the b
   on rendered images.
 - The design's navigation error. The simulator's GNSS error is about a sixth of the scout's receiver
   ([hardware/README.md](../hardware/README.md) lists this and the other gaps between the design and the simulator).
-- Re-tasking. The swarm flies its sweep and lands; it does not go back to watch a fire or check a doubtful fix.
+- Re-tasking from what the station finds. The swarm flies its sweep, or each squad its circuit until the patrol
+  ends, and lands. A strike list is used only before take-off, to set the lane each squad starts on (and, in a job
+  in plain words that names no area, which areas are flown). An operator can move drones between squads or hold
+  the swarm for aircraft, but no drone is sent on its own to watch a fire or check a doubtful fix.
 - Flying over flames. The scouts sweep 20 m above the canopy straight over a spreading fire, through its heat
   and smoke; a real crew would climb or route around it.
 - How people respond. An alert counts as delivered, not as acted on; there is no traffic on the valley road.
