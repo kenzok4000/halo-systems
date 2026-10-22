@@ -1916,8 +1916,9 @@ class Wildfire:
         its burning ground now or, if it has not taken off yet, its ignition point. Every brief in the last
         forecast (sent to the crews or not) is scored against the true fire whose burning ground (or ignition
         point) is nearest the located fire, within ``MATCH_M``, if that fire's head advances at least two cells
-        in the hour: the brief's bearing, the downwind bearing of the wind the swarm measured (a wind-only rule)
-        and the upslope bearing under the fire (a slope-only rule, where the slope is 2% or more), each against
+        in the hour: the brief's bearing, the downwind bearing of the forecast's measured wind (a wind-only rule on
+        the same modelled measurement) and the upslope bearing under the fire (a slope-only rule, where the slope
+        is 2% or more), each against
         the true bearing; whether the truth is inside the brief's cone; and the head speeds. A brief that says
         the head will not advance has no bearing and counts as missed (180 degrees off). Fires whose heads
         advance with no located fire within ``MATCH_M`` of their ground are counted, not scored. Scoring only:
