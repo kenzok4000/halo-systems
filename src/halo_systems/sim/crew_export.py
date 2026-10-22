@@ -33,11 +33,12 @@ def lonlat(x: float, y: float, anchor: tuple[float, float] = ANCHOR) -> tuple[fl
 
 
 def _cone(origin, bearing_deg: float, cone_deg: float, reach_m: float, k: int = 12) -> list[tuple[float, float]]:
-    """A sector from ``origin``: ``cone_deg`` wide in all, centred on the compass ``bearing_deg``, ``reach_m`` long."""
+    """A sector from ``origin``: ``cone_deg`` either side of the compass ``bearing_deg`` (the brief's cone is a
+    half-width, as its scoring and the dashboard read it), ``reach_m`` long."""
     ox, oy = origin
     pts = [(ox, oy)]
     for j in range(k + 1):
-        b = math.radians(bearing_deg - cone_deg / 2.0 + cone_deg * j / k)
+        b = math.radians(bearing_deg - cone_deg + 2.0 * cone_deg * j / k)
         pts.append((ox + reach_m * math.sin(b), oy + reach_m * math.cos(b)))
     pts.append((ox, oy))
     return pts

@@ -131,8 +131,9 @@ degrees, hour-to-hour errors and a fuel moisture error).
 3. **Forecast.** An ensemble of 16 spread runs on a 10 m grid, 3 hours ahead, from the mapped burning ground and
    a disc of each located fire's estimated area. Each member perturbs the wind direction (10 degrees), wind speed
    (15%), fuel moisture (1 point), spread rate (30%, log-normal) and each located fire's position (its location
-   error). The first period uses the drones' wind estimate, later periods the
-   weather forecast. It runs twice: for the fires believed to be spreading, and for every located fire as if the
+   error). The first period uses the wind measured now, later periods the weather forecast. The measurement is
+   modelled: the true wind at the fire's time with 0.5 m/s and 5 degrees of noise, not the drones' own wind
+   estimate (which the station uses to place smoke). It runs twice: for the fires believed to be spreading, and for every located fire as if the
    smouldering ones took off now. It reruns every 2 minutes, and 30 seconds after news (a new fire, one taking off).
 4. **Brief the crews.** For each fire: how it was found, whether it is spreading, which way its head runs (a
    compass bearing with a cone for its uncertainty) and how fast, what drives it (the wind the swarm measured, the
@@ -149,7 +150,7 @@ degrees, hour-to-hour errors and a fuel moisture error).
    | 4, evacuate now | Everyone leaves now | at 30% or more within 60 minutes, from the fires believed to be spreading |
    | 5, emergency | Fire is here; shelter if you cannot get out safely | at 50% or more within 15 minutes |
 
-   Levels 1 and 2 (fire weather, fire in the valley) are on the dashboard only. A zone's level only rises
+   The station issues only Levels 3 to 5; Levels 1 and 2 of the scale are not modelled. A zone's level only rises
    automatically. Each alert passes `AlertCheck`: a message of 1 to 360 characters (the limit for Wireless
    Emergency Alerts on 4G and later networks, and for EU-Alert); a hazard, area, action, expiry and authority;
    a channel marked as simulated; a zone polygon under 5,000 ha; 1 to 5,000 recipients; an expiry of 1 to 12
@@ -207,7 +208,9 @@ Put 16 drones over the whole valley for 12 minutes and check last night's strike
 reasoning, reads it into a short spec: how many drones, which areas, how long, and which strikes to check (by when
 and where). Code, not the model, turns the spec into the patrol: the squad split, the lane each squad starts on,
 and the chosen strikes outside every patrolled area, which are listed rather than flown. A keyword guard refuses
-non-civilian requests before any call, and the plan goes through the same validator as any order. On 48 held-out
+non-civilian requests before any call. Fixed rules in code hold every plan to at most 64 drones, no more in one
+line than fit across an area and a patrol of 1 to 15 minutes, and set the formation's speed, spacing and height;
+in flight every directive passes the safety validator. On 48 held-out
 requests, Nemotron with reasoning gave the same patrol as the hand-written reading in 47, against 20 for
 hand-written rules and 39 with reasoning off (median 4.7 s and USD 0.016 for the 47 calls; the keyword guard
 refused the other request before any call):
@@ -438,7 +441,8 @@ Brackets are 95% bootstrap intervals over seeds; full table in
 | 16 | 48 | 14° [9, 20] | 62% | 22° [16, 28] | 61° | 62% [49, 77] | 75% [64, 86] | 12.3 |
 
 With sixteen drones, the brief's direction was a median 14 degrees off the true head, against 22 for the rule
-of running straight downwind of the measured wind, and closer than that rule for 62% of the fires. The gain is
+of running straight downwind of the measured wind, and closer than that rule for 62% of the fires. Both use the
+same modelled measurement of the wind (the true wind with 0.5 m/s and 5 degrees of noise; see Forecast above). The gain is
 modest and the intervals overlap: in this valley the wind sets most heads, and the brief adds the slope and the
 fuel. Straight upslope alone is a poor guide (about 60 degrees off). With one or four drones the brief and the
 wind rule are close (11 against 13, 15 against 18). No brief called a moving head not advancing. The cone held

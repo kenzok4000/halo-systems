@@ -25,8 +25,9 @@ What the ground station knows, and does with it:
    (perturbed wind, fuel moisture, spread rate and position) gives, per map cell, the median arrival time and the probability the
    fire arrives within 30, 60, 120 and 180 minutes. It is run twice: for the fires the station believes
    are spreading, and for every located fire as if the smouldering ones took off now. The weather inputs
-   are the drones' own wind estimate for now and a weather forecast for later, which is not the true
-   weather, and the station never sees the patchy spread-rate multiplier the truth burns with.
+   are a modelled measurement of the wind now (the true wind with noise, ``measured_wind_sigma_mps`` and
+   ``measured_dir_sigma_deg``) and a weather forecast for later, which is not the true weather, and the
+   station never sees the patchy spread-rate multiplier the truth burns with.
 3. **Brief and tell the crews.** Per fire: how it was found, which way its head runs (a compass bearing
    from the ensemble, with a cone for its uncertainty) and why (the measured wind, the slope, the fuel
    ahead and its dryness, with Rothermel's wind and slope factors naming the main driver), how fast, how big

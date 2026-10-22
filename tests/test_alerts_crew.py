@@ -146,6 +146,14 @@ class SmoulderAlertsTest(unittest.TestCase):
 
 
 class CrewExportTest(unittest.TestCase):
+    def test_the_cone_is_the_brief_s_half_width_either_side(self):
+        # The brief's cone_deg is scored and drawn as plus or minus; the map file's sector must match.
+        pts = crew_export._cone((0.0, 0.0), 90.0, 20.0, 100.0)
+        edge = pts[1:-1]
+        bearings = sorted((np.degrees(np.arctan2(x, y)) % 360.0) for x, y in edge)
+        self.assertAlmostEqual(bearings[0], 70.0, places=6)
+        self.assertAlmostEqual(bearings[-1], 110.0, places=6)
+
     def test_briefs_become_map_files_and_short_messages(self):
         sc = make("wildfire_valley", 2003, n=16, duration_s=120.0)
         body = DroneBody()

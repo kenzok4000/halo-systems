@@ -36,14 +36,20 @@ repeatable at temperature 0.
   "since half past ten last night" as 21:30, "every strike on file" as the night before only); and request 145, as above.
 - **Rules: twenty-eight misses.** Seventeen patrol lengths in words ("an hour and a quarter", "a ninety-minute patrol", "half hr")
   read wrongly, six requests that should be refused let through (the rules have only the keyword guard), request
-  145, and four with the drones, areas or strikes wrong. The rules also add 65 strikes nobody asked for.
+  145, and four with the drones, areas or strikes wrong. The rules also add 65 strikes nobody asked for. Fifteen of
+  the 28 misses differ only in the patrol: the rules found no length in the words and flew the default 12 minutes,
+  and in 14 of them the request asked for 15 minutes or more, which the planner caps at one battery, so the flights
+  differ by 12 against 15 minutes of patrol. Counting those fifteen as the same flight, the rules would score 35
+  of 48, against 47 for Nemotron with reasoning.
 
 ## What this shows, and what it does not
 
 The model reads the words; code does everything else. Nemotron writes a short spec (how many drones, which areas,
 how long, which strikes by when and where); the planner checks it and builds the squads, and the strike filter is
-applied by code to the valley's own list, so the model never picks a strike or a lane itself. Every plan still
-passes the safety validator before a drone moves, and no language model takes part in any alert or crew decision.
+applied by code to the valley's own list, so the model never picks a strike or a lane itself. Fixed rules in code
+hold every plan to at most 64 drones, no more in one line than fit across an area and a patrol of 1 to 15 minutes,
+and set the formation's speed, spacing and height; in flight every directive passes the safety validator. No
+language model takes part in any alert or crew decision.
 
 48 requests is a small set: one request is two points. The requests were written by three writer agents and checked
 by two blind readers (see `PREREG.md` and `heldout_provenance.json`), not by fire crews, so they show how the
