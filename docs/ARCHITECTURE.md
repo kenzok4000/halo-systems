@@ -18,7 +18,10 @@ Halo Systems has three loops that run at very different speeds. Only the fastest
 
 In the wildfire valley, the drones' cameras feed a ground station that locates the fires, forecasts their spread, briefs the crews and checks the alerts, with no language model ([WILDFIRE.md](WILDFIRE.md)). This figure follows one valley job from the operator's words to the alerts ([`tools/architecture_figure.py`](../tools/architecture_figure.py) draws it):
 
-![How Halo turns a lightning strike into a crew brief and an alert: Nemotron reads the job before take-off; a supervisor every 5 s, a safety validator and a 50 Hz controller with a safety filter fly the drones; the ground station locates the fires, forecasts their spread, briefs the crews and checks the alerts with no language model](architecture.png)
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="architecture-dark.png">
+  <img alt="How Halo turns a lightning strike into a crew brief and an alert: Nemotron reads the job before take-off and code makes the plan; a supervisor every 5 s, a safety validator and a 50 Hz controller with a safety filter fly the drones; the ground station locates the fires, forecasts their spread, briefs the crews and checks the alerts with no language model" src="architecture.png">
+</picture>
 
 ## Where each loop runs
 

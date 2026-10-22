@@ -149,7 +149,7 @@ Eight images for the Devpost gallery, in this order. Dashboard screenshots are t
 3. `results/wildfire_valley/detection.png`: when each of the 100 fires was reported and how big it was, by sixteen drones and by today's methods as modelled (a fire a method missed is not shown; sixteen drones found 86).
 4. The dashboard in the forest trail with Nemotron's directives in the decision log.
 5. `docs/figures/wildfire-swarm-size-light.png`: time to find every hotspot with 1, 4 and 16 drones, with 95% intervals.
-6. `docs/architecture.png`: from the operator's typed job to the crew brief and the alerts, with the one place Nemotron works in the valley and the loops where no language model does.
+6. `docs/architecture.png`: from the operator's typed job to the crew brief and the alerts, with the one place Nemotron works on a valley job (reading the job before take-off) and the steps where no language model does.
 7. The Mission tab with a compiled scouting mission beside a refused request.
 8. `results/crashes.png`: drones lost per configuration on the held-out seeds.
 
