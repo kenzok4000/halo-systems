@@ -180,6 +180,8 @@ def compute_metrics(sim) -> dict:
         metrics.update(scouting_metrics(sim, t, duration))
     if getattr(sim, "wildfire", None) is not None:
         metrics.update(sim.wildfire.evaluate(sim))
+        if getattr(sim, "checker", None) is not None:
+            metrics.update(sim.checker.evaluate(sim))
     if getattr(sim, "airspace", False):
         metrics.update(airspace_metrics(sim))
     return metrics

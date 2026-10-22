@@ -201,6 +201,27 @@ class SafetyValidator:
                          "action": "accepted" if not bad else "rejected", "violations": bad})
         return bad
 
+    def check_strike(self, order: dict, listed: set, done: set, flying: int, t: float, source: str,
+                     airspace_hold: bool = False) -> list[str]:
+        """Check an order sending the strike-check team to a strike: {"op": "check", "strike": id}. The strike must
+        be on the night's list and not already checked or refused, the team must have a drone flying, and no
+        airspace hold may be in force. Returns the violations (empty: accepted); logged with ``kind`` "strike"."""
+        bad = []
+        sid = order.get("strike")
+        if order.get("op") != "check":
+            bad.append(f"unknown strike order {order.get('op')!r}")
+        if not isinstance(sid, int) or isinstance(sid, bool) or sid not in listed:
+            bad.append(f"no strike {sid!r} on the list")
+        elif sid in done:
+            bad.append(f"strike {sid} is already checked")
+        if flying < 1:
+            bad.append("the check team has no drone flying")
+        if airspace_hold:
+            bad.append("airspace hold in force")
+        self.log.append({"t": round(t, 2), "source": source, "kind": "strike", "order": dict(order),
+                         "action": "accepted" if not bad else "rejected", "violations": bad})
+        return bad
+
     # -- airspace orders ("aircraft inbound": hold and resume) ----------------------------------------------------
     def check_airspace(self, order, *, held_since_s: float | None, hold_altitude_m: float | None,
                        directive_altitude_m: float, t: float, source: str,

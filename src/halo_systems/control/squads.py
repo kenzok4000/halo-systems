@@ -22,6 +22,7 @@ the transit layer). ``resume`` climbs every part, and every drone in transit, ba
 from __future__ import annotations
 
 import copy
+import dataclasses
 import math
 from dataclasses import dataclass, field
 
@@ -67,6 +68,7 @@ class Squad:
     lanes: int = 0
     lane_m: float = 0.0     # lane width: (k - 1) x spacing + swath
     pass_s: float = 0.0     # predicted time for one circuit
+    alt_offset_m: float = 0.0   # flies this far above the directive's altitude (a strike-check team, over the others)
 
     def to_dict(self) -> dict:
         return {"id": self.id, "code": self.code, "name": self.name,
@@ -306,8 +308,12 @@ class SquadPlan:
         # at its transit layer (directive altitude + TRANSIT_LIFT_M) after the resume.
         self.hold_alt_m: float | None = None
 
+    def _directive_of(self, sq: Squad, directive: Directive | None = None) -> Directive:
+        d = directive or self.directive
+        return dataclasses.replace(d, altitude_m=d.altitude_m + sq.alt_offset_m) if sq.alt_offset_m else d
+
     def _plan(self, sq: Squad, members: np.ndarray) -> FormationPlan:
-        fp = FormationPlan(Path(sq.waypoints, loop=True), self.directive, self.n, reassign=self.reassign,
+        fp = FormationPlan(Path(sq.waypoints, loop=True), self._directive_of(sq), self.n, reassign=self.reassign,
                            blend=self.blend, pace=self.pace, members=members)
         fp.surface = getattr(self, "_surface", None)
         return fp
@@ -422,8 +428,8 @@ class SquadPlan:
 
     def set_directive(self, directive: Directive, positions: np.ndarray | None, t: float) -> None:
         self.directive = directive
-        for p in self.parts:
-            p.set_directive(directive, positions, t)
+        for sq, p in zip(self.squads, self.parts):
+            p.set_directive(self._directive_of(sq, directive), positions, t)
 
     # -- moving drones between squads ------------------------------------------------------------------------
     def replan(self, i: int, positions: np.ndarray, t: float) -> None:
@@ -468,6 +474,39 @@ class SquadPlan:
             self.replan(i, positions, t)
         self.changes += 1
 
+    def retarget(self, i: int, rect: tuple, positions: np.ndarray, t: float) -> list[int]:
+        """Give squad i a new area (a strike-check team's next box): its members leave their circuit, fly to the
+        new one at the transit layer and join it on arrival, as drones moved between squads do. Returns them."""
+        sq, old = self.squads[i], self.parts[i]
+        members = [int(d) for d in old.members]
+        k = max(len(members), 1)
+        sq.rect = tuple(float(v) for v in rect)
+        sq.waypoints, sq.lanes, sq.lane_m = circuit(sq.rect, k, self.directive.spacing_m, self.swath)
+        sq.pass_s = pass_time(sq.rect, k, self._directive_of(sq), self.swath)
+        fp = self._plan(sq, np.zeros(0, dtype=int))
+        fp.copy_hold(old)
+        self.parts[i] = fp
+        # The team travels line abreast, each drone aiming at its own point beside the new circuit's start (in the
+        # order they fly side by side now, so no paths cross) instead of all at one point.
+        if members:
+            start = positions[members, :2].mean(axis=0)
+            u = np.asarray(fp.centre()[:2], dtype=float) - start
+            u = u / np.linalg.norm(u) if np.linalg.norm(u) > 1.0 else np.array([1.0, 0.0])
+            perp = np.array([-u[1], u[0]])
+            side = np.argsort([float((positions[d, :2] - start) @ perp) for d in members])
+            spacing = self.directive.spacing_m
+            for rank, j in enumerate(side):
+                d = members[j]
+                self.squad_of[d] = -1
+                if d in sq.drones:
+                    sq.drones.remove(d)
+                self.transit[d] = {"to": i, "pos": positions[d].copy(), "vel": np.zeros(3),
+                                   "offset": (rank - 0.5 * (len(members) - 1)) * spacing * perp}
+        if self.holding:
+            self._hold_from(positions)          # the validator refuses checks during a hold; this is a safeguard
+        self.changes += 1
+        return members
+
     def _advance_transit(self, dt: float) -> None:
         if not self.transit:
             return
@@ -477,7 +516,7 @@ class SquadPlan:
                 self._hold_transit(tr, dt)
                 continue
             target = self.parts[tr["to"]].centre()
-            gap = target[:2] - tr["pos"][:2]
+            gap = target[:2] + tr.get("offset", 0.0) - tr["pos"][:2]
             dist = float(np.linalg.norm(gap))
             if dist <= JOIN_RADIUS_M:
                 arrived.append(d)

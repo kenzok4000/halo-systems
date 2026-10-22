@@ -109,6 +109,9 @@ class Scenario:
     squad_script: list = field(default_factory=list)
     # Lightning strikes reported overnight (the wildfire valley, when asked for): what a mission may cue on.
     strikes: list | None = None
+    # Strike checks (sim/strike_check.py): a small squad, code "C", looks at the listed strikes up close one at a
+    # time, the next one named by a picker ({"picker": "rule" | "nearest" | "nemotron", ...}); None: no checks.
+    strike_check: dict | None = None
     # Airspace orders at fixed times (crewed firefighting aircraft inbound): {"t": s, "op": "hold" | "resume",
     # "altitude_m": optional hold altitude above the ground, "by": who ordered it}; see Simulation.airspace_order.
     airspace_script: list = field(default_factory=list)
@@ -134,4 +137,6 @@ class Scenario:
                 "squad_script": [dict(o) for o in self.squad_script]} if self.squads else {}),
             **({"strikes": [dict(k) for k in self.strikes]} if self.strikes is not None else {}),
             **({"airspace_script": [dict(o) for o in self.airspace_script]} if self.airspace_script else {}),
+            **({"strike_check": {k: v for k, v in self.strike_check.items() if k != "client"}}
+               if self.strike_check else {}),
         }

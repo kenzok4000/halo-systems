@@ -419,25 +419,28 @@ def valley_areas() -> list:
             Area("S", "South slopes", (bx0, y0, bx1, by0 - 30.0))]
 
 
-def _strike_list(seed: int, fires) -> list[dict]:
+def _strike_list(seed: int, fires, truth: dict | None = None) -> list[dict]:
     """Lightning strikes reported over the valley: one near each fire's ignition point (all five are lightning
     fires) among strikes that started nothing, last night and the night before. Positions carry a location error
     (STRIKE_ERR_M) and are clipped to the valley; ``area`` is the squad area the reported position falls in ("-"
-    for none). Drawn from their own random stream, so asking for them changes nothing else in the valley."""
+    for none). Drawn from their own random stream, so asking for them changes nothing else in the valley.
+    ``truth`` (scoring only), when given, is filled with {strike id: index of the fire it started}."""
     rng = _rng(seed, 23)
     x0, y0, x1, y1 = VALLEY_EXTENT
-    raw = [(rng.uniform(*LAST_NIGHT_H), f.x + rng.normal(0.0, STRIKE_ERR_M), f.y + rng.normal(0.0, STRIKE_ERR_M))
-           for f in fires]
-    raw += [(rng.uniform(*LAST_NIGHT_H), rng.uniform(x0, x1), rng.uniform(y0, y1)) for _ in range(int(rng.integers(6, 11)))]
-    raw += [(rng.uniform(*NIGHT_BEFORE_H), rng.uniform(x0, x1), rng.uniform(y0, y1)) for _ in range(int(rng.integers(3, 7)))]
+    raw = [(rng.uniform(*LAST_NIGHT_H), f.x + rng.normal(0.0, STRIKE_ERR_M), f.y + rng.normal(0.0, STRIKE_ERR_M), i)
+           for i, f in enumerate(fires)]
+    raw += [(rng.uniform(*LAST_NIGHT_H), rng.uniform(x0, x1), rng.uniform(y0, y1), -1) for _ in range(int(rng.integers(6, 11)))]
+    raw += [(rng.uniform(*NIGHT_BEFORE_H), rng.uniform(x0, x1), rng.uniform(y0, y1), -1) for _ in range(int(rng.integers(3, 7)))]
     areas = valley_areas()
     out = []
-    for t_h, x, y in sorted(raw):
+    for t_h, x, y, fire in sorted(raw):
         mins = int(round(t_h * 60.0))
         clock = int(round(FLIGHT_CLOCK_H * 60.0)) + mins            # minutes after midnight today (negative: before)
         day = "today" if clock >= 0 else "yesterday" if clock >= -1440 else "2 days ago"
         x, y = float(np.clip(x, x0, x1)), float(np.clip(y, y0, y1))
         code = next((a.code for a in areas if a.rect[0] <= x <= a.rect[2] and a.rect[1] <= y <= a.rect[3]), "-")
+        if truth is not None and fire >= 0:
+            truth[len(out) + 1] = fire
         out.append({"id": len(out) + 1, "day": day, "time": f"{(clock // 60) % 24:02d}:{clock % 60:02d}",
                     "hours_ago": round(-mins / 60.0, 2), "x": round(x), "y": round(y), "area": code})
     return out
@@ -450,7 +453,7 @@ def valley_strikes(seed: int) -> list[dict]:
 
 def wildfire_valley(seed: int = 0, n: int = 16, alert_rule: str = "forecast", approval: str = "auto",
                     squads=None, patrol_s: float = PATROL_S, squad_script=None, station: str = "legacy",
-                    report_v2: bool = False, strikes=None, smoulder_alerts: bool = False) -> Scenario:
+                    report_v2: bool = False, strikes=None, smoulder_alerts: bool = False, checks=None) -> Scenario:
     """Scout a mountain valley for lightning fires, forecast their spread and warn the phones in their way.
 
     The morning after dry lightning, five fires smoulder in a valley between two ridges: one already
@@ -473,6 +476,10 @@ def wildfire_valley(seed: int = 0, n: int = 16, alert_rule: str = "forecast", ap
     keys (WildfireConfig); neither changes what flies. ``strikes`` ("all" or a list of strike ids) attaches the
     night's lightning list (_strike_list) to the scenario, and with squads each squad starts its circuit on the
     lane nearest the listed strikes in its area (control.squads.cue_lane); the strikes never change the valley.
+    ``checks`` ({"picker": "rule" | "nearest" | "nemotron", "k": 4, ...}, or the picker's name) adds a strike-check
+    team (sim/strike_check.py): the default split shares n - k drones over the areas, the team (squad "C") takes
+    the other k and any the split would keep in reserve, so all n fly, and it checks the night's strikes one at a
+    time; it implies the strike list and squads ("auto").
     """
     from ..sim.fire import Moisture, Period
     from ..sim.terrain import FOREST, GRASS, SCRUB, valley
@@ -587,9 +594,15 @@ def wildfire_valley(seed: int = 0, n: int = 16, alert_rule: str = "forecast", ap
     world = World(cylinders=cyls, boxes=boxes, geofence_lo=(x0, y0, 0.0),
                   geofence_hi=(x1, y1, float(terrain.heights.max()) + 150.0), terrain=terrain)
     w0 = weather[6].wind_mps
-    strike_list, cue = None, []
+    from ..sim.strike_check import CHECK_K
+    if isinstance(checks, str):
+        checks = {"picker": checks}
+    if checks is not None:
+        strikes = "all" if strikes is None else strikes
+        squads = "auto" if squads in (None, "none") else squads
+    strike_list, cue, strike_fires = None, [], {}
     if strikes is not None:
-        strike_list = _strike_list(seed, fires)
+        strike_list = _strike_list(seed, fires, strike_fires)
         want = set() if strikes == "all" else {int(i) for i in strikes}
         unknown = want - {k["id"] for k in strike_list}
         if unknown:
@@ -599,14 +612,15 @@ def wildfire_valley(seed: int = 0, n: int = 16, alert_rule: str = "forecast", ap
         cue = [(k["x"], k["y"]) for k in strike_list if k["cue"]]
     flight = {}
     if squads is not None and squads != "none":
-        flight = _valley_squads(n, squads, sensor, swath, float(patrol_s), squad_script, cue)
+        flight = _valley_squads(n, squads, sensor, swath, float(patrol_s), squad_script, cue,
+                                                check_k=int(checks.get("k", CHECK_K)) if checks is not None else 0)
     # Fixed evacuation zones: south slopes, valley floor and north slopes, four across from west to east.
     zones = grid_zones([x0, bx0, 0.5 * (bx0 + bx1), bx1, x1], [y0, by0 - 30.0, by1 + 30.0, y1],
                        [("S", "South slopes"), ("F", "Valley floor"), ("N", "North slopes")], places)
     wildfire = WildfireConfig(fires=fires, weather=weather, weather_forecast=told, phones=phones, places=places,
                               overhangs=overhangs, zones=zones, alerts=AlertPolicy(rule=alert_rule, approval=approval,
                                                                                 smoulder_alerts=smoulder_alerts),
-                              station=station, report_v2=report_v2)
+                              station=station, report_v2=report_v2, strike_fires=strike_fires)
     sc = Scenario(
         name="wildfire_valley",
         title="Wildfire valley",
@@ -620,15 +634,38 @@ def wildfire_valley(seed: int = 0, n: int = 16, alert_rule: str = "forecast", ap
         targets=targets, sensor=sensor, wildfire=wildfire,
         use_case="wildfire scouting: finding fires, forecasting their spread and warning people in their way",
         tags=("survey", "scouting", "wildfire", "terrain"), strikes=strike_list,
+        strike_check=dict(checks) if checks is not None else None,
     )
     return dataclasses.replace(sc, **flight) if flight else sc
 
 
-def _valley_squads(n, spec, sensor, swath, patrol_s, script, cue=()) -> dict:
+def _valley_squads(n, spec, sensor, swath, patrol_s, script, cue=(), check_k: int = 0) -> dict:
     """The Scenario fields for a squad patrol of the valley (see wildfire_valley); ``cue`` holds (x, y) points
-    each squad looks at first."""
-    from ..control.squads import allocate, build_squads, cue_lane, parse_counts
+    each squad looks at first. ``check_k`` drones form a strike-check squad "C" (sim/strike_check.py), staged
+    over the middle of the valley floor until its first strike is chosen; the split shares the other n - k."""
+    from ..control.squads import Area, allocate, build_squads, cue_lane, parse_counts
     directive = Directive("line", SCOUT_SPACING_M, SCOUT_SPEED_MPS, SCOUT_ALTITUDE_M, 1.0, source="mission")
+    if check_k:
+        if not 1 <= check_k < n:
+            raise ValueError(f"a check team of {check_k} needs more than {check_k} drones in all")
+        squads = _valley_squads(n - check_k, spec, sensor, swath, patrol_s, script, cue)
+        # Every drone flies: any the area split would keep in reserve joins the team.
+        k = n - squads["n"]
+        from ..sim.strike_check import CHECK_LIFT_M, check_box
+        bx0, by0, bx1, by1 = VALLEY_BLOCK
+        stage = Area("C", "Strike check", check_box(0.5 * (bx0 + bx1), 0.5 * (by0 + by1), VALLEY_EXTENT,
+                                                    k=k, spacing=SCOUT_SPACING_M, swath=swath))
+        team = build_squads({"C": k}, [stage], directive, swath)[0]
+        team.id = len(squads["squads"])
+        team.drones = list(range(squads["n"], n))
+        team.alt_offset_m = CHECK_LIFT_M
+        squads["squads"] = squads["squads"] + [team]
+        squads["squad_counts"] = {**{c: m for c, m in squads["squad_counts"].items() if c != "R"}, "C": k, "R": 0}
+        squads["squad_areas"] = squads["squad_areas"] + [stage]
+        squads["n"] = n
+        squads["description"] = re.sub(r"; \d+ in reserve", "", squads["description"]).replace(
+            "patrolled by squads (", f"patrolled by squads and a {k}-drone strike-check team (", 1)
+        return squads
     areas = valley_areas()
     if isinstance(spec, str) and spec.lower().startswith("auto:"):
         # The default split over some areas only, e.g. "auto:F" for the valley floor alone.

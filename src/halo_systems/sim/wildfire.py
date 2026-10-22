@@ -213,6 +213,7 @@ class WildfireConfig:
     # "tight": only within 3 x (the two fixes' errors) + 5 m, never wider than legacy; see Wildfire._locate.
     station: str = "legacy"
     report_v2: bool = False           # extra scoring keys (own evidence, camera time, miss class); scoring only
+    strike_fires: dict = field(default_factory=dict)   # scoring only: {strike id: the fire it started}; never shown
 
     def summary(self, terrain: Terrain) -> dict:
         return {
@@ -541,6 +542,12 @@ class AlertCheck:
         return AlertCheckResult(not reasons, reasons)
 
 
+def _footprint_height_cap(sim) -> float:
+    """With a strike-check team (sim/strike_check.py), every thermal footprint is held to the squads' height: the
+    team flies higher, and the camera model has no resolution penalty. Otherwise no cap."""
+    return float(sim.directive.altitude_m) if getattr(sim, "checker", None) is not None else math.inf
+
+
 def _wrap(a):
     return (a + math.pi) % (2 * math.pi) - math.pi
 
@@ -711,12 +718,13 @@ class Wildfire:
             return
         g, mc = self.grid, self.cfg.mapping
         tan = math.tan(math.radians(mc.fov_deg / 2.0))
+        cap = _footprint_height_cap(sim)
         for d in act:
             x, y, z = (float(v) for v in sim.p[d])
             agl = z - float(self.terrain.height(x, y))
             if agl <= 0.0:
                 continue
-            r = agl * tan + 0.5 * g.cell_m
+            r = min(agl, cap) * tan + 0.5 * g.cell_m
             near = burning & ((g.X - x) ** 2 + (g.Y - y) ** 2 <= r * r)
             if not near.any():
                 continue
@@ -891,7 +899,7 @@ class Wildfire:
             y = float(self.fires[j].y + est[1] - sim.p[by, 1])
             # One image shows the hot ground inside the camera's footprint, not a large fire's whole extent.
             agl = float(sim.p[by, 2]) - float(self.terrain.height(sim.p[by, 0], sim.p[by, 1]))
-            foot = float(sim.sc.sensor.footprint_radius(max(agl, 1.0)))
+            foot = float(sim.sc.sensor.footprint_radius(min(max(agl, 1.0), _footprint_height_cap(sim))))
             seen_area = min(float(area[j]), math.pi * foot * foot) * (1.0 - self.fires[j].cover) \
                 * float(np.exp(0.2 * sim.rng_misc.normal()))
             self._own_src = [int(j)]

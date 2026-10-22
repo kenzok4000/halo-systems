@@ -227,6 +227,14 @@ class Simulation:
         if scenario.wildfire is not None:
             from .wildfire import Wildfire
             self.wildfire = Wildfire(self)
+        # Strike checks (the wildfire valley with a check squad): see sim/strike_check.py.
+        self.checker = None
+        if getattr(scenario, "strike_check", None):
+            from .strike_check import StrikeChecker
+            self.checker = StrikeChecker(self, scenario.strike_check)
+            # The team flies higher than the squads; its thermal footprint is held to theirs (the camera model has
+            # no resolution penalty, so height alone would widen its view).
+            self._foot_cap = float(scenario.sensor.footprint_radius(self.directive.altitude_m))
 
     # ------------------------------------------------------------------------
     def event(self, kind: str, drone: int | None = None, **detail) -> None:
@@ -302,6 +310,8 @@ class Simulation:
         if self.squads:
             while self._squad_orders and self._squad_orders[0]["t"] <= t:
                 self.squad_order(self._squad_orders.pop(0), obs)
+        if self.checker is not None:
+            self.checker.tick(self, obs)
         while self._airspace_orders and float(self._airspace_orders[0]["t"]) <= t:
             self.airspace_order(self._airspace_orders.pop(0), obs=obs)
 
@@ -342,6 +352,8 @@ class Simulation:
         p = self.p[act]
         terrain = self.sc.world.terrain
         foot = self.sc.sensor.footprint_radius(p[:, 2] if terrain is None else p[:, 2] - terrain.height(p[:, 0], p[:, 1]))
+        if getattr(self, "checker", None) is not None:
+            foot = np.minimum(foot, self._foot_cap)
         if len(self.targets):
             d = np.hypot(p[:, None, 0] - self.targets[None, :, 0], p[:, None, 1] - self.targets[None, :, 1])
             in_view = d - self.targets[None, :, 2] <= foot[:, None]
