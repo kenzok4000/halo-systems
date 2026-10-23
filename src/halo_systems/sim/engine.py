@@ -354,6 +354,7 @@ class Simulation:
         foot = self.sc.sensor.footprint_radius(p[:, 2] if terrain is None else p[:, 2] - terrain.height(p[:, 0], p[:, 1]))
         if getattr(self, "checker", None) is not None:
             foot = np.minimum(foot, self._foot_cap)
+            self.checker.mark_seen(p, foot)
         if len(self.targets):
             d = np.hypot(p[:, None, 0] - self.targets[None, :, 0], p[:, None, 1] - self.targets[None, :, 1])
             in_view = d - self.targets[None, :, 2] <= foot[:, None]

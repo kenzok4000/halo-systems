@@ -4,9 +4,12 @@ The morning after dry lightning, a fire agency has a list of the night's strikes
 In the wildfire valley the area squads patrol as before; this team (squad code "C", CHECK_K drones plus any the
 area split would keep in reserve) flies to one strike, patrols a square round it (CHECK_BOX_M, about the strike
 positions' error) for one full circuit with its thermal cameras looking down and its forward cameras watching for
-smoke, then moves on to the next. It flies CHECK_LIFT_M above the squads so it can cross their areas, and changes
-box the way drones move between squads (at the transit layer, line abreast). Its thermal footprint is held to the
-squads' (``Simulation`` caps it), so the extra height buys it no wider view.
+smoke, then moves on to the next. It flies CHECK_LIFT_M above the squads, so it can cross their areas, and keeps
+that height between squares; its drones move in step to points in a line beside the new square and join it
+together (SquadPlan.retarget).
+Its thermal footprint is held to the squads' (``Simulation`` caps it), so the extra height buys it no wider view.
+The next strike is picked LOOKAHEAD_S before the current look ends and the team moves on when the look is over, so
+a picker's thinking time overlaps the look; a pick made earlier waits for it.
 
 What the team checks next is the one decision a picker makes (``supervisor/strikes.py``): a fixed rule, or
 Nemotron reading the strike table. Code builds the table (``strike_table``) from what the swarm knows: each
@@ -30,12 +33,14 @@ import numpy as np
 
 CHECK_K = 4                 # drones in the team: a sound smoke fix needs bearings from three drones
 CHECK_BOX_M = 120.0         # side of the square patrolled round a reported strike (positions carry about 50 m error)
-CHECK_LIFT_M = 10.0         # the team flies this far above the squads' altitude
+CHECK_LIFT_M = 20.0         # the team flies this far above the squads' altitude: room for both to lag the
+                            # followed surface where it steps (a forest edge) as the team crosses a squad
 NEAR_FIRE_M = 150.0         # a located fire this close to a strike is taken as that strike's fire (the table, rule)
 SMOKE_WINDOW_S = 180.0      # unexplained smoke bearings are counted over the last three minutes
 SMOKE_NEAR_M = 80.0         # ... when they pass this close to the strike
 SEEN_RADIUS_M = 60.0        # the share already looked at by a thermal camera, over this circle round the strike
-JOIN_MARGIN_S = 30.0        # time allowed for the pick and for the team to join its box, in the reachability test
+JOIN_MARGIN_S = 30.0        # time allowed for the team to join its box, in the reachability test
+LOOKAHEAD_S = 40.0          # the next strike is picked this long before the current look ends
 GROUND = {0: "rock", 1: "grass", 2: "scrub", 3: "forest", 4: "bare"}   # terrain cover codes (sim.terrain)
 
 
@@ -82,6 +87,15 @@ class StrikeChecker:
         self.next_t = 0.0
         self.wait_until = 0.0
         self.decisions: list[dict] = []
+        self.expired = 0                        # picks dropped because the look before them ran too long
+        # Ground any thermal camera has looked at, over the whole valley (the station's coverage grid spans only
+        # the area squads' block, and the team mostly looks outside it). Marked by mark_seen as the engine senses.
+        cell = float(sim.sc.sensor.cell_m)
+        x0, y0, x1, y1 = self.extent
+        self._cell = cell
+        self._seen_x = x0 + (np.arange(int(math.ceil((x1 - x0) / cell))) + 0.5) * cell
+        self._seen_y = y0 + (np.arange(int(math.ceil((y1 - y0) / cell))) + 0.5) * cell
+        self.seen = np.zeros((len(self._seen_x), len(self._seen_y)), dtype=bool)
 
     # -- the loop, once a second --------------------------------------------------------------------------
     def tick(self, sim, obs) -> None:
@@ -90,25 +104,53 @@ class StrikeChecker:
             return
         self.next_t = t + 1.0
         plan = sim.ctrl.plan
-        if self.pending is not None and t >= self.pending["t_apply"]:
-            pick, self.pending = self.pending, None
-            self._apply(sim, obs, pick)
         cur = self.current
         part = plan.parts[self.sq]
         if cur is not None and cur.get("t_look") is None and self._arrived(plan, sim):
             cur["t_look"] = round(t, 2)
             cur["s0"] = float(part.s)
             sim.event("strike_check", None, state="looking", strike=cur["strike"])
+        # A look ends when the team's circuit has gone once round (progress stops during a hold).
+        looking = cur is not None and cur.get("t_look") is not None and "t_done" not in cur
+        if looking and part.s - cur["s0"] >= part.path.length:
+            self._close(sim, cur)
+            looking = False
+        free = cur is None or "t_done" in cur            # the team may be sent on
+        if self.pending is not None and t >= self.pending["t_apply"] and free:
+            pick, self.pending = self.pending, None
+            if pick["strike"] in {r["id"] for r in strike_table(sim, self)[0]}:
+                self._apply(sim, obs, pick)
+            else:
+                # The look ran long (a hold, slow corners) and the strike can no longer be checked in time: drop the
+                # pick (the strike stays on the list) and pick again now.
+                self.expired += 1
+                sim.event("strike_check", None, state="expired", strike=pick["strike"])
+            cur = self.current
+            free = cur is None or "t_done" in cur
         if self.finished or self.pending is not None or t < self.wait_until:
             return
         if sim._hold is not None or not self._flying(plan, sim):
             return                               # nothing is picked during a hold or with no team drone flying
-        # A look ends when the team's circuit has gone once round (progress stops during a hold).
-        looked = cur is not None and cur.get("t_look") is not None and part.s - cur["s0"] >= part.path.length
-        if cur is None or "t_done" in cur or looked:
-            if cur is not None and "t_done" not in cur:
-                self._close(sim, cur)
+        # The next strike is chosen LOOKAHEAD_S before the look ends, so a picker's thinking overlaps the look.
+        soon = looking and (part.path.length - (part.s - cur["s0"])) / max(float(part.speed_now), 1.0) <= LOOKAHEAD_S
+        if free or soon:
             self._decide(sim)
+
+    def mark_seen(self, p: np.ndarray, foot: np.ndarray) -> None:
+        """Mark the ground inside each flying drone's thermal footprint (``p`` positions, ``foot`` radii)."""
+        cell = self._cell
+        x0, y0 = self._seen_x[0] - 0.5 * cell, self._seen_y[0] - 0.5 * cell
+        nx, ny = self.seen.shape
+        for (x, y, _), r in zip(p, foot):
+            if r <= 0.0:
+                continue
+            i0, i1 = max(0, int((x - r - x0) // cell)), min(nx, int((x + r - x0) // cell) + 1)
+            j0, j1 = max(0, int((y - r - y0) // cell)), min(ny, int((y + r - y0) // cell) + 1)
+            if i0 >= i1 or j0 >= j1:
+                continue
+            cx = self._seen_x[i0:i1, None]
+            cy = self._seen_y[None, j0:j1]
+            self.seen[i0:i1, j0:j1] |= (cx - x) ** 2 + (cy - y) ** 2 <= r * r
 
     def _team(self, plan) -> list[int]:
         members = [int(d) for d in plan.parts[self.sq].members]
@@ -199,6 +241,7 @@ class StrikeChecker:
             "strike_team": self.k,
             "strike_checks": len(done),
             "strike_checks_cut_off": sum(1 for r in rows if r["t_done"] is None),
+            "strike_picks_expired": self.expired,
             "strike_checks_fire": sum(1 for r in done if r["fire"] is not None),
             "strike_checks_fire_unfound": sum(1 for r in done if r["fire"] is not None and not r["fire_located_before"]),
             "strike_checks_overhang": sum(1 for r in done if r["fire_shelter"] == "overhang"),
@@ -261,17 +304,23 @@ def strike_table(sim, checker: StrikeChecker) -> tuple[list[dict], dict]:
     from ..control.squads import TRANSIT_SPEED_MPS
     look_s = float(plan.squads[checker.sq].pass_s or 120.0)
     left_s = float((sim.sc.patrol_s or sim.sc.duration_s) - t)
+    # A pick made while the team is still looking (the lookahead) leaves only when that look ends: count the rest
+    # of it, with room for the slower corners (the estimate runs about a fifth short).
+    busy_s = 0.0
+    cur = checker.current
+    if cur is not None and cur.get("t_look") is not None and "t_done" not in cur:
+        part = plan.parts[checker.sq]
+        busy_s = 1.3 * max(part.path.length - (part.s - cur["s0"]), 0.0) / max(float(part.speed_now), 1.0) + 5.0
     smoke = _unexplained(wf, t)
     terrain = wf.terrain
     phones = np.array([[p.x, p.y] for p in wf.cfg.phones], dtype=float) if wf.cfg.phones else np.zeros((0, 2))
-    cov = sim.coverage
     rows = []
     for sid, k in sorted(checker.strikes.items()):
         if sid in checker.checked or sid in checker.refused:
             continue
         x, y = float(k["x"]), float(k["y"])
         dist = float(math.hypot(x - here[0], y - here[1]))
-        if dist / TRANSIT_SPEED_MPS + JOIN_MARGIN_S + look_s > left_s:
+        if busy_s + dist / TRANSIT_SPEED_MPS + JOIN_MARGIN_S + look_s > left_s:
             continue                                     # cannot be reached and looked at before the patrol ends
         near = nearest_located(sim, x, y)
         lines, drones = 0, set()
@@ -283,11 +332,9 @@ def strike_table(sim, checker: StrikeChecker) -> tuple[list[dict], dict]:
             if abs(rx * math.sin(b) - ry * math.cos(b)) <= SMOKE_NEAR_M:
                 lines += 1
                 drones.add(d)
-        seen = 0.0
-        if cov is not None:
-            mask = ((sim._cover_x[:, None] - x) ** 2 + (sim._cover_y[None, :] - y) ** 2) <= SEEN_RADIUS_M ** 2
-            total = math.pi * SEEN_RADIUS_M ** 2 / (sim.sc.sensor.cell_m ** 2)
-            seen = min(1.0, float(np.count_nonzero(cov & mask)) / total)
+        mask = ((checker._seen_x[:, None] - x) ** 2 + (checker._seen_y[None, :] - y) ** 2) <= SEEN_RADIUS_M ** 2
+        total = math.pi * SEEN_RADIUS_M ** 2 / (checker._cell ** 2)
+        seen = min(1.0, float(np.count_nonzero(checker.seen & mask)) / total)
         gx, gy = terrain.gradient(x, y)
         rows.append({
             "id": sid, "night": night_of(k), "hours_ago": round(float(k["hours_ago"]), 1),

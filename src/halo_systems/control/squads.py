@@ -29,6 +29,7 @@ from dataclasses import dataclass, field
 import numpy as np
 
 from .directive import Directive
+from .assignment import assign_slots
 from .formations import Path
 from .plan import FormationPlan, ramp
 
@@ -36,6 +37,7 @@ MIN_SQUAD = 3                # smallest squad the default split flies
 MIN_LANE_PITCH_M = 12.0     # the two lanes of a one-lane circuit are at least this far apart, so it has no cusp
 JOIN_RADIUS_M = 30.0        # a transiting drone joins its squad within this distance of the squad's centre
 TRANSIT_LIFT_M = 10.0       # transit layer above the formation's altitude
+TEAM_SETTLE_S = 3.0         # a retargeted team's drone holds its point this long before the team joins its square
 TRANSIT_SPEED_MPS = 8.0
 
 
@@ -318,6 +320,11 @@ class SquadPlan:
         fp.surface = getattr(self, "_surface", None)
         return fp
 
+    def _layer(self, tr: dict) -> float:
+        """Transit altitude of a drone (above the followed surface): TRANSIT_LIFT_M above the formation, or the
+        receiving squad's own altitude when that is higher (a strike-check team keeps its height between squares)."""
+        return max(self.directive.altitude_m + TRANSIT_LIFT_M, self._directive_of(self.squads[tr["to"]]).altitude_m)
+
     # -- the plan interface the simulator and controllers use ------------------------------------------
     @property
     def surface(self):
@@ -375,8 +382,8 @@ class SquadPlan:
     def _hold_from(self, positions: np.ndarray | None) -> None:
         """Start the hold's altitude ramp of every drone in transit that has none: from its height above the followed
         surface (``positions``, else its transit point), at most its transit layer; any climb in progress stops."""
-        layer = self.directive.altitude_m + TRANSIT_LIFT_M
         for d, tr in self.transit.items():
+            layer = self._layer(tr)
             if "alt" not in tr:
                 pos = tr["pos"] if positions is None else positions[d]
                 ground = 0.0
@@ -414,7 +421,13 @@ class SquadPlan:
     def advance(self, dt: float, t: float, errors=None) -> None:
         """``errors``: one shape error per squad (the improved controller's pace), or None."""
         for i, p in enumerate(self.parts):
+            # A squad sent to a new area (retarget) holds its circuit at the start until its drones join, so they fly
+            # to fixed points beside it instead of chasing a moving one.
+            waiting = not len(p.members) and any(tr["to"] == i and "offset" in tr for tr in self.transit.values())
+            s0 = p.s
             p.advance(dt, t, 0.0 if errors is None else float(errors[i]))
+            if waiting:
+                p.s = s0
         self._advance_transit(dt)
 
     def set_members(self, members: np.ndarray, positions: np.ndarray | None, t: float) -> None:
@@ -476,7 +489,8 @@ class SquadPlan:
 
     def retarget(self, i: int, rect: tuple, positions: np.ndarray, t: float) -> list[int]:
         """Give squad i a new area (a strike-check team's next box): its members leave their circuit, fly to the
-        new one at the transit layer and join it on arrival, as drones moved between squads do. Returns them."""
+        new one at the transit layer, each to its own point beside it (line abreast, the square held at its start),
+        and join it together once every one has reached its point and held it TEAM_SETTLE_S. Returns them."""
         sq, old = self.squads[i], self.parts[i]
         members = [int(d) for d in old.members]
         k = max(len(members), 1)
@@ -486,22 +500,28 @@ class SquadPlan:
         fp = self._plan(sq, np.zeros(0, dtype=int))
         fp.copy_hold(old)
         self.parts[i] = fp
-        # The team travels line abreast, each drone aiming at its own point beside the new circuit's start (in the
-        # order they fly side by side now, so no paths cross) instead of all at one point.
+        # The team travels to points in a line abreast beside the new circuit's start, square to its way there, one
+        # point per drone by the least total squared distance, all moving together so they arrive at the same time.
+        # Straight, synchronised moves between two layouts with the formation's spacing, so assigned, keep every
+        # pair about 0.7 spacing apart or more, wherever the new square lies (even right beside the old one).
         if members:
             start = positions[members, :2].mean(axis=0)
-            u = np.asarray(fp.centre()[:2], dtype=float) - start
+            centre = np.asarray(fp.centre()[:2], dtype=float)
+            u = centre - start
             u = u / np.linalg.norm(u) if np.linalg.norm(u) > 1.0 else np.array([1.0, 0.0])
             perp = np.array([-u[1], u[0]])
-            side = np.argsort([float((positions[d, :2] - start) @ perp) for d in members])
             spacing = self.directive.spacing_m
-            for rank, j in enumerate(side):
-                d = members[j]
+            offsets = np.array([(r - 0.5 * (len(members) - 1)) * spacing * perp for r in range(len(members))])
+            here = positions[members, :2]
+            order = assign_slots(here, centre[None, :] + offsets)
+            span = float(np.max(np.linalg.norm(centre[None, :] + offsets[order] - here, axis=1)))
+            for j, d in enumerate(members):
                 self.squad_of[d] = -1
                 if d in sq.drones:
                     sq.drones.remove(d)
                 self.transit[d] = {"to": i, "pos": positions[d].copy(), "vel": np.zeros(3),
-                                   "offset": (rank - 0.5 * (len(members) - 1)) * spacing * perp}
+                                   "offset": offsets[order[j]], "start": here[j].copy(),
+                                   "move_s": max(span / TRANSIT_SPEED_MPS, 1.0), "moved_s": 0.0}
         if self.holding:
             self._hold_from(positions)          # the validator refuses checks during a hold; this is a safeguard
         self.changes += 1
@@ -516,29 +536,55 @@ class SquadPlan:
                 self._hold_transit(tr, dt)
                 continue
             target = self.parts[tr["to"]].centre()
-            gap = target[:2] + tr.get("offset", 0.0) - tr["pos"][:2]
-            dist = float(np.linalg.norm(gap))
-            if dist <= JOIN_RADIUS_M:
-                arrived.append(d)
-                continue
-            step = min(TRANSIT_SPEED_MPS * dt, dist)
-            u = gap / max(dist, 1e-9)
-            xy = tr["pos"][:2] + u * step
-            v = np.array([u[0] * TRANSIT_SPEED_MPS, u[1] * TRANSIT_SPEED_MPS, 0.0])
-            z = self.directive.altitude_m + TRANSIT_LIFT_M
+            if "offset" in tr:
+                # A team drone moves straight to its point, in step with the rest of its team (all arrive together),
+                # and waits there; it is ready once it has held its point TEAM_SETTLE_S, so it has caught up and
+                # stopped. The square is held at its start meanwhile (advance), so the point does not move.
+                aim = target[:2] + tr["offset"]
+                tr["moved_s"] = min(tr["moved_s"] + dt, tr["move_s"])
+                f = tr["moved_s"] / tr["move_s"]
+                xy = tr["start"] + f * (aim - tr["start"])
+                v = np.zeros(3)
+                if f < 1.0:
+                    v[:2] = (aim - tr["start"]) / tr["move_s"]
+                    tr["held_s"] = 0.0
+                else:
+                    tr["held_s"] = tr.get("held_s", 0.0) + dt
+                    tr["ready"] = tr["held_s"] >= TEAM_SETTLE_S
+            else:
+                gap = target[:2] - tr["pos"][:2]
+                dist = float(np.linalg.norm(gap))
+                if dist <= JOIN_RADIUS_M:
+                    arrived.append(d)
+                    continue
+                step = min(TRANSIT_SPEED_MPS * dt, dist)
+                u = gap / max(dist, 1e-9)
+                xy = tr["pos"][:2] + u * step
+                v = np.array([u[0] * TRANSIT_SPEED_MPS, u[1] * TRANSIT_SPEED_MPS, 0.0])
+            z = self._layer(tr)
             if self._surface is not None:
                 h, hx, hy = self._surface.follow(np.array([xy[0]]), np.array([xy[1]]))
                 z += float(h[0])
                 v[2] = float(hx[0]) * v[0] + float(hy[0]) * v[1]
             tr["pos"] = np.array([xy[0], xy[1], z])
             tr["vel"] = v
+        # A team sent to a new area (retarget) joins it together once every one of its drones still in transit has
+        # settled at its point, so all take their slots in one assignment instead of one by one across each other's
+        # paths.
+        teams: dict[int, list[int]] = {}
+        for d, tr in self.transit.items():
+            if "offset" in tr:
+                teams.setdefault(tr["to"], []).append(d)
+        for ds in teams.values():
+            if all(self.transit[d].get("ready") and "alt" not in self.transit[d] for d in ds):
+                arrived += ds
         self._arrived = arrived
 
     def _hold_transit(self, tr: dict, dt: float) -> None:
         """A drone in transit during a hold, or climbing back after one: it stays where it is (progress frozen, no
         horizontal speed) while its altitude ramps down to the hold altitude (never up) and, after the resume, back
         to its transit layer; there it carries on to its squad."""
-        layer = self.directive.altitude_m + TRANSIT_LIFT_M
+        layer = self._layer(tr)
         goal = layer if self.hold_alt_m is None else min(self.hold_alt_m, layer, tr["alt"])
         tr["alt"], tr["rate"], arrived = ramp(tr["alt"], tr["rate"], goal, dt)
         x, y = tr["pos"][0], tr["pos"][1]

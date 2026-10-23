@@ -3,14 +3,16 @@
 Each picker reads the same table that code builds (``strike_table``) and names one strike id, or none to stop.
 
 * ``nearest``: last night's strikes before the night before's, the nearest first. What a crew does by default.
-* ``rule``: a hand-written triage rule. Smoke the station cannot explain first, then last night's strikes with
-  no fire located near them (on ground no area squad patrols before patrolled ground, and ground a thermal camera
-  has not yet cleared before ground it has, unless trees can hide a fire there), then the night before's, then
-  strikes a located fire already explains; the nearest first within each group.
+* ``rule``: a hand-written triage rule. Strikes a located fire already explains (one within 150 m) go last; of
+  the rest, those with smoke the station cannot explain, seen by two or more drones, go first, then last night's,
+  then the night before's; the nearest first within each group. (A first version also put unpatrolled ground,
+  and ground no thermal camera had cleared, first; on the development valleys it spent most of its checks on
+  strikes that started nothing, so it was dropped before the held-out run.)
 * ``nemotron``: Nemotron reads the table and the patrol's state and answers with an id and a reason. A reply that
   names no offered strike, or a call that fails (cut off, empty, a server error after retries), is not replaced
   by a rule: the team keeps looking where it is, the model is asked again a circuit later, and the reply is
-  counted as unusable. A fatal error (no key, the budget cap, a replay with no recorded reply) stops the flight.
+  counted as unusable. It may also answer "strike": null to stop checking; the team then keeps patrolling its last
+  square. A fatal error (no key, the budget cap, a replay with no recorded reply) stops the flight.
 
 Code offers only strikes the team can reach and look at in time, and the safety validator checks every order.
 """
@@ -42,18 +44,12 @@ class RulePicker:
     @staticmethod
     def group(r: dict) -> int:
         if explained(r):
-            return 5
+            return 3
         if r["smoke_drones"] >= 2:
             return 0
-        if r["night"] != "last night":
-            return 4
-        if not r["patrolled"]:
-            return 1
-        cleared = r["seen_pct"] >= 80 and r["ground"] != "forest"
-        return 3 if cleared else 2
+        return 1 if r["night"] == "last night" else 2
 
-    WHY = ["unexplained smoke passes near it", "last night's, on ground no squad patrols",
-           "last night's, not yet cleared from above", "last night's, mostly seen from above", "the night before's",
+    WHY = ["unexplained smoke passes near it", "last night's, no fire located near it", "the night before's",
            "a located fire is near it"]
 
     def pick(self, table: list[dict], ctx: dict) -> dict:
@@ -70,7 +66,7 @@ everything else: locating fires, forecasts and alerts. You never fly a drone.
 
 Each row is a strike the team can still reach and check before the patrol ends:
 - id; night: "last night" (19:00 to 04:00) or "night before"; hours_ago.
-- patrolled: whether an area squad patrols the ground at its reported position (it will look there anyway).
+- patrolled: whether an area squad's patrol covers the ground at its reported position.
 - dist_m: distance from the team now. The team transits at about 8 m/s; each check takes look_min minutes.
 - ground, slope_pct: the ground at the reported position. Reported positions are off by about 50 m.
 - seen_pct: share of the ground within 60 m already looked at from above by a thermal camera. A camera looking \
@@ -82,9 +78,8 @@ about 150 m of a located fire is probably that fire's strike.
 within 80 m of this strike, and how many drones saw them: smoke the swarm has seen but not yet placed.
 - people_m: distance to the nearest people (homes, campground, trail, road or ranch).
 
-Goal: find the fires the patrol has not found yet, while they are still smouldering, giving priority to those \
-nearer people. The team has only a few checks left, and travel costs time, so spend each one where an unfound \
-fire is most likely.
+Goal: find the fires the patrol has not found yet, while they are still smouldering. The team has only a few \
+checks left and travel costs time, so spend each one where a fire that has not been found yet is most likely.
 
 Answer with JSON only: {"strike": <an id from the table>, "why": "<one short sentence>"}, or \
 {"strike": null, "why": "<one short sentence>"} to stop checking."""

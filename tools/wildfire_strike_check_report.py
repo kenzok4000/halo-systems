@@ -58,7 +58,9 @@ def per_flight(r: dict) -> dict:
             "unfound_checks": r.get("strike_checks_fire_unfound") or 0,
             "warned": r.get("phones_warned_in_time"), "reached": r.get("phones_reached_3h"),
             "calls": r.get("strike_calls") or 0, "cost": r.get("strike_cost_usd") or 0.0,
-            "invalid": r.get("strike_invalid") or 0, "latency": r.get("strike_latency_s_median"),
+            "invalid": r.get("strike_invalid") or 0,
+            "latencies": [float(d["latency_s"]) for d in r.get("strike_decisions") or []
+                          if d.get("how") in ("live", "replayed") and d.get("latency_s") is not None],
             "crashes": r["collisions"] + r["obstacle_crashes"] + r["ground_crashes"], "near_misses": r["near_misses"],
             "min_sep": r["min_separation_m"], "flying": r.get("flying", r["n"]), "squads": r.get("squads")}
 
@@ -108,8 +110,8 @@ def main() -> int:
                    "classes": {c: sum(p["classes"][c] for p in pf) for c in pf[0]["classes"]},
                    "calls": sum(p["calls"] for p in pf), "cost_usd": round(sum(p["cost"] for p in pf), 6),
                    "invalid": sum(p["invalid"] for p in pf),
-                   "latency_s_median": float(np.median([p["latency"] for p in pf if p["latency"] is not None]))
-                   if any(p["latency"] is not None for p in pf) else None,
+                   "latency_s_median": float(np.median([x for p in pf for x in p["latencies"]]))
+                   if any(p["latencies"] for p in pf) else None,
                    "crashes": sum(p["crashes"] for p in pf), "near_misses": sum(p["near_misses"] for p in pf),
                    "min_separation_m": min(p["min_sep"] for p in pf if p["min_sep"] is not None)}
             res["arms"][arm] = agg
@@ -118,22 +120,29 @@ def main() -> int:
                   f"{agg['smoulder_pct']:.0f}% | {agg['overhang_found']} | {agg['across_found']} | "
                   f"{agg['false_per_flight']:.2f} | {agg['checks_per_flight']:.1f} | "
                   f"{agg['fire_checks']} ({agg['unfound_checks']}) of {agg['checks']} | {warned} |")
-        print("\nPaired by valley: extra fires per flight, mean and 95% bootstrap interval over valleys.\n")
-        print("| Comparison | Valleys | Found | Found smouldering |")
-        print("|---|---|---|---|")
+        print("\n| Arm | Crashes | Near misses | Closest approach (m) | Model calls | Unusable replies | Cost (USD) | "
+              "Median latency per call (s) |")
+        print("|---|---|---|---|---|---|---|---|")
+        for arm, agg in res["arms"].items():
+            lat = f"{agg['latency_s_median']:.1f}" if agg["latency_s_median"] is not None else "-"
+            print(f"| {arm} | {agg['crashes']} | {agg['near_misses']} | {agg['min_separation_m']:.1f} | {agg['calls']} | "
+                  f"{agg['invalid']} | {agg['cost_usd']:.4f} | {lat} |")
+        print("\nPaired by valley: extra fires per flight (and extra false fires per flight, the guard), mean and 95% "
+              "bootstrap interval over valleys.\n")
+        print("| Comparison | Valleys | Found | Found smouldering | False fires |")
+        print("|---|---|---|---|---|")
         for x, y in PAIRS:
             if x not in arms or y not in arms:
                 continue
             seeds = sorted(set(arms[x]) & set(arms[y]))
             pr = {"valleys": len(seeds)}
             cells = []
-            for key in ("found", "smoulder"):
+            for key in ("found", "smoulder", "false"):
                 d = np.array([arms[x][s][key] - arms[y][s][key] for s in seeds], dtype=float)
                 lo, hi = boot_ci(d)
-                pr[key] = {"mean": float(d.mean()), "lo": lo, "hi": hi, "better": int((d > 0).sum()),
-                           "worse": int((d < 0).sum())}
-                cells.append(f"{d.mean():+.2f} [{lo:+.2f}, {hi:+.2f}] ({pr[key]['better']} better, "
-                             f"{pr[key]['worse']} worse)")
+                up, down = ("more", "fewer") if key == "false" else ("better", "worse")
+                pr[key] = {"mean": float(d.mean()), "lo": lo, "hi": hi, up: int((d > 0).sum()), down: int((d < 0).sum())}
+                cells.append(f"{d.mean():+.2f} [{lo:+.2f}, {hi:+.2f}] ({pr[key][up]} {up}, {pr[key][down]} {down})")
             res["pairs"][f"{x}-{y}"] = pr
             print(f"| {x} minus {y} | {len(seeds)} | " + " | ".join(cells) + " |")
         out[str(n)] = res

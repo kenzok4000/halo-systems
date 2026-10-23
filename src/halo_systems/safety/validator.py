@@ -168,7 +168,8 @@ class SafetyValidator:
         drones one line fits across its area. A move needs k of at least 1, the source to keep at least one flying
         drone, the receiving squad (with those on their way) to stay within its cap, and orders at least
         SQUAD_ORDER_GAP_S apart, and no airspace hold in force (``airspace_hold``: every drone stays where it is
-        until the operator resumes). Logged like a directive, with ``kind`` "squads".
+        until the operator resumes). A strike-check team (squad C) is never moved by hand. Logged like a directive,
+        with ``kind`` "squads".
         """
         incoming = incoming or {}
         bad = []
@@ -184,6 +185,8 @@ class SafetyValidator:
             bad.append("source and destination are the same squad")
         if not isinstance(k, int) or isinstance(k, bool) or k < 1:
             bad.append("k must be a whole number of drones, at least 1")
+        if "C" in (src, dst) and not bad:
+            bad.append("the strike-check team (C) is flown by its own orders, not moved by hand")
         if not bad:
             if flying_by_squad[src] - k < 1:
                 bad.append(f"squad {src} has {flying_by_squad[src]} flying; it must keep at least one")

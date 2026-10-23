@@ -64,13 +64,11 @@ class PickerTest(unittest.TestCase):
         t = [row(1, dist_m=100, fire_near_m=60), row(2, dist_m=600, smoke_lines=9, smoke_drones=3),
              row(3, dist_m=200, seen_pct=95), row(4, dist_m=400), row(5, dist_m=500, patrolled=False),
              row(6, dist_m=50, night="night before", hours_ago=30.0)]
-        self.assertEqual(RulePicker().pick(t, CTX)["strike"], 2)
+        self.assertEqual(RulePicker().pick(t, CTX)["strike"], 2)          # smoke nobody has placed
         t = [r for r in t if r["id"] != 2]
-        self.assertEqual(RulePicker().pick(t, CTX)["strike"], 5)          # no squad patrols there
-        t = [r for r in t if r["id"] != 5]
-        self.assertEqual(RulePicker().pick(t, CTX)["strike"], 4)          # 3 is open ground already seen
-        t = [row(3, dist_m=200, seen_pct=95, ground="forest"), row(4, dist_m=400)]
-        self.assertEqual(RulePicker().pick(t, CTX)["strike"], 3)          # trees can hide a fire it saw over
+        self.assertEqual(RulePicker().pick(t, CTX)["strike"], 3)          # then last night's, nearest first
+        t = [r for r in t if r["id"] not in (3, 4, 5)]
+        self.assertEqual(RulePicker().pick(t, CTX)["strike"], 6)          # then the night before's
         t = [row(1, dist_m=100, fire_near_m=60), row(6, dist_m=900, night="night before", hours_ago=30.0)]
         self.assertEqual(RulePicker().pick(t, CTX)["strike"], 6)
 
@@ -159,14 +157,45 @@ class RetargetTest(unittest.TestCase):
         aims = [plan.parts[1].centre()[:2] + plan.transit[d]["offset"] for d in sent]
         gaps = [np.linalg.norm(a - b) for i, a in enumerate(aims) for b in aims[i + 1:]]
         self.assertGreaterEqual(min(gaps), SCOUT_SPACING_M - 1e-6)
-        for _ in range(400):
-            plan.advance(0.25, 0.0)
+        # The team joins together (one join, not one drone at a time across the others' paths), and its drones
+        # keep their spacing on the way and while taking their slots.
+        joins, closest = [], np.inf
+        for step in range(640):
+            plan.advance(0.25, step * 0.25)
             pos, _ = plan.slots()
-            plan.join_arrivals(pos, 0.0)
-            if not plan.transit:
-                break
+            closest = min(closest, min(np.linalg.norm(pos[a] - pos[b]) for a, b in ((4, 5), (4, 6), (5, 6))))
+            done = plan.join_arrivals(pos, step * 0.25)
+            if done:
+                joins.append(sorted(d for d, _ in done))
         self.assertFalse(plan.transit)
+        self.assertEqual(joins, [[4, 5, 6]])
         self.assertEqual(sorted(plan.squads[1].drones), [4, 5, 6])
+        self.assertGreaterEqual(closest, 10.0)
+
+
+class TeamMotionTest(unittest.TestCase):
+    def test_the_team_keeps_its_height_and_its_new_box_waits_for_it(self):
+        sc = wildfire_valley(3001, n=8, patrol_s=240.0, report_v2=True, checks="rule")
+        body = DroneBody()
+        sim = Simulation(sc, make_controller("improved", body, sc.world), make_supervisor("fixed"), seed=3001,
+                         body=body, record_hz=0)
+        plan = sim.ctrl.plan
+        team = [q.code for q in plan.squads].index("C")
+        pos, _ = plan.slots()
+        before = pos[plan.squads[team].drones, 2].copy()
+        sent = plan.retarget(team, check_box(-200.0, 400.0, VALLEY_EXTENT), pos, 0.0)
+        c0 = plan.parts[team].centre().copy()
+        plan.advance(0.25, 0.0)
+        self.assertTrue(np.allclose(plan.parts[team].centre(), c0))   # held at the circuit's start while empty
+        after, _ = plan.slots()
+        # In transit the team stays at its own height (CHECK_LIFT_M over the squads), not the lower transit layer.
+        self.assertLess(float(np.max(np.abs(after[sent, 2] - before))), 1.0)
+
+    def test_the_team_is_not_moved_by_hand(self):
+        v = SafetyValidator(0.5)
+        flying, caps = {"F": 4, "C": 4}, {"F": 8, "C": 8}
+        self.assertTrue(v.check_squads({"op": "move", "from": "F", "to": "C", "k": 1}, flying, caps, 10.0, "operator"))
+        self.assertTrue(v.check_squads({"op": "move", "from": "C", "to": "F", "k": 1}, flying, caps, 30.0, "operator"))
 
 
 class FlightTest(unittest.TestCase):
@@ -187,6 +216,13 @@ class FlightTest(unittest.TestCase):
         self.assertIsNotNone(first["t_look"])
         self.assertEqual([e["action"] for e in sim.validator.log if e.get("kind") == "strike"][0], "accepted")
         json.dumps(m)                                  # the row is plain JSON
+        # What the cameras have seen is kept over the whole valley, so the team's own looks outside the area squads'
+        # block count in the table's seen_pct.
+        x0, y0, x1, y1 = sc.sensor.area
+        gx, gy = sim.checker._seen_x, sim.checker._seen_y
+        inside = ((gx >= x0) & (gx <= x1))[:, None] & ((gy >= y0) & (gy <= y1))[None, :]
+        self.assertTrue((sim.checker.seen & ~inside).any())
+        self.assertEqual(sim.checker.seen[inside].sum() > 0, sim.coverage.any())
 
     def test_every_drone_flies_and_a_hold_rules_no_strike_out(self):
         for n in (8, 12, 16):
