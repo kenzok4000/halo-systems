@@ -17,6 +17,7 @@ Everything here was produced by the commands in [docs/REPRODUCE.md](../docs/REPR
 | 9040-9087 | Valley compile: the strike list of each held-out request's valley, no flights | `valley_eval/` |
 | 9100-9119, 9150-9169 | Valley test engineer (T5b); 9120-9149 and 9170-9199 stay unused | `valley_stress/` |
 | 9200-9219 | Missing hiker (T11) | `hiker_search/` |
+| 9300-9319 | Strike checks: which lightning strike a check team looks at next | `strike_checks/` |
 
 Development seeds, not held out: 0-9 for tuning, and 2000-2011 and 3000-3019 for the valley and the later studies ([docs/REPRODUCE.md](../docs/REPRODUCE.md#seeds)). The aircraft-inbound demo (`airspace_hold/`) and the compute table (`compute/`) fly only these seeds.
 
@@ -63,7 +64,7 @@ The sweep skips rows already in its output, so an interrupted sweep resumes; `--
 
 ## Later results
 
-These came after the wildfire valley above, one folder each. A folder with a `PREREG.md` was planned in writing before its held-out seeds or requests were used, and in a report with a section "written after the run", the tool wrote everything above that section. The Commit column gives the code that flew or made the files, or, where that is not recorded, the commit that added them. Commands run from the repository root and write into `results/`. The sweeps skip rows already in their output, and the report tools write `REPORT.md` without the sections written after the run, so to check a folder, point the commands at a new one such as `check/`. Only two need a Nebius key (`NEBIUS_API_KEY`), to call Nemotron live: `valley_eval/` and the Nemotron searches in `valley_stress/`. Both replay from their recorded calls without a key. No language model takes part in any alert, card, crew brief or flight decision in the valley.
+These came after the wildfire valley above, one folder each. A folder with a `PREREG.md` was planned in writing before its held-out seeds or requests were used, and in a report with a section "written after the run", the tool wrote everything above that section. The Commit column gives the code that flew or made the files, or, where that is not recorded, the commit that added them. Commands run from the repository root and write into `results/`. The sweeps skip rows already in their output, and the report tools write `REPORT.md` without the sections written after the run, so to check a folder, point the commands at a new one such as `check/`. Only three need a Nebius key (`NEBIUS_API_KEY`), to call Nemotron live: `valley_eval/`, the Nemotron searches in `valley_stress/` and the Nemotron arm of `strike_checks/`. All three replay from their recorded calls without a key. No language model takes part in any alert, card or crew brief in the valley, or in flight control; the one flight decision a model can make is the optional check team's next strike in `strike_checks/`, and each pick passes the safety validator.
 
 ### Which way the fire runs, held-out seeds (7000-7019), run once
 
@@ -208,6 +209,26 @@ env -u NEBIUS_API_KEY PYTHONPATH=src python3 tools/wildfire_valley_both_rules.py
 PYTHONPATH=src python3 tools/hiker_search_sweep.py fly --seeds 9200-9219 --out results/hiker_search/runs.jsonl
 PYTHONPATH=src python3 tools/hiker_search_sweep.py report --runs results/hiker_search/runs.jsonl   # REPORT.md and summary.json next to the rows; summary.json is not committed
 PYTHONPATH=src python3 tools/hiker_search_sweep.py film --seeds 0-9 --out results/hiker_search/film.json
+```
+
+### Strike checks, held-out seeds (9300-9319), run once
+
+`strike_checks/` adds an optional check team of 4 drones that flies to last night's lightning strikes one at a time while the area squads patrol, and compares four ways to fly the same drones for 12 minutes: no team, a team taking the nearest strike first, a team picking by a hand-written triage rule, and a team whose next strike Nemotron 3 Nano picks (8 drones only, to keep within the spend the entrant approved). Every pick passes the safety validator. Controller and supervisor improved+fixed, today's alert rule, report_v2 scoring. Flown from a checkout of 67e570d, the commit that adds `PREREG.md`.
+
+| File | What it is | Commit |
+|---|---|---|
+| `PREREG.md` | The plan, the predictions, the development results (seeds 3000-3011) and what changed during development | 67e570d |
+| `runs.jsonl` | One row per flight: 140 flights (no team, nearest and rule at 8 and 16 drones; Nemotron at 8) | 67e570d (added in 025c259) |
+| `nemotron_cache.jsonl` | Every Nemotron reply, for replay without a key | 67e570d (added in 025c259) |
+| `REPORT.md`, `summary.json` | Fires found and found smouldering, the overhang and across-valley fires, false fires, checks, phones warned, safety and the model's calls, by arm and size, paired by valley | 67e570d (added in 025c259) |
+
+```bash
+PYTHONPATH=src python3 tools/wildfire_strike_check_sweep.py --seeds 9300-9319 --sizes 8,16 \
+    --arms none,nearest,rule --out results/strike_checks/runs_rules.jsonl --workers 3
+PYTHONPATH=src python3 tools/wildfire_strike_check_sweep.py --seeds 9300-9319 --sizes 8 --arms nemotron \
+    --cache results/strike_checks/nemotron_cache.jsonl --cache-mode replay --out results/strike_checks/runs_nemotron.jsonl
+cat results/strike_checks/runs_rules.jsonl results/strike_checks/runs_nemotron.jsonl > results/strike_checks/runs.jsonl
+PYTHONPATH=src python3 tools/wildfire_strike_check_report.py results/strike_checks/runs.jsonl --out results/strike_checks/summary.json
 ```
 
 ### Aircraft inbound (T10), development seed 3000, a demonstration

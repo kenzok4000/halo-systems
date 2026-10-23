@@ -18,8 +18,9 @@ with its source. Results are in [results/wildfire_valley/REPORT.md](../results/w
 fire-direction results, on a second held-out set, in
 [results/wildfire_valley_7000/REPORT.md](../results/wildfire_valley_7000/REPORT.md).
 The station, the crew briefs, the cards and the alerts call no language model, and neither does the flight unless
-it is given a Nemotron supervisor; no result on this page uses one, so each flight behind them cost nothing to run,
-except the check team's flights with Nemotron picking strikes (USD 0.086 for 20 flights).
+it is given a Nemotron supervisor or a Nemotron strike picker. No result on this page uses a Nemotron supervisor, so
+each flight behind them cost nothing to run, except the check team's 20 flights with Nemotron picking strikes (USD
+0.086).
 Three optional extras use Nemotron on Nebius Token Factory: reading a job in plain words into a patrol
 ([results/valley_eval/REPORT.md](../results/valley_eval/REPORT.md)), a test engineer that looks for conditions
 under which the station fails ([results/valley_stress/REPORT.md](../results/valley_stress/REPORT.md)), and picking
@@ -72,7 +73,7 @@ bootstrap intervals over seeds. Full tables: [REPORT.md](../results/wildfire_val
 - **Checking last night's strikes.** On another held-out set (seeds 9300 to 9319, 140 flights, flown once), a team
   of 4 of 8 drones checking lightning strikes one at a time, picked by a hand-written triage rule or by Nemotron,
   found 96% of fires, against 90% with every drone in the area squads (+0.3 per flight, at the edge of the noise),
-  with less than half the false fires (0.60 to 0.70 per flight against 1.50). Between Nemotron and the rule there
+  with less than half the false fires (0.60 to 0.65 per flight against 1.50). Between Nemotron and the rule there
   was no measurable difference: 96 of 100 fires each, +0.00 per flight (-0.20 to +0.20), for USD 0.086 over 20
   flights (see "Checking last night's strikes" below).
 
@@ -244,8 +245,8 @@ of the noise (+0.3 per flight, interval from +0.00), mostly the fire across the 
 (19 or 20 of 20 against 14). With 16 drones the area squads already cover the valley and the team added nothing
 measurable (96% against 95%). Teams placed fewer false fires (0.60 to 1.00 per flight against 1.50), and phones
 warned in time did not change. Nemotron made 77 calls, none unusable, for USD 0.086 (median 10.8 s each). No flight
-crashed or logged a near miss, but the team brought two drones as close as 5.1 m, against 10.9 m with no team:
-[results/strike_checks/REPORT.md](../results/strike_checks/REPORT.md).
+crashed or logged a near miss, but the team brought two drones as close as 5.1 m, against 10.9 m with no team (the
+cause was not traced): [results/strike_checks/REPORT.md](../results/strike_checks/REPORT.md).
 
 **A test engineer (Nemotron).** `tools/wildfire_valley_stress.py` varies nine conditions of the day, from the
 wind and fuel moisture to haze and the number of drones, to find where the station fails: a late warning, a missed
