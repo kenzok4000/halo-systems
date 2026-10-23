@@ -116,9 +116,9 @@ PYTHONPATH=src python3 tools/wildfire_alerts_sweep.py --report --out results/wil
 
 | File | What it is | Commit |
 |---|---|---|
-| `PREREG.md` | The plan, measures and predictions, written before the seeds were flown | 4bf9890 |
-| `runs.jsonl` | One row per flight: 60 flights (20 valleys, three policies) | 4bf9890 (added in 153afd6) |
-| `REPORT.md`, `summary.json` | Public alerts, phones warned in time and cards to fire dispatch, paired against today's rule, and the alert-for-alert comparison | 4bf9890 (added in 153afd6) |
+| `PREREG.md` | The plan, measures and predictions, written before the seeds were flown | beac197 |
+| `runs.jsonl` | One row per flight: 60 flights (20 valleys, three policies) | beac197 (added in 0cecc25) |
+| `REPORT.md`, `summary.json` | Public alerts, phones warned in time and cards to fire dispatch, paired against today's rule, and the alert-for-alert comparison | beac197 (added in 0cecc25) |
 
 ```bash
 PYTHONPATH=src python3 tools/wildfire_alerts_sweep.py --seeds 9400-9419 --arms today,presigned,presigned-smoulders \
