@@ -45,4 +45,8 @@ maximum over potential arrivals as today's rule, and the Level 4 and 5 rules are
 so that the alert results quoted for the entry's design rest on held-out valleys flown once after the design was
 chosen, not on a reading of the code alone. The spreading-only rules showed the same pattern as on seeds 9000-9019
 (`../wildfire_alerts/REPORT.md`): fewer alerts (11 fewer here, 7 there) and a few phones with signal reached before
-any warning (6 here, 3 there).
+any warning (6 here, 3 there). The drones fly the same in all three arms, but the spreading-only arm drew a
+different forecast in 5 valleys (9404, 9412, 9417, 9418, 9419; the alert deliveries and the forecast ensemble
+share a random stream), and all 6 of its missed phones are in those valleys, so its 11-alert, 6-phone gap mixes
+the waiting rule's effect with a different forecast draw. The today's-rule and smoulders arms are identical apart
+from the cards, so the alert-for-alert result is unaffected.

@@ -171,7 +171,7 @@ degrees, hour-to-hour errors and a fuel moisture error).
    are told, and for 30 minutes the rules re-alert that zone only above the level withdrawn, and at Level 5 at
    least) or give a zone the all-clear (for 30 minutes, only a level above the one it had goes out); both
    messages pass a check too. A manual mode, where each alert waits for a tap and the zone is raised only once
-   it is sent, is kept for drills (`?approval=manual` in the dashboard; `approval="modelled"` in the alert sweep,
+   it is sent, is kept for drills (`?approval=manual` in the dashboard; `--arms onetap` (`approval="modelled"`) in the alert sweep,
    where the tap is modelled with a median delay of 90 s).
 
    The levels are Japan's. As we read the terms US and Canadian agencies use (California's evacuation warning and

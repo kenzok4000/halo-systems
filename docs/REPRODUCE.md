@@ -176,7 +176,7 @@ gzip results/valley_eval/calls.jsonl
 
 ## Pre-signed alerts and the first crew (no key needed)
 
-T3 flies each valley with 16 drones three times, and only the alerts differ: today's rule, pre-signed rules sent automatically, and pre-signed rules with an official's one-tap approval. T4's first-crew model reads only the pre-signed, automatic flights: T3's on seeds 9000-9019 and its own on 9020-9039. Both were flown from a checkout of 6cb093f, the commit that adds their plans.
+T3 flies each valley with 16 drones three times, and only the alerts differ: today's rule, pre-signed rules sent automatically, and pre-signed rules with an official's one-tap approval. T4's first-crew model reads only the pre-signed, automatic flights: T3's on seeds 9000-9019 and its own on 9020-9039. Both were flown from a checkout of 6cb093f, the commit that adds their plans. The 9400-9419 run below was flown from 4bf9890, the commit that adds its plan and the `--arms` option (6cb093f has no `--arms`).
 
 ```bash
 PYTHONPATH=src python3 tools/wildfire_alerts_sweep.py --seeds 9000-9019 --out results/wildfire_alerts/runs.jsonl
