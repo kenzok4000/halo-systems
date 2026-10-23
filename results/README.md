@@ -213,14 +213,14 @@ PYTHONPATH=src python3 tools/hiker_search_sweep.py film --seeds 0-9 --out result
 
 ### Strike checks, held-out seeds (9300-9319), run once
 
-`strike_checks/` adds an optional check team of 4 drones that flies to last night's lightning strikes one at a time while the area squads patrol, and compares four ways to fly the same drones for 12 minutes: no team, a team taking the nearest strike first, a team picking by a hand-written triage rule, and a team whose next strike Nemotron 3 Nano picks (8 drones only, to keep within the spend the entrant approved). Every pick passes the safety validator. Controller and supervisor improved+fixed, today's alert rule, report_v2 scoring. Flown from a checkout of 67e570d, the commit that adds `PREREG.md`.
+`strike_checks/` adds an optional check team of 4 drones that flies to last night's lightning strikes one at a time while the area squads patrol, and compares four ways to fly the same drones for 12 minutes: no team, a team taking the nearest strike first, a team picking by a hand-written triage rule, and a team whose next strike Nemotron 3 Nano picks (8 drones only, to keep within the spend the entrant approved). Every pick passes the safety validator. Controller and supervisor improved+fixed, today's alert rule, report_v2 scoring. Flown from a checkout of ca01f9e, the commit that adds `PREREG.md`.
 
 | File | What it is | Commit |
 |---|---|---|
-| `PREREG.md` | The plan, the predictions, the development results (seeds 3000-3011) and what changed during development | 67e570d |
-| `runs.jsonl` | One row per flight: 140 flights (no team, nearest and rule at 8 and 16 drones; Nemotron at 8) | 67e570d (added in 025c259) |
-| `nemotron_cache.jsonl` | Every Nemotron reply, for replay without a key | 67e570d (added in 025c259) |
-| `REPORT.md`, `summary.json` | Fires found and found smouldering, the overhang and across-valley fires, false fires, checks, phones warned, safety and the model's calls, by arm and size, paired by valley | 67e570d (added in 025c259) |
+| `PREREG.md` | The plan, the predictions, the development results (seeds 3000-3011) and what changed during development | ca01f9e |
+| `runs.jsonl` | One row per flight: 140 flights (no team, nearest and rule at 8 and 16 drones; Nemotron at 8) | ca01f9e (added in f1cc3f8) |
+| `nemotron_cache.jsonl` | Every Nemotron reply, for replay without a key | ca01f9e (added in f1cc3f8) |
+| `REPORT.md`, `summary.json` | Fires found and found smouldering, the overhang and across-valley fires, false fires, checks, phones warned, safety and the model's calls, by arm and size, paired by valley | ca01f9e (added in f1cc3f8) |
 
 ```bash
 PYTHONPATH=src python3 tools/wildfire_strike_check_sweep.py --seeds 9300-9319 --sizes 8,16 \

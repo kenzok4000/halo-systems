@@ -219,7 +219,7 @@ env -u NEBIUS_API_KEY PYTHONPATH=src python3 tools/wildfire_valley_stress.py sea
 
 ## Strike checks (Nemotron's flights need a key, or replay without one)
 
-An optional check team of 4 drones flies to the night's lightning strikes one at a time while the area squads patrol; its next strike is picked nearest first, by a hand-written triage rule or by Nemotron 3 Nano. `halo run` and the dashboard never fly a team. It was flown once from 67e570d, the commit that adds the plan (`results/strike_checks/PREREG.md`), in a separate checkout, with no supervisor (`improved+fixed`): 140 flights, Nemotron's at 8 drones only. Development used valleys 3000-3011.
+An optional check team of 4 drones flies to the night's lightning strikes one at a time while the area squads patrol; its next strike is picked nearest first, by a hand-written triage rule or by Nemotron 3 Nano. `halo run` and the dashboard never fly a team. It was flown once from ca01f9e, the commit that adds the plan (`results/strike_checks/PREREG.md`), in a separate checkout, with no supervisor (`improved+fixed`): 140 flights, Nemotron's at 8 drones only. Development used valleys 3000-3011.
 
 ```bash
 PYTHONPATH=src python3 tools/wildfire_strike_check_sweep.py --seeds 9300-9319 --sizes 8,16 \

@@ -2,7 +2,7 @@
 
 Seeds 9300-9319 (20 valleys), flown once after the plan in [PREREG.md](PREREG.md) was written; 140 flights. Made
 by `tools/wildfire_strike_check_sweep.py` and `tools/wildfire_strike_check_report.py` from the commit that adds
-the plan (67e570d), in a separate checkout.
+the plan (ca01f9e), in a separate checkout.
 
 The morning after dry lightning, a team of 4 drones (squad C) flies to one reported strike at a time and patrols a
 120 m square round it for one circuit, while the area squads patrol as before. Four ways to fly the same drones
