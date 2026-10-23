@@ -1,0 +1,134 @@
+{
+ "seeds": [
+  9400,
+  9419
+ ],
+ "flights": 60,
+ "arms": {
+  "forecast/auto": {
+   "alerts_delivered": 140,
+   "alerts_level3": 74,
+   "alerts_for_smoulders": 11,
+   "alerts_from_false_fires": 3,
+   "alerts_not_justified": 44,
+   "phones_warned_in_time": 561,
+   "phones_missed": 0,
+   "warned_not_reached_3h": 512,
+   "dispatch_cards": 0,
+   "dispatch_cards_false": 0,
+   "lead_time_min_median": 116.0,
+   "alert_send_delay_s_median": 0.0
+  },
+  "presigned/auto": {
+   "alerts_delivered": 129,
+   "alerts_level3": 65,
+   "alerts_for_smoulders": 9,
+   "alerts_from_false_fires": 3,
+   "alerts_not_justified": 39,
+   "phones_warned_in_time": 555,
+   "phones_missed": 6,
+   "warned_not_reached_3h": 455,
+   "dispatch_cards": 101,
+   "dispatch_cards_false": 10,
+   "lead_time_min_median": 116.0,
+   "alert_send_delay_s_median": 0.0
+  },
+  "presigned/auto/smoulders": {
+   "alerts_delivered": 140,
+   "alerts_level3": 74,
+   "alerts_for_smoulders": 11,
+   "alerts_from_false_fires": 3,
+   "alerts_not_justified": 44,
+   "phones_warned_in_time": 561,
+   "phones_missed": 0,
+   "warned_not_reached_3h": 512,
+   "dispatch_cards": 101,
+   "dispatch_cards_false": 10,
+   "lead_time_min_median": 116.0,
+   "alert_send_delay_s_median": 0.0
+  }
+ },
+ "paired": {
+  "presigned/auto": {
+   "phones_warned_in_time": {
+    "total": -6.0,
+    "ci95": [
+     -14.0,
+     0.0
+    ]
+   },
+   "phones_missed": {
+    "total": 6.0,
+    "ci95": [
+     0.0,
+     14.0
+    ]
+   },
+   "alerts_for_smoulders": {
+    "total": -2.0,
+    "ci95": [
+     -6.0,
+     0.0
+    ]
+   },
+   "alerts_not_justified": {
+    "total": -5.0,
+    "ci95": [
+     -10.0,
+     -1.0
+    ]
+   },
+   "alerts_delivered": {
+    "total": -11.0,
+    "ci95": [
+     -21.0,
+     -3.0
+    ]
+   }
+  },
+  "presigned/auto/smoulders": {
+   "phones_warned_in_time": {
+    "total": 0.0,
+    "ci95": [
+     0.0,
+     0.0
+    ]
+   },
+   "phones_missed": {
+    "total": 0.0,
+    "ci95": [
+     0.0,
+     0.0
+    ]
+   },
+   "alerts_for_smoulders": {
+    "total": 0.0,
+    "ci95": [
+     0.0,
+     0.0
+    ]
+   },
+   "alerts_not_justified": {
+    "total": 0.0,
+    "ci95": [
+     0.0,
+     0.0
+    ]
+   },
+   "alerts_delivered": {
+    "total": 0.0,
+    "ci95": [
+     0.0,
+     0.0
+    ]
+   }
+  }
+ },
+ "alert_for_alert": {
+  "valleys_identical_to_todays_rule": 20,
+  "valleys": 20,
+  "alerts_only_under_todays_rule": 0,
+  "alerts_only_under_smoulders_arm": 0,
+  "valleys_with_the_spreading_only_arms_card_counts": 20
+ }
+}
