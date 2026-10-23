@@ -174,14 +174,19 @@ degrees, hour-to-hour errors and a fuel moisture error).
    it is sent, is kept for drills (`?approval=manual` in the dashboard; `approval="modelled"` in the alert sweep,
    where the tap is modelled with a median delay of 90 s).
 
-   The levels are Japan's. In the terms US and Canadian agencies use, Level 3 plays the part of an evacuation
-   warning or evacuation alert ("Set" in the Ready, Set, Go! programme: those who need longer leave now, everyone
-   else gets ready), Level 4 of an evacuation order ("Go"), and Level 5 of a shelter-in-place message for people
-   who can no longer leave safely. In a deployment three roles would sit behind the one screen the dashboard
-   shows: the drone crew, who fly the swarm and hold it for aircraft; fire dispatch, who receive the cards; and the
-   alerting authority (in the US, an [IPAWS alerting authority](https://www.fema.gov/emergency-managers/practitioners/integrated-public-alert-warning-system/public-safety-officials/alerting-authorities)),
-   who signs the trigger rules in advance and holds the cancel, the all-clear and, in the manual mode, the approval.
-   The dashboard gives all three to one operator and labels the alert powers the incident commander's.
+   The levels are Japan's. As we read the terms US and Canadian agencies use (California's evacuation warning and
+   evacuation order; Alberta's and British Columbia's evacuation alert and evacuation order), Halo's Level 3 plays
+   the part of an evacuation warning or evacuation alert ("Set" in the Ready, Set, Go! programme: those who need
+   longer leave now, everyone else gets ready), Halo's Level 4 of an evacuation order ("Go"), and Halo's Level 5 of
+   a shelter-in-place message for people who can no longer leave safely. The mapping is ours, not an agency's; the
+   agencies' own pages hold the definitions. In a deployment three roles would sit behind the one screen the
+   dashboard shows: the drone crew, who fly the swarm and hold it for aircraft; fire dispatch, who receive the
+   cards; and the alerting authority (in the US, an [IPAWS alerting authority](https://www.fema.gov/emergency-managers/practitioners/integrated-public-alert-warning-system/public-safety-officials/alerting-authorities),
+   often a different office from the one that orders an evacuation; in Alberta, a local authority's authorised user
+   of Alberta Emergency Alert, the provincial system). The alerting authority acts for whichever official holds the
+   legal power to order an evacuation in that jurisdiction; it signs the trigger rules in advance and holds the cancel, the all-clear and,
+   in the manual mode, the approval. The dashboard gives all three to one operator and, as a simplification, labels
+   the alert powers the incident commander's; in practice an incident commander does not hold them alone.
 
 ## Squads, jobs in plain words, and alerts under pre-signed rules
 
@@ -383,7 +388,7 @@ metres puts up no smoke that a camera kilometres away or a passer-by picks out. 
 Lightning fires can smoulder for a long time before anyone reports them: across 42 datasets the median
 "holdover" time ranges from 1.4 to 53.6 hours (Moris et al. 2023, Earth System Science Data 15: 1151), and
 fire services fly patrols after lightning storms to look for them (Government of Alberta). Patrols are not in
-the comparison because no source gives how often or when they fly; an Alberta review puts aerial patrols at
+the comparison because no source we found gives how often or when they fly; an Alberta review puts aerial patrols at
 12% of detections for an average of CAD 9.6 million a year over 2015 to 2019, about USD 6.9 million (Spring 2019
 Wildfire Review, table 12).
 
@@ -545,9 +550,10 @@ and say when the head simply follows the fuel; this changes the wording of the b
 - Thermal clutter. Sun-heated rock, vehicles and campfires are not modelled (the campground has phones but no
   campfires), so a thermal find is always a true fire, and the only false fires come from smoke bearings that cross
   wrongly. A real thermal camera would see clutter, and the false-fire and false-alert rates here leave it out.
-- Patrol aircraft and lookouts in the detection comparison: no source gives how often or when they fly, so the
-  drones are compared with them on cost per fire found only ([PATROL_COST.md](PATROL_COST.md)); see "Drones
-  against today's methods".
+- Patrol aircraft and lookouts in the detection comparison. No source we found gives how often or when detection
+  patrols fly, and none gives the chance a lookout sees a smoulder's thin plume at distance; patrol aircraft appear
+  only in the cost comparison, chiefly as Alberta's cost per fire found, and lookouts only as a cost per km² a day
+  ([PATROL_COST.md](PATROL_COST.md)); see "Drones against today's methods".
 - The design's navigation error. The simulator's GNSS error is about a sixth of the scout's receiver
   ([hardware/README.md](../hardware/README.md) lists this and the other gaps between the design and the simulator).
 - Re-tasking from what the station finds, beyond the strike list. The swarm flies its sweep, or each squad its
