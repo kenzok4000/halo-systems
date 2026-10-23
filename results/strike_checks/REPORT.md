@@ -67,7 +67,8 @@ over valleys (10,000 resamples), with the number of valleys better and worse.
 | 16 | rule | 0 | 0 | 5.3 m (10.0 m) | 0 | 0 |
 
 Nemotron made 77 calls over its 20 flights: none unusable, none answered "stop", every pick named an offered strike
-and passed the validator. The calls cost USD 0.086 at the price ceiling the ledger uses (about USD 0.004 a flight).
+and passed the validator. The calls cost USD 0.086 at the price ceiling the ledger uses (about USD 0.004 a flight), including nine attempts
+that timed out at 30 s and were retried, each counted at its worst case.
 The median call took 10.8 s (9 in 10 under 21 s, the slowest 156 s) and used 1,586 completion tokens (most 2,573, of
 6,000 allowed). The team picks its next strike 40 s before a look ends: 55 of the 57 calls made during a look
 finished before it ended. During a slow call the team keeps patrolling its square: the take-off pick in valley 9317
