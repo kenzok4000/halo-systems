@@ -2,7 +2,7 @@
 <defs><marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse"><path d="M 0 0 L 10 5 L 0 10 z" fill="#52514e"/></marker></defs>
 <rect width="1400" height="1094" fill="#fcfcfb"/>
 <text x="36.0" y="56.0" font-size="30" font-weight="700" text-anchor="start" fill="#0b0b0b">How Halo turns a lightning strike into a crew brief and an alert</text>
-<text x="36.0" y="88.0" font-size="17" font-weight="400" text-anchor="start" fill="#52514e">NVIDIA Nemotron reads the job before take-off and, when a check team flies, picks the strike it looks at next.</text>
+<text x="36.0" y="88.0" font-size="17" font-weight="400" text-anchor="start" fill="#52514e">NVIDIA Nemotron reads the job before take-off; in a separate measurement it picked a check team’s next strike as well as a rule did.</text>
 <text x="36.0" y="112.0" font-size="17" font-weight="400" text-anchor="start" fill="#52514e">Code makes the plan, flies the drones and runs the station: no language model flies a drone or decides an alert.</text>
 <rect x="36.0" y="146.0" width="302.0" height="808.0" rx="14" fill="#f3f2ee" stroke="#e1e0d9" stroke-width="1.5"/>
 <text x="54.0" y="176.0" font-size="14" font-weight="700" text-anchor="start" fill="#0b0b0b" letter-spacing="1.4">BEFORE TAKE-OFF</text>
@@ -44,8 +44,8 @@
 <text x="408.0" y="917.2" font-size="17" font-weight="400" text-anchor="start" fill="#52514e">strike; a rule did as well</text>
 <rect x="394.0" y="668.4" width="266.0" height="114.8" rx="10" fill="#ffffff" stroke="#a9a8a0" stroke-width="2"/>
 <text x="408.0" y="698.4" font-size="18.5" font-weight="600" text-anchor="start" fill="#0b0b0b">Supervisor, every 5 s</text>
-<text x="408.0" y="724.4" font-size="17" font-weight="400" text-anchor="start" fill="#52514e">In the valley, hand-written</text>
-<text x="408.0" y="746.4" font-size="17" font-weight="400" text-anchor="start" fill="#52514e">rules set the formation</text>
+<text x="408.0" y="724.4" font-size="17" font-weight="400" text-anchor="start" fill="#52514e">On a typed valley job, rules</text>
+<text x="408.0" y="746.4" font-size="17" font-weight="400" text-anchor="start" fill="#52514e">set the formation</text>
 <rect x="494.2" y="772.2" width="155.8" height="22.0" rx="11" fill="#76b900" stroke="#76b900" stroke-width="1"/>
 <text x="572.1" y="787.7" font-size="12" font-weight="700" text-anchor="middle" fill="#0b0b0b">NEMOTRON IN THE LAB</text>
 <rect x="394.0" y="519.6" width="266.0" height="114.8" rx="10" fill="#fff4e5" stroke="#d97706" stroke-width="2.5"/>
@@ -116,7 +116,6 @@
 <path d="M 867.0 560 L 867.0 592" fill="none" stroke="#52514e" stroke-width="2.5" stroke-linejoin="round" marker-end="url(#arrow)"/>
 <path d="M 734 534 L 725 534 L 725 756 L 774 756 L 774 778" fill="none" stroke="#52514e" stroke-width="2.5" stroke-linejoin="round" marker-end="url(#arrow)"/>
 <path d="M 320 802 L 357.0 802 L 357.0 725.8000000000001 L 392 725.8000000000001" fill="none" stroke="#52514e" stroke-width="2.5" stroke-linejoin="round" marker-end="url(#arrow)"/>
-<path d="M 320 874.6 L 392 874.6" fill="none" stroke="#52514e" stroke-width="2.5" stroke-linejoin="round" marker-end="url(#arrow)"/>
 <path d="M 660 279.4 L 732 279.4" fill="none" stroke="#52514e" stroke-width="2.5" stroke-linejoin="round" marker-end="url(#arrow)"/>
 <path d="M 1000 298.0 L 1072 298.0" fill="none" stroke="#52514e" stroke-width="2.5" stroke-linejoin="round" marker-end="url(#arrow)"/>
 <path d="M 1000 484.0 L 1072 484.0" fill="none" stroke="#52514e" stroke-width="2.5" stroke-linejoin="round" marker-end="url(#arrow)"/>
@@ -127,9 +126,9 @@
 <rect x="432.0" y="979.0" width="26.0" height="20.0" rx="5" fill="#fff4e5" stroke="#d97706" stroke-width="2"/>
 <text x="468.0" y="994.0" font-size="16" font-weight="500" text-anchor="start" fill="#52514e">Safety check</text>
 <rect x="598.2" y="979.0" width="26.0" height="20.0" rx="5" fill="#ffffff" stroke="#a9a8a0" stroke-width="2"/>
-<text x="634.2" y="994.0" font-size="16" font-weight="500" text-anchor="start" fill="#52514e">No language model</text>
-<rect x="812.4" y="979.0" width="26.0" height="20.0" rx="5" fill="#eaf2fc" stroke="#2a78d6" stroke-width="2"/>
-<text x="848.4" y="994.0" font-size="16" font-weight="500" text-anchor="start" fill="#52514e">Who receives it</text>
+<text x="634.2" y="994.0" font-size="16" font-weight="500" text-anchor="start" fill="#52514e">No language model in the valley</text>
+<rect x="907.9" y="979.0" width="26.0" height="20.0" rx="5" fill="#eaf2fc" stroke="#2a78d6" stroke-width="2"/>
+<text x="943.9" y="994.0" font-size="16" font-weight="500" text-anchor="start" fill="#52514e">Who receives it</text>
 <text x="36.0" y="1032.0" font-size="16" font-weight="400" text-anchor="start" fill="#6f6e69">Without a key, recorded jobs replay Nemotron’s reading and new ones go to hand-written rules, as when the link drops; flight, the station and the alerts carry on.</text>
 <text x="36.0" y="1056.0" font-size="16" font-weight="400" text-anchor="start" fill="#6f6e69">A check team flies only in the strike-check measurement, not in a typed job; if a Nemotron pick fails, the team keeps patrolling its square.</text>
 </svg>

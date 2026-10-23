@@ -19,11 +19,11 @@ In the wildfire valley an optional check team adds one more slow decision in fli
  optional check team: strike table ──► strike picker ──► validator ──► next square to patrol
 ```
 
-In the wildfire valley, the drones' cameras feed a ground station that locates the fires, forecasts their spread, briefs the crews and checks the alerts, with no language model ([WILDFIRE.md](WILDFIRE.md)). This figure follows one valley job from the operator's words to the alerts ([`tools/architecture_figure.py`](../tools/architecture_figure.py) draws it):
+In the wildfire valley, the drones' cameras feed a ground station that locates the fires, forecasts their spread, briefs the crews and checks the alerts, with no language model ([WILDFIRE.md](WILDFIRE.md)). This figure follows one valley job from the operator's words to the alerts; the optional strike picker is not part of a typed job and flies only in the strike-check measurement ([`tools/architecture_figure.py`](../tools/architecture_figure.py) draws it):
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="architecture-dark.png">
-  <img alt="How Halo turns a lightning strike into a crew brief and an alert: Nemotron reads the job before take-off and code makes the plan; a supervisor every 5 s, a safety validator and a 50 Hz controller with a safety filter fly the drones; for an optional check team, Nemotron picks the next lightning strike to look at (a hand-written rule did as well) and the validator checks every pick; the ground station locates the fires, forecasts their spread, briefs the crews and checks the alerts with no language model" src="architecture.png">
+  <img alt="How Halo turns a lightning strike into a crew brief and an alert: Nemotron reads the job before take-off and code makes the plan; a supervisor every 5 s, a safety validator and a 50 Hz controller with a safety filter fly the drones; in the strike-check measurement only, Nemotron picks an optional check team's next lightning strike (a hand-written rule did as well) and the validator checks every pick; the ground station locates the fires, forecasts their spread, briefs the crews and checks the alerts with no language model" src="architecture.png">
 </picture>
 
 ## Where each loop runs
@@ -103,11 +103,11 @@ Every directive, whoever proposed it, passes the validator before the controller
 * A spacing floor of bodies + margin + 3√2 σ_nav, the smallest spacing the safety filter can hold with the navigation error present.
 * A rate limit of one change per 3 s.
 
-A check team's strike orders, from any picker, pass `SafetyValidator.check_strike` and are logged with `kind` "strike": the strike must be on the night's list and not yet checked, a check-team drone must be flying, and no airspace hold may be in force.
+A check team's orders to check a strike, from any picker, pass `SafetyValidator.check_strike` and are logged with `kind` "strike": the strike must be on the night's list and not yet checked, a check-team drone must be flying, and no airspace hold may be in force.
 
 ## Aircraft inbound (airspace hold)
 
-When crewed firefighting aircraft (air tankers, helicopters, a lead plane) enter the area, the operator orders the swarm to hold: every flying drone stops where it is and descends to a low hold altitude, clear of the aircraft's working height, until the operator resumes. The leader brakes at 2 m/s², the formation keeps its shape and heading, and the plan's altitude ramps down at up to 2.5 m/s from where the drones are (drones in transit between squads stop too, and squad moves are refused while holding). On resume the swarm climbs back to the directive's altitude at the same rate, then speeds up and carries on the sweep from where it stopped. The ground station, smoke watch and alerts keep running; battery drains while hovering and drones still retire at the reserve. A check team picks no new strike while holding, and the validator refuses strike orders until the swarm resumes.
+When crewed firefighting aircraft (air tankers, helicopters, a lead plane) enter the area, the operator orders the swarm to hold: every flying drone stops where it is and descends to a low hold altitude, clear of the aircraft's working height, until the operator resumes. The leader brakes at 2 m/s², the formation keeps its shape and heading, and the plan's altitude ramps down at up to 2.5 m/s from where the drones are (drones in transit between squads stop too, and squad moves are refused while holding). On resume the swarm climbs back to the directive's altitude at the same rate, then speeds up and carries on the sweep from where it stopped. The ground station, smoke watch and alerts keep running; battery drains while hovering and drones still retire at the reserve. A check team picks no new strike while holding, and the validator refuses orders to check a strike until the swarm resumes.
 
 The order passes `SafetyValidator.check_airspace` and is logged like a directive (`kind` "airspace"):
 
