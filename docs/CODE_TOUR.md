@@ -33,6 +33,7 @@ halo run forest_trail --config improved+rule --seed 1000
 * **Client.** `ai/client.py` is the only code that talks to the network: https only, key from the environment, deadlines, retries, rate limit, JSON mode and a redacted call log. `ai/budget.py` checks the spend ledger before every request.
 * **Mission compiler.** `ai/mission.py` holds the keyword guard, the prompt, the parsing and clamping of the plan, the regex baseline it is scored against, and the scoring. `eval/scenarios.py: from_mission` turns a compiled plan into a flyable scenario.
 * **Test engineer.** `ai/tester.py` defines the 14-parameter stress space, builds a short flight from a set of parameters, and runs the searchers: random, corners, the cross-entropy method and Nemotron.
+* **Strike picker.** `supervisor/strikes.py: NemotronPicker` names the next lightning strike for the optional check team in the wildfire valley. It reads the table that `sim/strike_check.py: strike_table` builds (only strikes the team can reach and finish before the patrol ends), looks the request up in its record/replay cache and otherwise calls Token Factory. `safety/validator.py: check_strike` checks every pick, and code, not the model, flies the team. A failed or unusable reply is counted and never replaced by the rule (`RulePicker`): the team keeps patrolling its square and the model is asked again a circuit later. Only `tools/wildfire_strike_check_sweep.py` (or `eval/scenarios.py: wildfire_valley(checks=...)` in the Python API) flies a team, never `halo run` or the dashboard.
 * **End-to-end check.** `ai/doctor.py` (`halo doctor`) lists the models, makes one real supervisor call, validates it and optionally flies a full scenario.
 
 ## The dashboard
@@ -59,3 +60,4 @@ halo run forest_trail --config improved+rule --seed 1000
 | `tests/test_settings.py` | The `HALO_` settings and the older `SWARMLAB_` names |
 | `tests/test_wildfire.py` | The wildfire valley: terrain and cover, fire spread, smoke fixes, forecasts, the alert check, today's methods and short valley flights |
 | `tests/test_cli.py` | The command line's one-line errors (unknown scenario or supervisor, no model id) and `HALO_DEBUG=1` for the traceback |
+| `tests/test_strike_check.py` | The strike-check team: its square, the validator's strike check, the three pickers, unusable Nemotron replies (never a crash) and their replay, the team's moves and height, no moves by hand, short flights with a team, and an unchanged valley without one |

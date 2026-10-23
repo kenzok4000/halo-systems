@@ -127,49 +127,54 @@ class Svg:
 
 # ------------------------------------------------------------------------- layout
 # Four columns read left to right. The first runs down, the second up, the third down,
-# so every hand-over between columns is one straight arrow.
+# so most hand-overs between columns are one straight arrow. The second column holds five
+# boxes in the height of the others' four.
 M = 36                       # outer margin
-TOP = 128                    # top of the column panels
+TOP = 146                    # top of the column panels
 COL_W, COL_GAP = 302, 38
-ROW_Y0, ROW_H, ROW_GAP = TOP + 76, 136, 34
+ROW_Y0, ROW_H, ROW_GAP = TOP + 76, 152, 34
 COLS = [M + i * (COL_W + COL_GAP) for i in range(4)]
 ROWS = [ROW_Y0 + i * (ROW_H + ROW_GAP) for i in range(4)]
+FLIGHT_H = (4 * ROW_H - ROW_GAP) / 5          # five boxes in the In flight column
+FLIGHT_ROWS = [ROW_Y0 + i * (FLIGHT_H + ROW_GAP) for i in range(5)]
 PANEL_BOTTOM = ROWS[3] + ROW_H + 22
-H = PANEL_BOTTOM + 116
+H = PANEL_BOTTOM + 140
 BOX_INSET = 18
 BOX_W = COL_W - 2 * BOX_INSET
 BODY = 17                    # box text size; the figure shows at about 60% in a README column
 
 
+def rows_of(col: int) -> tuple[list[float], float]:
+    return (FLIGHT_ROWS, FLIGHT_H) if col == 1 else (ROWS, ROW_H)
+
+
 def box(svg: Svg, col: int, row: int, title: str, lines: list[str], kind: str = "code", tag: str | None = None):
     """One box. A tag is a small Nemotron-green label on the box's bottom edge, clear of the arrows."""
     t = svg.t
-    x, y = COLS[col] + BOX_INSET, ROWS[row]
+    rows, rh = rows_of(col)
+    x, y = COLS[col] + BOX_INSET, rows[row]
+    fits = int((rh - 68) // 22) + 1              # body lines that fit under the title
     fill, edge, ink = {"code": (t["box"], t["box_edge"], t["ink"]),
                        "ai": (t["ai_fill"], t["ai"], t["ai_ink"]),
                        "safe": (t["safe_fill"], t["safe"], t["safe_ink"]),
                        "out": (t["out_fill"], t["out"], t["out_ink"])}[kind]
-    svg.rect(x, y, BOX_W, ROW_H, fill, edge, sw=2.5 if kind != "code" else 2)
+    svg.rect(x, y, BOX_W, rh, fill, edge, sw=2.5 if kind != "code" else 2)
     inner = BOX_W - 2 * PAD
     svg.text(x + PAD, y + 30, title, 18.5, 700 if kind != "code" else 600, ink, max_w=inner)
     body = []
     for ln in lines:
         body += wrap(ln, BODY, 400, inner)
-    if len(body) > 4:
-        raise SystemExit(f"box {title!r} needs {len(body)} lines; it holds 4")
+    if len(body) > fits:
+        raise SystemExit(f"box {title!r} needs {len(body)} lines; it holds {fits}")
     if len(body) > 1 and " " not in body[-1]:
         raise SystemExit(f"box {title!r} ends on one word ({body[-1]!r}); reword it")
     for i, ln in enumerate(body):
         svg.text(x + PAD, y + 56 + i * 22, ln, BODY, 400, t["ink2"], max_w=inner)
     if tag:
         tw = text_width(tag, 12, 700) + 16
-        svg.rect(x + BOX_W - tw - 10, y + ROW_H - 11, tw, 22, t["ai"], t["ai"], sw=1, rx=11)
-        svg.text(x + BOX_W - tw / 2 - 10, y + ROW_H + 4.5, tag, 12, 700, "#0b0b0b", anchor="middle")
+        svg.rect(x + BOX_W - tw - 10, y + rh - 11, tw, 22, t["ai"], t["ai"], sw=1, rx=11)
+        svg.text(x + BOX_W - tw / 2 - 10, y + rh + 4.5, tag, 12, 700, "#0b0b0b", anchor="middle")
     return x, y
-
-
-def centre(col, row):
-    return COLS[col] + COL_W / 2, ROWS[row] + ROW_H / 2
 
 
 def draw(theme: str) -> str:
@@ -177,8 +182,10 @@ def draw(theme: str) -> str:
     svg = Svg(t)
     # title
     svg.text(M, 56, "How Halo turns a lightning strike into a crew brief and an alert", 30, 700, max_w=W - 2 * M)
-    svg.text(M, 90, "NVIDIA Nemotron reads the job before take-off. Code makes the plan, flies the drones and runs "
-             "the station: no language model flies a drone or decides an alert.", 17, 400, t["ink2"], max_w=W - 2 * M)
+    svg.text(M, 88, "NVIDIA Nemotron reads the job before take-off and, when a check team flies, picks the strike it "
+             "looks at next.", 17, 400, t["ink2"], max_w=W - 2 * M)
+    svg.text(M, 112, "Code makes the plan, flies the drones and runs the station: no language model flies a drone or "
+             "decides an alert.", 17, 400, t["ink2"], max_w=W - 2 * M)
 
     heads = [("BEFORE TAKE-OFF", "Once per job"), ("IN FLIGHT", "The drones and their supervisor"),
              ("GROUND STATION", "Once a second, no language model"), ("WHO GETS WHAT", "As soon as the station knows")]
@@ -196,16 +203,16 @@ def draw(theme: str) -> str:
         kind="safe")
     box(svg, 0, 3, "Patrol plan", ["Squads, their areas, the strikes to look at first, and how long they fly"])
 
-    # column 2, bottom to top
-    box(svg, 1, 3, "Supervisor, every 5 s", ["Hand-written rules on a valley job; Nemotron only in the lab "
-                                             "scenarios"], tag="NEMOTRON IN THE LAB")
-    box(svg, 1, 2, "Safety validator", ["Checks every order, the operator\u2019s too: clamps it to the flight limits or "
-                                        "rejects it"],
-        kind="safe")
+    # column 2, bottom to top: the strike picker joins the chain at the validator
+    box(svg, 1, 4, "Strike picker, optional", ["For a 4-drone check team, Nemotron picks the next strike; a rule "
+                                               "did as well"], kind="ai")
+    box(svg, 1, 3, "Supervisor, every 5 s", ["In the valley, hand-written rules set the formation"],
+        tag="NEMOTRON IN THE LAB")
+    box(svg, 1, 2, "Safety validator", ["Checks every order and strike pick, the operator\u2019s too: clamps or "
+                                        "rejects it"], kind="safe")
     box(svg, 1, 1, "Controller, 50 Hz", ["A safety filter keeps each drone clear of the others, obstacles "
                                          "and the ground"], kind="safe")
-    box(svg, 1, 0, "Drones", ["Thermal cameras look down, cameras ahead watch for smoke, and each drone "
-                              "measures the wind"])
+    box(svg, 1, 0, "Drones", ["Cameras look down for heat and ahead for smoke; each drone measures the wind"])
 
     # column 3, top to bottom
     box(svg, 2, 0, "Locate fires", ["Places fires from thermal finds and smoke bearings, and maps the burning ground"])
@@ -229,7 +236,12 @@ def draw(theme: str) -> str:
     bx = lambda c: COLS[c] + COL_W / 2
     for r in range(3):
         svg.path(f"M {bx(0)} {ROWS[r] + ROW_H} L {bx(0)} {ROWS[r + 1] - 2}", t["line"])
-        svg.path(f"M {bx(1)} {ROWS[r + 1]} L {bx(1)} {ROWS[r] + ROW_H + 2}", t["line"])
+        svg.path(f"M {bx(1)} {FLIGHT_ROWS[r + 1]} L {bx(1)} {FLIGHT_ROWS[r] + FLIGHT_H + 2}", t["line"])
+    # strike picker to the validator: up the right edge of column 2, then into the box from below
+    rx, ex2 = COLS[1] + COL_W - 9, COLS[1] + COL_W - BOX_INSET - 40
+    svg.path(f"M {COLS[1] + COL_W - BOX_INSET} {FLIGHT_ROWS[4] + 28} L {rx} {FLIGHT_ROWS[4] + 28} "
+             f"L {rx} {FLIGHT_ROWS[3] - 10} L {ex2} {FLIGHT_ROWS[3] - 10} L {ex2} {FLIGHT_ROWS[2] + FLIGHT_H + 2}",
+             t["line"])
     svg.path(f"M {bx(2)} {ROWS[0] + ROW_H} L {bx(2)} {ROWS[1] - 2}", t["line"])
     svg.path(f"M {bx(2)} {ROWS[1] + ROW_H} L {bx(2)} {ROWS[2] - 2}", t["line"])
     # forecast to alert check: down the left edge of column 3, then into the box from above
@@ -237,11 +249,17 @@ def draw(theme: str) -> str:
     svg.path(f"M {COLS[2] + BOX_INSET} {ROWS[1] + ROW_H - 26} L {lx} {ROWS[1] + ROW_H - 26} "
              f"L {lx} {ROWS[3] - 24} L {ex} {ROWS[3] - 24} L {ex} {ROWS[3] - 2}", t["line"])
     # hand-overs between columns
-    def across(c, r, label=None):
-        x1, x2, y = COLS[c] + COL_W - BOX_INSET, COLS[c + 1] + BOX_INSET - 2, ROWS[r] + ROW_H / 2
+    def across(c, r, y=None):
+        x1, x2 = COLS[c] + COL_W - BOX_INSET, COLS[c + 1] + BOX_INSET - 2
+        y = ROWS[r] + ROW_H / 2 if y is None else y
         svg.path(f"M {x1} {y} L {x2} {y}", t["line"])
-    across(0, 3)
-    across(1, 0)
+    # the patrol plan feeds the supervisor (an elbow up through the gap) and the strike picker (straight across)
+    gx = (COLS[0] + COL_W + COLS[1]) / 2
+    svg.path(f"M {COLS[0] + COL_W - BOX_INSET} {ROWS[3] + 22} L {gx} {ROWS[3] + 22} "
+             f"L {gx} {FLIGHT_ROWS[3] + FLIGHT_H / 2} L {COLS[1] + BOX_INSET - 2} {FLIGHT_ROWS[3] + FLIGHT_H / 2}",
+             t["line"])
+    across(0, 3, y=FLIGHT_ROWS[4] + FLIGHT_H / 2)
+    across(1, 0, y=FLIGHT_ROWS[0] + FLIGHT_H / 2)
     across(2, 0)
     across(2, 1)
     across(2, 2)
@@ -251,7 +269,7 @@ def draw(theme: str) -> str:
     ly = PANEL_BOTTOM + 40
     x = M
     for kind, label in (("ai", "NVIDIA Nemotron on Nebius Token Factory"), ("safe", "Safety check"),
-                        ("code", "No language model in the valley"), ("out", "Who receives it")):
+                        ("code", "No language model"), ("out", "Who receives it")):
         fill, edge = {"ai": (t["ai_fill"], t["ai"]), "safe": (t["safe_fill"], t["safe"]),
                       "code": (t["box"], t["box_edge"]), "out": (t["out_fill"], t["out"])}[kind]
         svg.rect(x, ly - 15, 26, 20, fill, edge, sw=2, rx=5)
@@ -259,6 +277,8 @@ def draw(theme: str) -> str:
     svg.text(M, ly + 38, "Without a key, recorded jobs replay Nemotron\u2019s reading and new ones go to hand-written "
              "rules, as when the link drops; flight, the station and the alerts carry on.", 16, 400, t["muted"],
              max_w=W - 2 * M)
+    svg.text(M, ly + 62, "A check team flies only in the strike-check measurement, not in a typed job; if a Nemotron "
+             "pick fails, the team keeps patrolling its square.", 16, 400, t["muted"], max_w=W - 2 * M)
     return svg.render()
 
 

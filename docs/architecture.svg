@@ -1,128 +1,135 @@
-<svg xmlns="http://www.w3.org/2000/svg" width="1400" height="988" viewBox="0 0 1400 988" font-family="Inter, Helvetica, Arial, sans-serif">
+<svg xmlns="http://www.w3.org/2000/svg" width="1400" height="1094" viewBox="0 0 1400 1094" font-family="Inter, Helvetica, Arial, sans-serif">
 <defs><marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse"><path d="M 0 0 L 10 5 L 0 10 z" fill="#52514e"/></marker></defs>
-<rect width="1400" height="988" fill="#fcfcfb"/>
+<rect width="1400" height="1094" fill="#fcfcfb"/>
 <text x="36.0" y="56.0" font-size="30" font-weight="700" text-anchor="start" fill="#0b0b0b">How Halo turns a lightning strike into a crew brief and an alert</text>
-<text x="36.0" y="90.0" font-size="17" font-weight="400" text-anchor="start" fill="#52514e">NVIDIA Nemotron reads the job before take-off. Code makes the plan, flies the drones and runs the station: no language model flies a drone or decides an alert.</text>
-<rect x="36.0" y="128.0" width="302.0" height="744.0" rx="14" fill="#f3f2ee" stroke="#e1e0d9" stroke-width="1.5"/>
-<text x="54.0" y="158.0" font-size="14" font-weight="700" text-anchor="start" fill="#0b0b0b" letter-spacing="1.4">BEFORE TAKE-OFF</text>
-<text x="54.0" y="182.0" font-size="15" font-weight="400" text-anchor="start" fill="#52514e">Once per job</text>
-<rect x="376.0" y="128.0" width="302.0" height="744.0" rx="14" fill="#f3f2ee" stroke="#e1e0d9" stroke-width="1.5"/>
-<text x="394.0" y="158.0" font-size="14" font-weight="700" text-anchor="start" fill="#0b0b0b" letter-spacing="1.4">IN FLIGHT</text>
-<text x="394.0" y="182.0" font-size="15" font-weight="400" text-anchor="start" fill="#52514e">The drones and their supervisor</text>
-<rect x="716.0" y="128.0" width="302.0" height="744.0" rx="14" fill="#f3f2ee" stroke="#e1e0d9" stroke-width="1.5"/>
-<text x="734.0" y="158.0" font-size="14" font-weight="700" text-anchor="start" fill="#0b0b0b" letter-spacing="1.4">GROUND STATION</text>
-<text x="734.0" y="182.0" font-size="15" font-weight="400" text-anchor="start" fill="#52514e">Once a second, no language model</text>
-<rect x="1056.0" y="128.0" width="302.0" height="744.0" rx="14" fill="#f3f2ee" stroke="#e1e0d9" stroke-width="1.5"/>
-<text x="1074.0" y="158.0" font-size="14" font-weight="700" text-anchor="start" fill="#0b0b0b" letter-spacing="1.4">WHO GETS WHAT</text>
-<text x="1074.0" y="182.0" font-size="15" font-weight="400" text-anchor="start" fill="#52514e">As soon as the station knows</text>
-<rect x="54.0" y="204.0" width="266.0" height="136.0" rx="10" fill="#ffffff" stroke="#a9a8a0" stroke-width="2"/>
-<text x="68.0" y="234.0" font-size="18.5" font-weight="600" text-anchor="start" fill="#0b0b0b">Operator</text>
-<text x="68.0" y="260.0" font-size="17" font-weight="400" text-anchor="start" fill="#52514e">Types the job in plain words:</text>
-<text x="68.0" y="282.0" font-size="17" font-weight="400" text-anchor="start" fill="#52514e">“check last night’s strikes on</text>
-<text x="68.0" y="304.0" font-size="17" font-weight="400" text-anchor="start" fill="#52514e">the valley floor”</text>
-<rect x="54.0" y="374.0" width="266.0" height="136.0" rx="10" fill="#eef6dc" stroke="#76b900" stroke-width="2.5"/>
-<text x="68.0" y="404.0" font-size="18.5" font-weight="700" text-anchor="start" fill="#2f4f00">Nemotron valley compiler</text>
-<text x="68.0" y="430.0" font-size="17" font-weight="400" text-anchor="start" fill="#52514e">Nemotron 3 Nano on Nebius</text>
-<text x="68.0" y="452.0" font-size="17" font-weight="400" text-anchor="start" fill="#52514e">Token Factory reads the</text>
-<text x="68.0" y="474.0" font-size="17" font-weight="400" text-anchor="start" fill="#52514e">drones, areas and strikes the</text>
-<text x="68.0" y="496.0" font-size="17" font-weight="400" text-anchor="start" fill="#52514e">job means, or refuses it</text>
-<rect x="54.0" y="544.0" width="266.0" height="136.0" rx="10" fill="#fff4e5" stroke="#d97706" stroke-width="2.5"/>
-<text x="68.0" y="574.0" font-size="18.5" font-weight="700" text-anchor="start" fill="#8a4500">Plan check</text>
-<text x="68.0" y="600.0" font-size="17" font-weight="400" text-anchor="start" fill="#52514e">Code picks the strikes and</text>
-<text x="68.0" y="622.0" font-size="17" font-weight="400" text-anchor="start" fill="#52514e">the squads, within drone and</text>
-<text x="68.0" y="644.0" font-size="17" font-weight="400" text-anchor="start" fill="#52514e">battery limits</text>
-<rect x="54.0" y="714.0" width="266.0" height="136.0" rx="10" fill="#ffffff" stroke="#a9a8a0" stroke-width="2"/>
-<text x="68.0" y="744.0" font-size="18.5" font-weight="600" text-anchor="start" fill="#0b0b0b">Patrol plan</text>
-<text x="68.0" y="770.0" font-size="17" font-weight="400" text-anchor="start" fill="#52514e">Squads, their areas, the</text>
-<text x="68.0" y="792.0" font-size="17" font-weight="400" text-anchor="start" fill="#52514e">strikes to look at first, and</text>
-<text x="68.0" y="814.0" font-size="17" font-weight="400" text-anchor="start" fill="#52514e">how long they fly</text>
-<rect x="394.0" y="714.0" width="266.0" height="136.0" rx="10" fill="#ffffff" stroke="#a9a8a0" stroke-width="2"/>
-<text x="408.0" y="744.0" font-size="18.5" font-weight="600" text-anchor="start" fill="#0b0b0b">Supervisor, every 5 s</text>
-<text x="408.0" y="770.0" font-size="17" font-weight="400" text-anchor="start" fill="#52514e">Hand-written rules on a</text>
-<text x="408.0" y="792.0" font-size="17" font-weight="400" text-anchor="start" fill="#52514e">valley job; Nemotron only in</text>
-<text x="408.0" y="814.0" font-size="17" font-weight="400" text-anchor="start" fill="#52514e">the lab scenarios</text>
-<rect x="494.2" y="839.0" width="155.8" height="22.0" rx="11" fill="#76b900" stroke="#76b900" stroke-width="1"/>
-<text x="572.1" y="854.5" font-size="12" font-weight="700" text-anchor="middle" fill="#0b0b0b">NEMOTRON IN THE LAB</text>
-<rect x="394.0" y="544.0" width="266.0" height="136.0" rx="10" fill="#fff4e5" stroke="#d97706" stroke-width="2.5"/>
-<text x="408.0" y="574.0" font-size="18.5" font-weight="700" text-anchor="start" fill="#8a4500">Safety validator</text>
-<text x="408.0" y="600.0" font-size="17" font-weight="400" text-anchor="start" fill="#52514e">Checks every order, the</text>
-<text x="408.0" y="622.0" font-size="17" font-weight="400" text-anchor="start" fill="#52514e">operator’s too: clamps it to</text>
-<text x="408.0" y="644.0" font-size="17" font-weight="400" text-anchor="start" fill="#52514e">the flight limits or rejects it</text>
-<rect x="394.0" y="374.0" width="266.0" height="136.0" rx="10" fill="#fff4e5" stroke="#d97706" stroke-width="2.5"/>
-<text x="408.0" y="404.0" font-size="18.5" font-weight="700" text-anchor="start" fill="#8a4500">Controller, 50 Hz</text>
-<text x="408.0" y="430.0" font-size="17" font-weight="400" text-anchor="start" fill="#52514e">A safety filter keeps each</text>
-<text x="408.0" y="452.0" font-size="17" font-weight="400" text-anchor="start" fill="#52514e">drone clear of the others,</text>
-<text x="408.0" y="474.0" font-size="17" font-weight="400" text-anchor="start" fill="#52514e">obstacles and the ground</text>
-<rect x="394.0" y="204.0" width="266.0" height="136.0" rx="10" fill="#ffffff" stroke="#a9a8a0" stroke-width="2"/>
-<text x="408.0" y="234.0" font-size="18.5" font-weight="600" text-anchor="start" fill="#0b0b0b">Drones</text>
-<text x="408.0" y="260.0" font-size="17" font-weight="400" text-anchor="start" fill="#52514e">Thermal cameras look down,</text>
-<text x="408.0" y="282.0" font-size="17" font-weight="400" text-anchor="start" fill="#52514e">cameras ahead watch for</text>
-<text x="408.0" y="304.0" font-size="17" font-weight="400" text-anchor="start" fill="#52514e">smoke, and each drone</text>
-<text x="408.0" y="326.0" font-size="17" font-weight="400" text-anchor="start" fill="#52514e">measures the wind</text>
-<rect x="734.0" y="204.0" width="266.0" height="136.0" rx="10" fill="#ffffff" stroke="#a9a8a0" stroke-width="2"/>
-<text x="748.0" y="234.0" font-size="18.5" font-weight="600" text-anchor="start" fill="#0b0b0b">Locate fires</text>
-<text x="748.0" y="260.0" font-size="17" font-weight="400" text-anchor="start" fill="#52514e">Places fires from thermal</text>
-<text x="748.0" y="282.0" font-size="17" font-weight="400" text-anchor="start" fill="#52514e">finds and smoke bearings,</text>
-<text x="748.0" y="304.0" font-size="17" font-weight="400" text-anchor="start" fill="#52514e">and maps the burning ground</text>
-<rect x="734.0" y="374.0" width="266.0" height="136.0" rx="10" fill="#ffffff" stroke="#a9a8a0" stroke-width="2"/>
-<text x="748.0" y="404.0" font-size="18.5" font-weight="600" text-anchor="start" fill="#0b0b0b">Spread forecast</text>
-<text x="748.0" y="430.0" font-size="17" font-weight="400" text-anchor="start" fill="#52514e">A Rothermel ensemble on</text>
-<text x="748.0" y="452.0" font-size="17" font-weight="400" text-anchor="start" fill="#52514e">fuel, slope and the wind,</text>
-<text x="748.0" y="474.0" font-size="17" font-weight="400" text-anchor="start" fill="#52514e">every 2 min, sooner when a</text>
-<text x="748.0" y="496.0" font-size="17" font-weight="400" text-anchor="start" fill="#52514e">fire is new or grows</text>
-<rect x="734.0" y="544.0" width="266.0" height="136.0" rx="10" fill="#ffffff" stroke="#a9a8a0" stroke-width="2"/>
-<text x="748.0" y="574.0" font-size="18.5" font-weight="600" text-anchor="start" fill="#0b0b0b">Crew brief</text>
-<text x="748.0" y="600.0" font-size="17" font-weight="400" text-anchor="start" fill="#52514e">Where the fire is and which</text>
-<text x="748.0" y="622.0" font-size="17" font-weight="400" text-anchor="start" fill="#52514e">way its head will run, with a</text>
-<text x="748.0" y="644.0" font-size="17" font-weight="400" text-anchor="start" fill="#52514e">cone of likely directions</text>
-<rect x="734.0" y="714.0" width="266.0" height="136.0" rx="10" fill="#fff4e5" stroke="#d97706" stroke-width="2.5"/>
-<text x="748.0" y="744.0" font-size="18.5" font-weight="700" text-anchor="start" fill="#8a4500">Alert check</text>
-<text x="748.0" y="770.0" font-size="17" font-weight="400" text-anchor="start" fill="#52514e">Fixed rules set each zone’s</text>
-<text x="748.0" y="792.0" font-size="17" font-weight="400" text-anchor="start" fill="#52514e">alert level; each alert is</text>
-<text x="748.0" y="814.0" font-size="17" font-weight="400" text-anchor="start" fill="#52514e">checked first</text>
-<rect x="1074.0" y="204.0" width="266.0" height="136.0" rx="10" fill="#eaf2fc" stroke="#2a78d6" stroke-width="2.5"/>
-<text x="1088.0" y="234.0" font-size="18.5" font-weight="700" text-anchor="start" fill="#164a8a">Fire dispatch</text>
-<text x="1088.0" y="260.0" font-size="17" font-weight="400" text-anchor="start" fill="#52514e">Under the pre-signed rules a</text>
-<text x="1088.0" y="282.0" font-size="17" font-weight="400" text-anchor="start" fill="#52514e">typed job uses, a card for</text>
-<text x="1088.0" y="304.0" font-size="17" font-weight="400" text-anchor="start" fill="#52514e">every fire the station locates</text>
-<rect x="1074.0" y="374.0" width="266.0" height="136.0" rx="10" fill="#eaf2fc" stroke="#2a78d6" stroke-width="2.5"/>
-<text x="1088.0" y="404.0" font-size="18.5" font-weight="700" text-anchor="start" fill="#164a8a">Operator</text>
-<text x="1088.0" y="430.0" font-size="17" font-weight="400" text-anchor="start" fill="#52514e">Sees every card, brief and</text>
-<text x="1088.0" y="452.0" font-size="17" font-weight="400" text-anchor="start" fill="#52514e">alert; can cancel an alert,</text>
-<text x="1088.0" y="474.0" font-size="17" font-weight="400" text-anchor="start" fill="#52514e">give the all-clear or hold the</text>
-<text x="1088.0" y="496.0" font-size="17" font-weight="400" text-anchor="start" fill="#52514e">swarm low for aircraft</text>
-<rect x="1074.0" y="544.0" width="266.0" height="136.0" rx="10" fill="#eaf2fc" stroke="#2a78d6" stroke-width="2.5"/>
-<text x="1088.0" y="574.0" font-size="18.5" font-weight="700" text-anchor="start" fill="#164a8a">Fire crews</text>
-<text x="1088.0" y="600.0" font-size="17" font-weight="400" text-anchor="start" fill="#52514e">The brief, a map file, and an</text>
-<text x="1088.0" y="622.0" font-size="17" font-weight="400" text-anchor="start" fill="#52514e">update whenever the</text>
-<text x="1088.0" y="644.0" font-size="17" font-weight="400" text-anchor="start" fill="#52514e">forecast changes</text>
-<rect x="1074.0" y="714.0" width="266.0" height="136.0" rx="10" fill="#eaf2fc" stroke="#2a78d6" stroke-width="2.5"/>
-<text x="1088.0" y="744.0" font-size="18.5" font-weight="700" text-anchor="start" fill="#164a8a">Phones in the path</text>
-<text x="1088.0" y="770.0" font-size="17" font-weight="400" text-anchor="start" fill="#52514e">Zone alerts, from prepare to</text>
-<text x="1088.0" y="792.0" font-size="17" font-weight="400" text-anchor="start" fill="#52514e">emergency; simulated</text>
-<text x="1088.0" y="814.0" font-size="17" font-weight="400" text-anchor="start" fill="#52514e">phones only</text>
-<path d="M 187.0 340 L 187.0 372" fill="none" stroke="#52514e" stroke-width="2.5" stroke-linejoin="round" marker-end="url(#arrow)"/>
-<path d="M 527.0 374 L 527.0 342" fill="none" stroke="#52514e" stroke-width="2.5" stroke-linejoin="round" marker-end="url(#arrow)"/>
-<path d="M 187.0 510 L 187.0 542" fill="none" stroke="#52514e" stroke-width="2.5" stroke-linejoin="round" marker-end="url(#arrow)"/>
-<path d="M 527.0 544 L 527.0 512" fill="none" stroke="#52514e" stroke-width="2.5" stroke-linejoin="round" marker-end="url(#arrow)"/>
-<path d="M 187.0 680 L 187.0 712" fill="none" stroke="#52514e" stroke-width="2.5" stroke-linejoin="round" marker-end="url(#arrow)"/>
-<path d="M 527.0 714 L 527.0 682" fill="none" stroke="#52514e" stroke-width="2.5" stroke-linejoin="round" marker-end="url(#arrow)"/>
-<path d="M 867.0 340 L 867.0 372" fill="none" stroke="#52514e" stroke-width="2.5" stroke-linejoin="round" marker-end="url(#arrow)"/>
-<path d="M 867.0 510 L 867.0 542" fill="none" stroke="#52514e" stroke-width="2.5" stroke-linejoin="round" marker-end="url(#arrow)"/>
-<path d="M 734 484 L 725 484 L 725 690 L 774 690 L 774 712" fill="none" stroke="#52514e" stroke-width="2.5" stroke-linejoin="round" marker-end="url(#arrow)"/>
-<path d="M 320 782.0 L 392 782.0" fill="none" stroke="#52514e" stroke-width="2.5" stroke-linejoin="round" marker-end="url(#arrow)"/>
-<path d="M 660 272.0 L 732 272.0" fill="none" stroke="#52514e" stroke-width="2.5" stroke-linejoin="round" marker-end="url(#arrow)"/>
-<path d="M 1000 272.0 L 1072 272.0" fill="none" stroke="#52514e" stroke-width="2.5" stroke-linejoin="round" marker-end="url(#arrow)"/>
-<path d="M 1000 442.0 L 1072 442.0" fill="none" stroke="#52514e" stroke-width="2.5" stroke-linejoin="round" marker-end="url(#arrow)"/>
-<path d="M 1000 612.0 L 1072 612.0" fill="none" stroke="#52514e" stroke-width="2.5" stroke-linejoin="round" marker-end="url(#arrow)"/>
-<path d="M 1000 782.0 L 1072 782.0" fill="none" stroke="#52514e" stroke-width="2.5" stroke-linejoin="round" marker-end="url(#arrow)"/>
-<rect x="36.0" y="897.0" width="26.0" height="20.0" rx="5" fill="#eef6dc" stroke="#76b900" stroke-width="2"/>
-<text x="72.0" y="912.0" font-size="16" font-weight="500" text-anchor="start" fill="#52514e">NVIDIA Nemotron on Nebius Token Factory</text>
-<rect x="432.0" y="897.0" width="26.0" height="20.0" rx="5" fill="#fff4e5" stroke="#d97706" stroke-width="2"/>
-<text x="468.0" y="912.0" font-size="16" font-weight="500" text-anchor="start" fill="#52514e">Safety check</text>
-<rect x="598.2" y="897.0" width="26.0" height="20.0" rx="5" fill="#ffffff" stroke="#a9a8a0" stroke-width="2"/>
-<text x="634.2" y="912.0" font-size="16" font-weight="500" text-anchor="start" fill="#52514e">No language model in the valley</text>
-<rect x="907.9" y="897.0" width="26.0" height="20.0" rx="5" fill="#eaf2fc" stroke="#2a78d6" stroke-width="2"/>
-<text x="943.9" y="912.0" font-size="16" font-weight="500" text-anchor="start" fill="#52514e">Who receives it</text>
-<text x="36.0" y="950.0" font-size="16" font-weight="400" text-anchor="start" fill="#6f6e69">Without a key, recorded jobs replay Nemotron’s reading and new ones go to hand-written rules, as when the link drops; flight, the station and the alerts carry on.</text>
+<text x="36.0" y="88.0" font-size="17" font-weight="400" text-anchor="start" fill="#52514e">NVIDIA Nemotron reads the job before take-off and, when a check team flies, picks the strike it looks at next.</text>
+<text x="36.0" y="112.0" font-size="17" font-weight="400" text-anchor="start" fill="#52514e">Code makes the plan, flies the drones and runs the station: no language model flies a drone or decides an alert.</text>
+<rect x="36.0" y="146.0" width="302.0" height="808.0" rx="14" fill="#f3f2ee" stroke="#e1e0d9" stroke-width="1.5"/>
+<text x="54.0" y="176.0" font-size="14" font-weight="700" text-anchor="start" fill="#0b0b0b" letter-spacing="1.4">BEFORE TAKE-OFF</text>
+<text x="54.0" y="200.0" font-size="15" font-weight="400" text-anchor="start" fill="#52514e">Once per job</text>
+<rect x="376.0" y="146.0" width="302.0" height="808.0" rx="14" fill="#f3f2ee" stroke="#e1e0d9" stroke-width="1.5"/>
+<text x="394.0" y="176.0" font-size="14" font-weight="700" text-anchor="start" fill="#0b0b0b" letter-spacing="1.4">IN FLIGHT</text>
+<text x="394.0" y="200.0" font-size="15" font-weight="400" text-anchor="start" fill="#52514e">The drones and their supervisor</text>
+<rect x="716.0" y="146.0" width="302.0" height="808.0" rx="14" fill="#f3f2ee" stroke="#e1e0d9" stroke-width="1.5"/>
+<text x="734.0" y="176.0" font-size="14" font-weight="700" text-anchor="start" fill="#0b0b0b" letter-spacing="1.4">GROUND STATION</text>
+<text x="734.0" y="200.0" font-size="15" font-weight="400" text-anchor="start" fill="#52514e">Once a second, no language model</text>
+<rect x="1056.0" y="146.0" width="302.0" height="808.0" rx="14" fill="#f3f2ee" stroke="#e1e0d9" stroke-width="1.5"/>
+<text x="1074.0" y="176.0" font-size="14" font-weight="700" text-anchor="start" fill="#0b0b0b" letter-spacing="1.4">WHO GETS WHAT</text>
+<text x="1074.0" y="200.0" font-size="15" font-weight="400" text-anchor="start" fill="#52514e">As soon as the station knows</text>
+<rect x="54.0" y="222.0" width="266.0" height="152.0" rx="10" fill="#ffffff" stroke="#a9a8a0" stroke-width="2"/>
+<text x="68.0" y="252.0" font-size="18.5" font-weight="600" text-anchor="start" fill="#0b0b0b">Operator</text>
+<text x="68.0" y="278.0" font-size="17" font-weight="400" text-anchor="start" fill="#52514e">Types the job in plain words:</text>
+<text x="68.0" y="300.0" font-size="17" font-weight="400" text-anchor="start" fill="#52514e">“check last night’s strikes on</text>
+<text x="68.0" y="322.0" font-size="17" font-weight="400" text-anchor="start" fill="#52514e">the valley floor”</text>
+<rect x="54.0" y="408.0" width="266.0" height="152.0" rx="10" fill="#eef6dc" stroke="#76b900" stroke-width="2.5"/>
+<text x="68.0" y="438.0" font-size="18.5" font-weight="700" text-anchor="start" fill="#2f4f00">Nemotron valley compiler</text>
+<text x="68.0" y="464.0" font-size="17" font-weight="400" text-anchor="start" fill="#52514e">Nemotron 3 Nano on Nebius</text>
+<text x="68.0" y="486.0" font-size="17" font-weight="400" text-anchor="start" fill="#52514e">Token Factory reads the</text>
+<text x="68.0" y="508.0" font-size="17" font-weight="400" text-anchor="start" fill="#52514e">drones, areas and strikes the</text>
+<text x="68.0" y="530.0" font-size="17" font-weight="400" text-anchor="start" fill="#52514e">job means, or refuses it</text>
+<rect x="54.0" y="594.0" width="266.0" height="152.0" rx="10" fill="#fff4e5" stroke="#d97706" stroke-width="2.5"/>
+<text x="68.0" y="624.0" font-size="18.5" font-weight="700" text-anchor="start" fill="#8a4500">Plan check</text>
+<text x="68.0" y="650.0" font-size="17" font-weight="400" text-anchor="start" fill="#52514e">Code picks the strikes and</text>
+<text x="68.0" y="672.0" font-size="17" font-weight="400" text-anchor="start" fill="#52514e">the squads, within drone and</text>
+<text x="68.0" y="694.0" font-size="17" font-weight="400" text-anchor="start" fill="#52514e">battery limits</text>
+<rect x="54.0" y="780.0" width="266.0" height="152.0" rx="10" fill="#ffffff" stroke="#a9a8a0" stroke-width="2"/>
+<text x="68.0" y="810.0" font-size="18.5" font-weight="600" text-anchor="start" fill="#0b0b0b">Patrol plan</text>
+<text x="68.0" y="836.0" font-size="17" font-weight="400" text-anchor="start" fill="#52514e">Squads, their areas, the</text>
+<text x="68.0" y="858.0" font-size="17" font-weight="400" text-anchor="start" fill="#52514e">strikes to look at first, and</text>
+<text x="68.0" y="880.0" font-size="17" font-weight="400" text-anchor="start" fill="#52514e">how long they fly</text>
+<rect x="394.0" y="817.2" width="266.0" height="114.8" rx="10" fill="#eef6dc" stroke="#76b900" stroke-width="2.5"/>
+<text x="408.0" y="847.2" font-size="18.5" font-weight="700" text-anchor="start" fill="#2f4f00">Strike picker, optional</text>
+<text x="408.0" y="873.2" font-size="17" font-weight="400" text-anchor="start" fill="#52514e">For a 4-drone check team,</text>
+<text x="408.0" y="895.2" font-size="17" font-weight="400" text-anchor="start" fill="#52514e">Nemotron picks the next</text>
+<text x="408.0" y="917.2" font-size="17" font-weight="400" text-anchor="start" fill="#52514e">strike; a rule did as well</text>
+<rect x="394.0" y="668.4" width="266.0" height="114.8" rx="10" fill="#ffffff" stroke="#a9a8a0" stroke-width="2"/>
+<text x="408.0" y="698.4" font-size="18.5" font-weight="600" text-anchor="start" fill="#0b0b0b">Supervisor, every 5 s</text>
+<text x="408.0" y="724.4" font-size="17" font-weight="400" text-anchor="start" fill="#52514e">In the valley, hand-written</text>
+<text x="408.0" y="746.4" font-size="17" font-weight="400" text-anchor="start" fill="#52514e">rules set the formation</text>
+<rect x="494.2" y="772.2" width="155.8" height="22.0" rx="11" fill="#76b900" stroke="#76b900" stroke-width="1"/>
+<text x="572.1" y="787.7" font-size="12" font-weight="700" text-anchor="middle" fill="#0b0b0b">NEMOTRON IN THE LAB</text>
+<rect x="394.0" y="519.6" width="266.0" height="114.8" rx="10" fill="#fff4e5" stroke="#d97706" stroke-width="2.5"/>
+<text x="408.0" y="549.6" font-size="18.5" font-weight="700" text-anchor="start" fill="#8a4500">Safety validator</text>
+<text x="408.0" y="575.6" font-size="17" font-weight="400" text-anchor="start" fill="#52514e">Checks every order and</text>
+<text x="408.0" y="597.6" font-size="17" font-weight="400" text-anchor="start" fill="#52514e">strike pick, the operator’s</text>
+<text x="408.0" y="619.6" font-size="17" font-weight="400" text-anchor="start" fill="#52514e">too: clamps or rejects it</text>
+<rect x="394.0" y="370.8" width="266.0" height="114.8" rx="10" fill="#fff4e5" stroke="#d97706" stroke-width="2.5"/>
+<text x="408.0" y="400.8" font-size="18.5" font-weight="700" text-anchor="start" fill="#8a4500">Controller, 50 Hz</text>
+<text x="408.0" y="426.8" font-size="17" font-weight="400" text-anchor="start" fill="#52514e">A safety filter keeps each</text>
+<text x="408.0" y="448.8" font-size="17" font-weight="400" text-anchor="start" fill="#52514e">drone clear of the others,</text>
+<text x="408.0" y="470.8" font-size="17" font-weight="400" text-anchor="start" fill="#52514e">obstacles and the ground</text>
+<rect x="394.0" y="222.0" width="266.0" height="114.8" rx="10" fill="#ffffff" stroke="#a9a8a0" stroke-width="2"/>
+<text x="408.0" y="252.0" font-size="18.5" font-weight="600" text-anchor="start" fill="#0b0b0b">Drones</text>
+<text x="408.0" y="278.0" font-size="17" font-weight="400" text-anchor="start" fill="#52514e">Cameras look down for heat</text>
+<text x="408.0" y="300.0" font-size="17" font-weight="400" text-anchor="start" fill="#52514e">and ahead for smoke; each</text>
+<text x="408.0" y="322.0" font-size="17" font-weight="400" text-anchor="start" fill="#52514e">drone measures the wind</text>
+<rect x="734.0" y="222.0" width="266.0" height="152.0" rx="10" fill="#ffffff" stroke="#a9a8a0" stroke-width="2"/>
+<text x="748.0" y="252.0" font-size="18.5" font-weight="600" text-anchor="start" fill="#0b0b0b">Locate fires</text>
+<text x="748.0" y="278.0" font-size="17" font-weight="400" text-anchor="start" fill="#52514e">Places fires from thermal</text>
+<text x="748.0" y="300.0" font-size="17" font-weight="400" text-anchor="start" fill="#52514e">finds and smoke bearings,</text>
+<text x="748.0" y="322.0" font-size="17" font-weight="400" text-anchor="start" fill="#52514e">and maps the burning ground</text>
+<rect x="734.0" y="408.0" width="266.0" height="152.0" rx="10" fill="#ffffff" stroke="#a9a8a0" stroke-width="2"/>
+<text x="748.0" y="438.0" font-size="18.5" font-weight="600" text-anchor="start" fill="#0b0b0b">Spread forecast</text>
+<text x="748.0" y="464.0" font-size="17" font-weight="400" text-anchor="start" fill="#52514e">A Rothermel ensemble on</text>
+<text x="748.0" y="486.0" font-size="17" font-weight="400" text-anchor="start" fill="#52514e">fuel, slope and the wind,</text>
+<text x="748.0" y="508.0" font-size="17" font-weight="400" text-anchor="start" fill="#52514e">every 2 min, sooner when a</text>
+<text x="748.0" y="530.0" font-size="17" font-weight="400" text-anchor="start" fill="#52514e">fire is new or grows</text>
+<rect x="734.0" y="594.0" width="266.0" height="152.0" rx="10" fill="#ffffff" stroke="#a9a8a0" stroke-width="2"/>
+<text x="748.0" y="624.0" font-size="18.5" font-weight="600" text-anchor="start" fill="#0b0b0b">Crew brief</text>
+<text x="748.0" y="650.0" font-size="17" font-weight="400" text-anchor="start" fill="#52514e">Where the fire is and which</text>
+<text x="748.0" y="672.0" font-size="17" font-weight="400" text-anchor="start" fill="#52514e">way its head will run, with a</text>
+<text x="748.0" y="694.0" font-size="17" font-weight="400" text-anchor="start" fill="#52514e">cone of likely directions</text>
+<rect x="734.0" y="780.0" width="266.0" height="152.0" rx="10" fill="#fff4e5" stroke="#d97706" stroke-width="2.5"/>
+<text x="748.0" y="810.0" font-size="18.5" font-weight="700" text-anchor="start" fill="#8a4500">Alert check</text>
+<text x="748.0" y="836.0" font-size="17" font-weight="400" text-anchor="start" fill="#52514e">Fixed rules set each zone’s</text>
+<text x="748.0" y="858.0" font-size="17" font-weight="400" text-anchor="start" fill="#52514e">alert level; each alert is</text>
+<text x="748.0" y="880.0" font-size="17" font-weight="400" text-anchor="start" fill="#52514e">checked first</text>
+<rect x="1074.0" y="222.0" width="266.0" height="152.0" rx="10" fill="#eaf2fc" stroke="#2a78d6" stroke-width="2.5"/>
+<text x="1088.0" y="252.0" font-size="18.5" font-weight="700" text-anchor="start" fill="#164a8a">Fire dispatch</text>
+<text x="1088.0" y="278.0" font-size="17" font-weight="400" text-anchor="start" fill="#52514e">Under the pre-signed rules a</text>
+<text x="1088.0" y="300.0" font-size="17" font-weight="400" text-anchor="start" fill="#52514e">typed job uses, a card for</text>
+<text x="1088.0" y="322.0" font-size="17" font-weight="400" text-anchor="start" fill="#52514e">every fire the station locates</text>
+<rect x="1074.0" y="408.0" width="266.0" height="152.0" rx="10" fill="#eaf2fc" stroke="#2a78d6" stroke-width="2.5"/>
+<text x="1088.0" y="438.0" font-size="18.5" font-weight="700" text-anchor="start" fill="#164a8a">Operator</text>
+<text x="1088.0" y="464.0" font-size="17" font-weight="400" text-anchor="start" fill="#52514e">Sees every card, brief and</text>
+<text x="1088.0" y="486.0" font-size="17" font-weight="400" text-anchor="start" fill="#52514e">alert; can cancel an alert,</text>
+<text x="1088.0" y="508.0" font-size="17" font-weight="400" text-anchor="start" fill="#52514e">give the all-clear or hold the</text>
+<text x="1088.0" y="530.0" font-size="17" font-weight="400" text-anchor="start" fill="#52514e">swarm low for aircraft</text>
+<rect x="1074.0" y="594.0" width="266.0" height="152.0" rx="10" fill="#eaf2fc" stroke="#2a78d6" stroke-width="2.5"/>
+<text x="1088.0" y="624.0" font-size="18.5" font-weight="700" text-anchor="start" fill="#164a8a">Fire crews</text>
+<text x="1088.0" y="650.0" font-size="17" font-weight="400" text-anchor="start" fill="#52514e">The brief, a map file, and an</text>
+<text x="1088.0" y="672.0" font-size="17" font-weight="400" text-anchor="start" fill="#52514e">update whenever the</text>
+<text x="1088.0" y="694.0" font-size="17" font-weight="400" text-anchor="start" fill="#52514e">forecast changes</text>
+<rect x="1074.0" y="780.0" width="266.0" height="152.0" rx="10" fill="#eaf2fc" stroke="#2a78d6" stroke-width="2.5"/>
+<text x="1088.0" y="810.0" font-size="18.5" font-weight="700" text-anchor="start" fill="#164a8a">Phones in the path</text>
+<text x="1088.0" y="836.0" font-size="17" font-weight="400" text-anchor="start" fill="#52514e">Zone alerts, from prepare to</text>
+<text x="1088.0" y="858.0" font-size="17" font-weight="400" text-anchor="start" fill="#52514e">emergency; simulated</text>
+<text x="1088.0" y="880.0" font-size="17" font-weight="400" text-anchor="start" fill="#52514e">phones only</text>
+<path d="M 187.0 374 L 187.0 406" fill="none" stroke="#52514e" stroke-width="2.5" stroke-linejoin="round" marker-end="url(#arrow)"/>
+<path d="M 527.0 370.8 L 527.0 338.8" fill="none" stroke="#52514e" stroke-width="2.5" stroke-linejoin="round" marker-end="url(#arrow)"/>
+<path d="M 187.0 560 L 187.0 592" fill="none" stroke="#52514e" stroke-width="2.5" stroke-linejoin="round" marker-end="url(#arrow)"/>
+<path d="M 527.0 519.6 L 527.0 487.6" fill="none" stroke="#52514e" stroke-width="2.5" stroke-linejoin="round" marker-end="url(#arrow)"/>
+<path d="M 187.0 746 L 187.0 778" fill="none" stroke="#52514e" stroke-width="2.5" stroke-linejoin="round" marker-end="url(#arrow)"/>
+<path d="M 527.0 668.4000000000001 L 527.0 636.4" fill="none" stroke="#52514e" stroke-width="2.5" stroke-linejoin="round" marker-end="url(#arrow)"/>
+<path d="M 660 845.2 L 669 845.2 L 669 658.4000000000001 L 620 658.4000000000001 L 620 636.4" fill="none" stroke="#52514e" stroke-width="2.5" stroke-linejoin="round" marker-end="url(#arrow)"/>
+<path d="M 867.0 374 L 867.0 406" fill="none" stroke="#52514e" stroke-width="2.5" stroke-linejoin="round" marker-end="url(#arrow)"/>
+<path d="M 867.0 560 L 867.0 592" fill="none" stroke="#52514e" stroke-width="2.5" stroke-linejoin="round" marker-end="url(#arrow)"/>
+<path d="M 734 534 L 725 534 L 725 756 L 774 756 L 774 778" fill="none" stroke="#52514e" stroke-width="2.5" stroke-linejoin="round" marker-end="url(#arrow)"/>
+<path d="M 320 802 L 357.0 802 L 357.0 725.8000000000001 L 392 725.8000000000001" fill="none" stroke="#52514e" stroke-width="2.5" stroke-linejoin="round" marker-end="url(#arrow)"/>
+<path d="M 320 874.6 L 392 874.6" fill="none" stroke="#52514e" stroke-width="2.5" stroke-linejoin="round" marker-end="url(#arrow)"/>
+<path d="M 660 279.4 L 732 279.4" fill="none" stroke="#52514e" stroke-width="2.5" stroke-linejoin="round" marker-end="url(#arrow)"/>
+<path d="M 1000 298.0 L 1072 298.0" fill="none" stroke="#52514e" stroke-width="2.5" stroke-linejoin="round" marker-end="url(#arrow)"/>
+<path d="M 1000 484.0 L 1072 484.0" fill="none" stroke="#52514e" stroke-width="2.5" stroke-linejoin="round" marker-end="url(#arrow)"/>
+<path d="M 1000 670.0 L 1072 670.0" fill="none" stroke="#52514e" stroke-width="2.5" stroke-linejoin="round" marker-end="url(#arrow)"/>
+<path d="M 1000 856.0 L 1072 856.0" fill="none" stroke="#52514e" stroke-width="2.5" stroke-linejoin="round" marker-end="url(#arrow)"/>
+<rect x="36.0" y="979.0" width="26.0" height="20.0" rx="5" fill="#eef6dc" stroke="#76b900" stroke-width="2"/>
+<text x="72.0" y="994.0" font-size="16" font-weight="500" text-anchor="start" fill="#52514e">NVIDIA Nemotron on Nebius Token Factory</text>
+<rect x="432.0" y="979.0" width="26.0" height="20.0" rx="5" fill="#fff4e5" stroke="#d97706" stroke-width="2"/>
+<text x="468.0" y="994.0" font-size="16" font-weight="500" text-anchor="start" fill="#52514e">Safety check</text>
+<rect x="598.2" y="979.0" width="26.0" height="20.0" rx="5" fill="#ffffff" stroke="#a9a8a0" stroke-width="2"/>
+<text x="634.2" y="994.0" font-size="16" font-weight="500" text-anchor="start" fill="#52514e">No language model</text>
+<rect x="812.4" y="979.0" width="26.0" height="20.0" rx="5" fill="#eaf2fc" stroke="#2a78d6" stroke-width="2"/>
+<text x="848.4" y="994.0" font-size="16" font-weight="500" text-anchor="start" fill="#52514e">Who receives it</text>
+<text x="36.0" y="1032.0" font-size="16" font-weight="400" text-anchor="start" fill="#6f6e69">Without a key, recorded jobs replay Nemotron’s reading and new ones go to hand-written rules, as when the link drops; flight, the station and the alerts carry on.</text>
+<text x="36.0" y="1056.0" font-size="16" font-weight="400" text-anchor="start" fill="#6f6e69">A check team flies only in the strike-check measurement, not in a typed job; if a Nemotron pick fails, the team keeps patrolling its square.</text>
 </svg>

@@ -7,7 +7,7 @@ Everything here runs on a laptop with Python 3.10 or newer and numpy. Charts nee
 * Seeds 0-9 (`--seeds tuning`) were used while developing and tuning the controllers and the rule supervisor.
 * Seeds 1000-1019 (`--seeds heldout`) were not looked at until the final runs. Every headline number outside the wildfire valley uses them.
 * The wildfire valley has its own seeds: 2000-2011 and 3000-3019 for development, and 4000-4019 held out and flown once with the final code ([WILDFIRE.md](WILDFIRE.md)).
-* Each later result has a held-out set of its own, not used before its run: 7000-7019 for which way the fire runs, 8000-8019 for squads per area, 9000-9019 for the pre-signed alerts (T3), 9000-9039 for the first crew (T4: 9000-9019 are T3's pre-signed, automatic flights and 9020-9039 its own), 9040-9087 for the valley compiler (the strike lists of its 48 held-out requests, no flights), 9100-9119 and 9150-9169 for the valley test engineer (T5b), and 9200-9219 for the missing hiker (T11). From 8000-8019 on, each results folder keeps the plan written before the run (`PREREG.md`); the fire-direction set is described in [WILDFIRE.md](WILDFIRE.md).
+* Each later result has a held-out set of its own, not used before its run: 7000-7019 for which way the fire runs, 8000-8019 for squads per area, 9000-9019 for the pre-signed alerts (T3), 9000-9039 for the first crew (T4: 9000-9019 are T3's pre-signed, automatic flights and 9020-9039 its own), 9040-9087 for the valley compiler (the strike lists of its 48 held-out requests, no flights), 9100-9119 and 9150-9169 for the valley test engineer (T5b), 9200-9219 for the missing hiker (T11), and 9300-9319 for the strike checks. From 8000-8019 on, each results folder keeps the plan written before the run (`PREREG.md`); the fire-direction set is described in [WILDFIRE.md](WILDFIRE.md).
 * All these held-out seeds are spent, and so are 5000-5019 and 6000-6019, used in earlier attempts at the fire-direction measurement ([WILDFIRE.md](WILDFIRE.md)); 9120-9149 and 9170-9199 were reserved with T5b and stay unused. The commands below rerun the spent sets to check the committed results; a new measurement needs fresh seeds. The aircraft-inbound demo (seed 3000) and the compute table (3000-3003) use development seeds.
 
 Each seed fixes the wind, sensor noise, radio losses, obstacle layout and initial positions. Every configuration sees the same conditions for a given seed. That is why the report can compare configurations seed by seed (paired comparisons).
@@ -157,7 +157,7 @@ PYTHONPATH=src python3 tools/wildfire_valley_squads_sweep.py --seeds 8000-8019 -
 PYTHONPATH=src python3 tools/wildfire_valley_squads_report.py --runs results/wildfire_valley_squads/runs.jsonl   # REPORT.md, summary.json, by_size.csv, squads.png
 ```
 
-Here and below, the sweeps that fly rows (squads, alerts, the first crew's `fly`, the hiker's `fly`) skip rows already in their output. Each report's section headed "What it shows (written after the run)" was written by hand. The report commands write `REPORT.md` whole, so to check a result, fly into a new `--out` and compare the generated part. The valley test engineer's commands, the hiker's `film`, `valley-eval`, the aircraft-inbound demo and the compute table skip nothing: they fly or score everything again and write their `--out` whole, so give them a new `--out` (or folder) too.
+Here and below, the sweeps that fly rows (squads, alerts, the first crew's `fly`, the hiker's `fly`, the strike checks) skip rows already in their output. Each report's section headed "What it shows (written after the run)" was written by hand. The report commands write `REPORT.md` whole, so to check a result, fly into a new `--out` and compare the generated part. The valley test engineer's commands, the hiker's `film`, `valley-eval`, the aircraft-inbound demo and the compute table skip nothing: they fly or score everything again and write their `--out` whole, so give them a new `--out` (or folder) too.
 
 ## Valley compiler (needs a key, or replays without one)
 
@@ -216,6 +216,32 @@ env -u NEBIUS_API_KEY PYTHONPATH=src python3 tools/wildfire_valley_stress.py sea
 ```
 
 `recheck` flies every failing test twice more, under the pre-signed rules and under today's rule. `wildfire_valley_both_rules.py` flies all 40 drawn-day valleys from `drawn_day.json` under both rules, paired, and writes its `--out` whole.
+
+## Strike checks (Nemotron's flights need a key, or replay without one)
+
+An optional check team of 4 drones flies to the night's lightning strikes one at a time while the area squads patrol; its next strike is picked nearest first, by a hand-written triage rule or by Nemotron 3 Nano. `halo run` and the dashboard never fly a team. It was flown once from 67e570d, the commit that adds the plan (`results/strike_checks/PREREG.md`), in a separate checkout, with no supervisor (`improved+fixed`): 140 flights, Nemotron's at 8 drones only. Development used valleys 3000-3011.
+
+```bash
+PYTHONPATH=src python3 tools/wildfire_strike_check_sweep.py --seeds 9300-9319 --sizes 8,16 \
+    --arms none,nearest,rule --out results/strike_checks/runs_rules.jsonl --workers 3
+HALO_LEDGER=<the project's spend ledger> HALO_BUDGET_USD=8.71 PYTHONPATH=src \
+    python3 tools/wildfire_strike_check_sweep.py --seeds 9300-9319 --sizes 8 --arms nemotron \
+    --cache results/strike_checks/nemotron_cache.jsonl --out results/strike_checks/runs_nemotron.jsonl --workers 1
+cat results/strike_checks/runs_rules.jsonl results/strike_checks/runs_nemotron.jsonl > results/strike_checks/runs.jsonl
+PYTHONPATH=src python3 tools/wildfire_strike_check_report.py results/strike_checks/runs.jsonl \
+    --out results/strike_checks/summary.json
+```
+
+The second command made Nemotron's calls, with a key; `HALO_BUDGET_USD` is the spend guard's cap on the shared ledger, as for the valley compiler. Of the rows files only `runs.jsonl` is committed, so to check a result give each command a new output file. The report tool prints the tables and writes `summary.json`; `REPORT.md` was written from them.
+
+The 77 Nemotron calls cost USD 0.086. With `--cache-mode replay` and a new `--out` file, every pick is answered from the recorded replies, with no key and no spend:
+
+```bash
+env -u NEBIUS_API_KEY PYTHONPATH=src python3 tools/wildfire_strike_check_sweep.py --seeds 9300-9319 --sizes 8 \
+  --arms nemotron --cache results/strike_checks/nemotron_cache.jsonl --cache-mode replay --out strike_nemotron_replay.jsonl
+```
+
+Seed 9300 replayed this way matched its committed row apart from compute-time fields and the fields that mark each reply as replayed.
 
 ## Missing hiker (no key needed)
 

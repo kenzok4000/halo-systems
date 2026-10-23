@@ -8,19 +8,22 @@ Halo Systems has three loops that run at very different speeds. Only the fastest
 | Supervision | every 5 s of simulated time | Rule supervisor or Nemotron | Formation, spacing, speed, altitude, safety margin |
 | Mission | once, before flight | Operator text compiled by Nemotron or a regex baseline | The mission plan the supervisor returns to |
 
+In the wildfire valley an optional check team adds one more slow decision in flight: which of the night's lightning strikes it checks next. Nearest first, a hand-written triage rule or Nemotron names it, 40 s before the current look ends. The safety validator checks every pick, and code, not the model, flies the team. Default flights fly no check team ([results/strike_checks](../results/strike_checks/REPORT.md)).
+
 ```
  operator text ──► mission compiler ──► validator ──► mission plan
                                                           │
  status report every 5 s ──► supervisor ──► validator ──► directive
                                                               │
  50 Hz, per drone: slot tracking + consensus ──► CBF safety filter ──► thrust ──► physics
+ optional check team: strike table ──► strike picker ──► validator ──► next square to patrol
 ```
 
 In the wildfire valley, the drones' cameras feed a ground station that locates the fires, forecasts their spread, briefs the crews and checks the alerts, with no language model ([WILDFIRE.md](WILDFIRE.md)). This figure follows one valley job from the operator's words to the alerts ([`tools/architecture_figure.py`](../tools/architecture_figure.py) draws it):
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="architecture-dark.png">
-  <img alt="How Halo turns a lightning strike into a crew brief and an alert: Nemotron reads the job before take-off and code makes the plan; a supervisor every 5 s, a safety validator and a 50 Hz controller with a safety filter fly the drones; the ground station locates the fires, forecasts their spread, briefs the crews and checks the alerts with no language model" src="architecture.png">
+  <img alt="How Halo turns a lightning strike into a crew brief and an alert: Nemotron reads the job before take-off and code makes the plan; a supervisor every 5 s, a safety validator and a 50 Hz controller with a safety filter fly the drones; for an optional check team, Nemotron picks the next lightning strike to look at (a hand-written rule did as well) and the validator checks every pick; the ground station locates the fires, forecasts their spread, briefs the crews and checks the alerts with no language model" src="architecture.png">
 </picture>
 
 ## Where each loop runs
@@ -33,8 +36,9 @@ In the wildfire valley, the drones' cameras feed a ground station that locates t
 * **The spread forecast** (with crew briefs and pre-signed alert checks) runs once a fire is located: every 2 min, sooner when the picture changes (at least 30 s apart). A forecast took a median 1620.1 ms (p95 1790.3 ms).
 * **The valley compile** runs once per job on Nebius Token Factory (Nemotron 3 Nano, reasoning): median 4.7 s, p95 10.44 s (47 calls).
 * **The test engineer** (Nemotron, proposing stress tests) runs on Token Factory before deployment, per batch of tests. It is not in flight and was not timed here (`results/valley_stress`).
+* **The strike pick** (optional check team only) is asked 40 s before the current look ends. The nearest-first and rule pickers are plain code. Nemotron 3 Nano (reasoning) on Token Factory took a median 10.8 s a call, 9 in 10 under 21 s, the slowest 156 s, which came back too late (valley 9311) so that flight made no further check. These are its 77 calls on held-out valleys 9300-9319, timed in [results/strike_checks](../results/strike_checks/REPORT.md), not by the compute table.
 
-When the cloud link drops, flight control, the rule supervisor, the station and the forecast are unaffected: none of them uses the link, and no model takes part in any alert or card. The valley compile's call fails and the regex baseline reads the request instead; the operator checks the plan. A Nemotron supervisor falls back to the rules: on the forest trail all 18 calls fell back, and the flight completed with no drones lost.
+When the cloud link drops, flight control, the rule supervisor, the station and the forecast are unaffected: none of them uses the link, and no model takes part in any alert or card. The valley compile's call fails and the regex baseline reads the request instead; the operator checks the plan. A Nemotron supervisor falls back to the rules: on the forest trail all 18 calls fell back, and the flight completed with no drones lost. A Nemotron strike picker does not fall back to the rule: a failed call is counted, the check team keeps patrolling its square, and the model is asked again a circuit later.
 
 ## Simulator (`sim/`)
 
@@ -48,6 +52,7 @@ When the cloud link drops, flight control, the rule supervisor, the station and 
 * **Fire spread** (`fire.py`). Rothermel's surface fire model with Albini's revisions, on Anderson's standard fuel models, with wind and slope added as vectors. Arrival times over the landscape come from a minimum-travel-time calculation, as in FlamMap. It is used for the true fires and for the forecast.
 * **Smoke** (`smoke.py`). What a fire's plume looks like from a drone's forward camera, what a particulate (PM2.5) sensor reads inside it, and the triangulation that turns smoke bearings into located plumes.
 * **Wildfire valley** (`wildfire.py`). The wildfire world and the ground station. Lightning fires smoulder, then spread over the terrain's fuels. The station locates and maps fires from thermal finds and smoke bearings, forecasts their spread with an ensemble of spread runs, briefs the fire crews and alerts the phones (simulated only) in fixed evacuation zones. Under today's rule (`alert_rule` "forecast", the scenario default) fixed rules set each zone's level, and Level 3 also counts smouldering fires as if they took off now. Under the pre-signed rules (`alert_rule` "presigned"), public alerts go out automatically only under trigger rules the alerting authority signed in advance, and each located fire also goes to fire dispatch as a card; with `smoulder_alerts` their Level 3 rule also counts smoulders, as today's rule does. That combination is the entry's alert design, and the dashboard's pre-signed mode uses it. Nothing here calls a language model. See [WILDFIRE.md](WILDFIRE.md).
+* **Strike checks** (`strike_check.py`). Optional, in the wildfire valley. A check team of 4 drones (squad C) flies to one of the night's reported lightning strikes at a time, patrols a 120 m square round it for one circuit, then moves on, 20 m above the area squads, while they patrol as before. Code builds a table of the strikes the team can still reach and finish before the patrol ends, a picker (`supervisor/strikes.py`) names the next one 40 s before the current look ends, the safety validator checks the pick, and code flies the team. Which strike started a fire is used only for scoring; no picker sees it. Only `tools/wildfire_strike_check_sweep.py` (or `wildfire_valley(checks=...)` in the Python API) flies a team: not `halo run` or the dashboard, and no default flight, typed valley job or headline result. No team flight crashed or logged a near miss, but the closest approach between two drones in the worst team flight was 5.1 to 5.4 m (rule and Nemotron), against 10.9 to 11.0 m with no team; the cause was not traced.
 * **Crew outputs** (`crew_export.py`). Each fire's brief as a map file (GeoJSON or KML) and as a short message in the order of the NWCG size-up report. Every feature says it is simulated.
 * **Without drones** (`detection.py`). How the valley's fires would be found by today's methods (satellites, an AI camera network, public calls), as rules from published figures applied to the same true fires. No flight is needed and nothing is tuned.
 
@@ -73,7 +78,7 @@ The other modules in `control/`:
 * `plan.py`: `FormationPlan`, the virtual leader and every drone's slot, computed alike by every drone from the mission and the directive. The two controllers differ in how they build it (*reassign*, *blend*, *pace*). An airspace hold stops its leader and lowers the plan to the hold altitude.
 * `base.py`: `Observation` and the `Controller` interface.
 * `cbf.py`: the control-barrier-function safety filter used by the improved controller (*cbf* above).
-* `squads.py`: the swarm split into squads, each flying its own formation over its own area. An operator gives each area a number of drones (or asks for `auto`); each squad flies line abreast, no wider than its area, on a closed circuit of lanes until the patrol ends. Drones can be moved between squads mid-flight, and both squads' circuits are then re-planned for their new sizes.
+* `squads.py`: the swarm split into squads, each flying its own formation over its own area. An operator gives each area a number of drones (or asks for `auto`); each squad flies line abreast, no wider than its area, on a closed circuit of lanes until the patrol ends. Drones can be moved between squads mid-flight, and both squads' circuits are then re-planned for their new sizes. A strike-check team (squad C) is sent to each new square as a whole (`retarget`): its drones move in step to points beside the square and join it together. It is never moved between squads by hand; the validator refuses that.
 
 ## Supervisors (`supervisor/`)
 
@@ -87,6 +92,7 @@ All supervisors read the same status report (`Simulation.summary`) and return th
   * When the formation does not fit the free corridor ahead, tighten spacing, and if that is not enough, switch to a column.
   * Otherwise return to the mission plan.
 * **Nemotron** (`nemotron.py`). An NVIDIA Nemotron model on Nebius Token Factory reads the report and its own last four directives, and answers in JSON. Any failure (network, timeout, HTTP error, bad JSON, missing field) falls back to the rule supervisor's answer for that step, and the fallback is counted. In benchmarks, an error that would repeat on every call (no key, key rejected, budget cap) stops the run instead, so a flight flown by the rules is never reported as a Nemotron result.
+* **Strike pickers** (`strikes.py`). Not supervisors: they read the strike table, not the status report, and name the check team's next strike instead of a directive. Nearest first, a hand-written triage rule, or Nemotron 3 Nano with reasoning, which answers with a strike and a one-sentence reason. A failed or unusable Nemotron reply is counted and not replaced by the rule. On held-out valleys 9300-9319 at 8 drones, Nemotron and the rule each found 96% of fires (Nemotron minus rule +0.00 per flight, -0.20 to +0.20): no measurable difference ([results/strike_checks](../results/strike_checks/REPORT.md)).
 
 ## Safety validator (`safety/validator.py`)
 
@@ -97,9 +103,11 @@ Every directive, whoever proposed it, passes the validator before the controller
 * A spacing floor of bodies + margin + 3√2 σ_nav, the smallest spacing the safety filter can hold with the navigation error present.
 * A rate limit of one change per 3 s.
 
+A check team's strike orders, from any picker, pass `SafetyValidator.check_strike` and are logged with `kind` "strike": the strike must be on the night's list and not yet checked, a check-team drone must be flying, and no airspace hold may be in force.
+
 ## Aircraft inbound (airspace hold)
 
-When crewed firefighting aircraft (air tankers, helicopters, a lead plane) enter the area, the operator orders the swarm to hold: every flying drone stops where it is and descends to a low hold altitude, clear of the aircraft's working height, until the operator resumes. The leader brakes at 2 m/s², the formation keeps its shape and heading, and the plan's altitude ramps down at up to 2.5 m/s from where the drones are (drones in transit between squads stop too, and squad moves are refused while holding). On resume the swarm climbs back to the directive's altitude at the same rate, then speeds up and carries on the sweep from where it stopped. The ground station, smoke watch and alerts keep running; battery drains while hovering and drones still retire at the reserve.
+When crewed firefighting aircraft (air tankers, helicopters, a lead plane) enter the area, the operator orders the swarm to hold: every flying drone stops where it is and descends to a low hold altitude, clear of the aircraft's working height, until the operator resumes. The leader brakes at 2 m/s², the formation keeps its shape and heading, and the plan's altitude ramps down at up to 2.5 m/s from where the drones are (drones in transit between squads stop too, and squad moves are refused while holding). On resume the swarm climbs back to the directive's altitude at the same rate, then speeds up and carries on the sweep from where it stopped. The ground station, smoke watch and alerts keep running; battery drains while hovering and drones still retire at the reserve. A check team picks no new strike while holding, and the validator refuses strike orders until the swarm resumes.
 
 The order passes `SafetyValidator.check_airspace` and is logged like a directive (`kind` "airspace"):
 
@@ -113,12 +121,12 @@ Orders are scripted (`Scenario.airspace_script`, e.g. `[{"t": 600, "op": "hold"}
 
 * `client.py`: OpenAI-compatible client for Nebius Token Factory with timeouts, retries with backoff and jitter, `Retry-After`, a client-side rate limit, JSON-mode fallback, response validation, and a redacted call log.
 * `budget.py`: a spend ledger shared by every process, checked before each request. See [NVIDIA_NEBIUS.md](NVIDIA_NEBIUS.md).
-* `cache.py`: a record/replay cache keyed on the model, messages, temperature and request options (reasoning switch, token limit). The supervisor's calls go through it, so any Nemotron supervisor flight can be replayed exactly without a key. The valley compiler's and the valley test engineer's calls go through it too. The mission compiler's and the benchmark test engineer's (`tester.py`) calls are kept in call logs instead.
+* `cache.py`: a record/replay cache keyed on the model, messages, temperature and request options (reasoning switch, token limit). The supervisor's calls go through it, so any Nemotron supervisor flight can be replayed exactly without a key. The valley compiler's, the valley test engineer's and the Nemotron strike picker's calls go through it too; the picker's replies for the held-out flights are in `results/strike_checks/nemotron_cache.jsonl`, so those flights replay without a key. The mission compiler's and the benchmark test engineer's (`tester.py`) calls are kept in call logs instead.
 * `prompts.py`: the Nemotron supervisor's prompt and the status message built for it. They must stay the same byte for byte, or the stored calls in `results/nemotron_cache.jsonl` become misses; `PROMPT_VERSION` is recorded with every supervisor decision.
 * `mission.py`: the mission compiler, its civilian-use guard, the regex baseline and the scoring.
-* `valley.py`: the valley mission compiler. Nemotron reads an operator's plain words, such as "check last night's strikes in the north block with 16 drones", and answers which drones, areas, patrol length and strikes they mean. Code applies that to the lightning strike list, picks the squads and checks the plan by fixed rules. The model never flies the drones, never picks a strike by itself and takes no part in alerts. Its calls are recorded in `results/valley_compile_cache.jsonl`; `regex_baseline` is what it is scored against (`halo valley-eval`), with the same civilian-use guard as the mission compiler.
+* `valley.py`: the valley mission compiler. Nemotron reads an operator's plain words, such as "check last night's strikes in the north block with 16 drones", and answers which drones, areas, patrol length and strikes they mean. Code applies that to the lightning strike list, picks the squads and checks the plan by fixed rules. The compiler's model never flies the drones, never picks a strike by itself and takes no part in alerts. Its calls are recorded in `results/valley_compile_cache.jsonl`; `regex_baseline` is what it is scored against (`halo valley-eval`), with the same civilian-use guard as the mission compiler. Naming a check team's next strike is a separate, optional job (`supervisor/strikes.py`).
 * `tester.py`: the stress-test search (random, corners, cross-entropy method, Nemotron), and re-flying a search on another configuration.
-* `valley_tester.py`: the test engineer for the wildfire valley. It searches the day's weather, fuels and haze for conditions where the ground station misses a fire, warns people too late, or sends a public alert it should not have. The flight under test uses the pre-signed alert rules. Random search, corner search and Nemotron share the budget. The model only proposes test conditions; no language model takes part in any alert, card or flight decision.
+* `valley_tester.py`: the test engineer for the wildfire valley. It searches the day's weather, fuels and haze for conditions where the ground station misses a fire, warns people too late, or sends a public alert it should not have. The flight under test uses the pre-signed alert rules. Random search, corner search and Nemotron share the budget. The model only proposes test conditions; in the flights it tests, no language model takes part in any alert, card or flight decision.
 * `doctor.py`: the end-to-end check, which writes `evidence/latest/` (the committed check is in `evidence/`).
 
 ## Evaluation (`eval/`)
