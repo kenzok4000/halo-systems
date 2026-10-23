@@ -171,7 +171,17 @@ degrees, hour-to-hour errors and a fuel moisture error).
    are told, and for 30 minutes the rules re-alert that zone only above the level withdrawn, and at Level 5 at
    least) or give a zone the all-clear (for 30 minutes, only a level above the one it had goes out); both
    messages pass a check too. A manual mode, where each alert waits for a tap and the zone is raised only once
-   it is sent, is kept for drills.
+   it is sent, is kept for drills (`?approval=manual` in the dashboard; `approval="modelled"` in the alert sweep,
+   where the tap is modelled with a median delay of 90 s).
+
+   The levels are Japan's. In the terms US and Canadian agencies use, Level 3 plays the part of an evacuation
+   warning or evacuation alert ("Set" in the Ready, Set, Go! programme: those who need longer leave now, everyone
+   else gets ready), Level 4 of an evacuation order ("Go"), and Level 5 of a shelter-in-place message for people
+   who can no longer leave safely. In a deployment three roles would sit behind the one screen the dashboard
+   shows: the drone crew, who fly the swarm and hold it for aircraft; fire dispatch, who receive the cards; and the
+   alerting authority (in the US, an [IPAWS alerting authority](https://www.fema.gov/emergency-managers/practitioners/integrated-public-alert-warning-system/public-safety-officials/alerting-authorities)),
+   who signs the trigger rules in advance and holds the cancel, the all-clear and, in the manual mode, the approval.
+   The dashboard gives all three to one operator and labels the alert powers the incident commander's.
 
 ## Squads, jobs in plain words, and alerts under pre-signed rules
 
@@ -289,7 +299,7 @@ alerts were exactly today's rule's, and its cards matched the pre-signed rules' 
 valleys two cards named a different head direction, because alert deliveries share a random stream with the
 forecast ensemble. On 21 October the entrant chose this as the entry's alert design: the dashboard's
 pre-signed mode counts smoulders unless a run asks otherwise (`"smoulder_alerts": false`). It drafts public alerts
-exactly as today's rule does (identical on the development seeds above), so today's-rule alert results carry over,
+exactly as today's rule does (identical on the development seeds above and, flown once after the choice, in every one of 20 held-out valleys, seeds 9400 to 9419: [results/wildfire_alerts_smoulders/REPORT.md](../results/wildfire_alerts_smoulders/REPORT.md)), so today's-rule alert results carry over,
 and its cards go out as in the first crew's study.
 `alert_rule="presigned"` on its own, in code and on the command line, is the rule as T3, T4 and T5b flew it.
 
@@ -532,6 +542,12 @@ and say when the head simply follows the fuel; this changes the wording of the b
   Each makes real fires faster and less predictable than this forecast assumes.
 - Image recognition. Smoke and heat detection is a probability model of a detector, not a neural network run
   on rendered images.
+- Thermal clutter. Sun-heated rock, vehicles and campfires are not modelled (the campground has phones but no
+  campfires), so a thermal find is always a true fire, and the only false fires come from smoke bearings that cross
+  wrongly. A real thermal camera would see clutter, and the false-fire and false-alert rates here leave it out.
+- Patrol aircraft and lookouts in the detection comparison: no source gives how often or when they fly, so the
+  drones are compared with them on cost per fire found only ([PATROL_COST.md](PATROL_COST.md)); see "Drones
+  against today's methods".
 - The design's navigation error. The simulator's GNSS error is about a sixth of the scout's receiver
   ([hardware/README.md](../hardware/README.md) lists this and the other gaps between the design and the simulator).
 - Re-tasking from what the station finds, beyond the strike list. The swarm flies its sweep, or each squad its

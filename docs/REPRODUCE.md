@@ -7,7 +7,7 @@ Everything here runs on a laptop with Python 3.10 or newer and numpy. Charts nee
 * Seeds 0-9 (`--seeds tuning`) were used while developing and tuning the controllers and the rule supervisor.
 * Seeds 1000-1019 (`--seeds heldout`) were not looked at until the final runs. Every headline number outside the wildfire valley uses them.
 * The wildfire valley has its own seeds: 2000-2011 and 3000-3019 for development, and 4000-4019 held out and flown once with the final code ([WILDFIRE.md](WILDFIRE.md)).
-* Each later result has a held-out set of its own, not used before its run: 7000-7019 for which way the fire runs, 8000-8019 for squads per area, 9000-9019 for the pre-signed alerts (T3), 9000-9039 for the first crew (T4: 9000-9019 are T3's pre-signed, automatic flights and 9020-9039 its own), 9040-9087 for the valley compiler (the strike lists of its 48 held-out requests, no flights), 9100-9119 and 9150-9169 for the valley test engineer (T5b), 9200-9219 for the missing hiker (T11), and 9300-9319 for the strike checks. From 8000-8019 on, each results folder keeps the plan written before the run (`PREREG.md`); the fire-direction set is described in [WILDFIRE.md](WILDFIRE.md).
+* Each later result has a held-out set of its own, not used before its run: 7000-7019 for which way the fire runs, 8000-8019 for squads per area, 9000-9019 for the pre-signed alerts (T3), 9000-9039 for the first crew (T4: 9000-9019 are T3's pre-signed, automatic flights and 9020-9039 its own), 9040-9087 for the valley compiler (the strike lists of its 48 held-out requests, no flights), 9100-9119 and 9150-9169 for the valley test engineer (T5b), 9200-9219 for the missing hiker (T11), 9300-9319 for the strike checks, and 9400-9419 for the entry's alert design (pre-signed rules, smoulders too) against today's rule. From 8000-8019 on, each results folder keeps the plan written before the run (`PREREG.md`); the fire-direction set is described in [WILDFIRE.md](WILDFIRE.md).
 * All these held-out seeds are spent, and so are 5000-5019 and 6000-6019, used in earlier attempts at the fire-direction measurement ([WILDFIRE.md](WILDFIRE.md)); 9120-9149 and 9170-9199 were reserved with T5b and stay unused. The commands below rerun the spent sets to check the committed results; a new measurement needs fresh seeds. The aircraft-inbound demo (seed 3000) and the compute table (3000-3003) use development seeds.
 
 Each seed fixes the wind, sensor noise, radio losses, obstacle layout and initial positions. Every configuration sees the same conditions for a given seed. That is why the report can compare configurations seed by seed (paired comparisons).
@@ -181,6 +181,9 @@ T3 flies each valley with 16 drones three times, and only the alerts differ: tod
 ```bash
 PYTHONPATH=src python3 tools/wildfire_alerts_sweep.py --seeds 9000-9019 --out results/wildfire_alerts/runs.jsonl
 PYTHONPATH=src python3 tools/wildfire_alerts_sweep.py --report --out results/wildfire_alerts/runs.jsonl   # REPORT.md and summary.json next to the rows
+PYTHONPATH=src python3 tools/wildfire_alerts_sweep.py --seeds 9400-9419 --arms today,presigned,presigned-smoulders \
+    --out results/wildfire_alerts_smoulders/runs.jsonl   # the entry's alert design on 20 more held-out valleys
+PYTHONPATH=src python3 tools/wildfire_alerts_sweep.py --report --out results/wildfire_alerts_smoulders/runs.jsonl
 PYTHONPATH=src python3 tools/wildfire_initial_attack.py fly --seeds 9020-9039 --out results/wildfire_initial_attack/flights.jsonl
 PYTHONPATH=src python3 tools/wildfire_initial_attack.py model \
   --flights results/wildfire_alerts/runs.jsonl,results/wildfire_initial_attack/flights.jsonl --out results/wildfire_initial_attack

@@ -18,6 +18,7 @@ Everything here was produced by the commands in [docs/REPRODUCE.md](../docs/REPR
 | 9100-9119, 9150-9169 | Valley test engineer (T5b); 9120-9149 and 9170-9199 stay unused | `valley_stress/` |
 | 9200-9219 | Missing hiker (T11) | `hiker_search/` |
 | 9300-9319 | Strike checks: which lightning strike a check team looks at next | `strike_checks/` |
+| 9400-9419 | The entry's alert design (pre-signed rules, smoulders too) against today's rule and the spreading-only rules | `wildfire_alerts_smoulders/` |
 
 Development seeds, not held out: 0-9 for tuning, and 2000-2011 and 3000-3019 for the valley and the later studies ([docs/REPRODUCE.md](../docs/REPRODUCE.md#seeds)). The aircraft-inbound demo (`airspace_hold/`) and the compute table (`compute/`) fly only these seeds.
 
@@ -107,6 +108,22 @@ PYTHONPATH=src python3 tools/wildfire_spread_timing.py
 ```bash
 PYTHONPATH=src python3 tools/wildfire_alerts_sweep.py --seeds 9000-9019 --out results/wildfire_alerts/runs.jsonl
 PYTHONPATH=src python3 tools/wildfire_alerts_sweep.py --report --out results/wildfire_alerts/runs.jsonl
+```
+
+### The entry's alert design, held-out seeds (9400-9419), run once
+
+`wildfire_alerts_smoulders/` flies each of 20 fresh valleys with 16 drones (improved+rule) under three alert policies: today's rule, automatic; the spreading-only pre-signed rules, automatic; and the entry's design, the pre-signed rules with smoulders too, automatic. The flight is the same in all three; only the alerts and cards differ. Under the entry's design the public alerts were the same as today's rule's in every valley, alert for alert (140 alerts, 561 of 588 reached phones warned in time, a median lead of 116 minutes), and the dispatch cards matched the spreading-only rules' in every valley (101 cards, 10 for false fires), as `PREREG.md` predicted. Flown from a checkout of the commit that adds `PREREG.md`.
+
+| File | What it is | Commit |
+|---|---|---|
+| `PREREG.md` | The plan, measures and predictions, written before the seeds were flown | 4bf9890 |
+| `runs.jsonl` | One row per flight: 60 flights (20 valleys, three policies) | 4bf9890 (added in 153afd6) |
+| `REPORT.md`, `summary.json` | Public alerts, phones warned in time and cards to fire dispatch, paired against today's rule, and the alert-for-alert comparison | 4bf9890 (added in 153afd6) |
+
+```bash
+PYTHONPATH=src python3 tools/wildfire_alerts_sweep.py --seeds 9400-9419 --arms today,presigned,presigned-smoulders \
+    --out results/wildfire_alerts_smoulders/runs.jsonl
+PYTHONPATH=src python3 tools/wildfire_alerts_sweep.py --report --out results/wildfire_alerts_smoulders/runs.jsonl
 ```
 
 ### First crew on scene (T4), held-out seeds (9000-9039), run once
