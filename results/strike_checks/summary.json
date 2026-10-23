@@ -1,0 +1,629 @@
+{
+ "8": {
+  "arms": {
+   "none": {
+    "flights": 20,
+    "seeds": [
+     9300,
+     9301,
+     9302,
+     9303,
+     9304,
+     9305,
+     9306,
+     9307,
+     9308,
+     9309,
+     9310,
+     9311,
+     9312,
+     9313,
+     9314,
+     9315,
+     9316,
+     9317,
+     9318,
+     9319
+    ],
+    "split": "F4-N4-S0-R0",
+    "found_pct": 90.0,
+    "smoulder_pct": 63.0,
+    "overhang_found": 16,
+    "across_found": 14,
+    "type_found": [
+     20,
+     20,
+     16,
+     20,
+     14
+    ],
+    "false_per_flight": 1.5,
+    "checks_per_flight": 0.0,
+    "fire_checks": 0,
+    "unfound_checks": 0,
+    "checks": 0,
+    "phones_warned_pct": 95.14237855946399,
+    "classes": {
+     "smouldering": 63,
+     "after_spread": 27,
+     "not_credited": 0,
+     "hidden": 4,
+     "not_in_view": 6
+    },
+    "calls": 0,
+    "cost_usd": 0.0,
+    "invalid": 0,
+    "latency_s_median": null,
+    "crashes": 0,
+    "near_misses": 0,
+    "min_separation_m": 10.943
+   },
+   "nearest": {
+    "flights": 20,
+    "seeds": [
+     9300,
+     9301,
+     9302,
+     9303,
+     9304,
+     9305,
+     9306,
+     9307,
+     9308,
+     9309,
+     9310,
+     9311,
+     9312,
+     9313,
+     9314,
+     9315,
+     9316,
+     9317,
+     9318,
+     9319
+    ],
+    "split": "F4-N0-S0-C4-R0",
+    "found_pct": 95.0,
+    "smoulder_pct": 68.0,
+    "overhang_found": 18,
+    "across_found": 19,
+    "type_found": [
+     20,
+     19,
+     18,
+     19,
+     19
+    ],
+    "false_per_flight": 0.7,
+    "checks_per_flight": 4.7,
+    "fire_checks": 61,
+    "unfound_checks": 14,
+    "checks": 94,
+    "phones_warned_pct": 95.14237855946399,
+    "classes": {
+     "smouldering": 68,
+     "after_spread": 27,
+     "not_credited": 2,
+     "hidden": 2,
+     "not_in_view": 1
+    },
+    "calls": 0,
+    "cost_usd": 0.0,
+    "invalid": 0,
+    "latency_s_median": null,
+    "crashes": 0,
+    "near_misses": 0,
+    "min_separation_m": 8.492
+   },
+   "rule": {
+    "flights": 20,
+    "seeds": [
+     9300,
+     9301,
+     9302,
+     9303,
+     9304,
+     9305,
+     9306,
+     9307,
+     9308,
+     9309,
+     9310,
+     9311,
+     9312,
+     9313,
+     9314,
+     9315,
+     9316,
+     9317,
+     9318,
+     9319
+    ],
+    "split": "F4-N0-S0-C4-R0",
+    "found_pct": 96.0,
+    "smoulder_pct": 69.0,
+    "overhang_found": 18,
+    "across_found": 20,
+    "type_found": [
+     20,
+     19,
+     18,
+     19,
+     20
+    ],
+    "false_per_flight": 0.6,
+    "checks_per_flight": 4.0,
+    "fire_checks": 27,
+    "unfound_checks": 10,
+    "checks": 80,
+    "phones_warned_pct": 95.14237855946399,
+    "classes": {
+     "smouldering": 69,
+     "after_spread": 27,
+     "not_credited": 2,
+     "hidden": 2,
+     "not_in_view": 0
+    },
+    "calls": 0,
+    "cost_usd": 0.0,
+    "invalid": 0,
+    "latency_s_median": null,
+    "crashes": 0,
+    "near_misses": 0,
+    "min_separation_m": 5.058
+   },
+   "nemotron": {
+    "flights": 20,
+    "seeds": [
+     9300,
+     9301,
+     9302,
+     9303,
+     9304,
+     9305,
+     9306,
+     9307,
+     9308,
+     9309,
+     9310,
+     9311,
+     9312,
+     9313,
+     9314,
+     9315,
+     9316,
+     9317,
+     9318,
+     9319
+    ],
+    "split": "F4-N0-S0-C4-R0",
+    "found_pct": 96.0,
+    "smoulder_pct": 69.0,
+    "overhang_found": 18,
+    "across_found": 19,
+    "type_found": [
+     20,
+     20,
+     18,
+     19,
+     19
+    ],
+    "false_per_flight": 0.65,
+    "checks_per_flight": 3.8,
+    "fire_checks": 27,
+    "unfound_checks": 6,
+    "checks": 76,
+    "phones_warned_pct": 95.14237855946399,
+    "classes": {
+     "smouldering": 69,
+     "after_spread": 27,
+     "not_credited": 1,
+     "hidden": 2,
+     "not_in_view": 1
+    },
+    "calls": 77,
+    "cost_usd": 0.085838,
+    "invalid": 0,
+    "latency_s_median": 10.759,
+    "crashes": 0,
+    "near_misses": 0,
+    "min_separation_m": 5.39
+   }
+  },
+  "pairs": {
+   "nemotron-rule": {
+    "valleys": 20,
+    "found": {
+     "mean": 0.0,
+     "lo": -0.2,
+     "hi": 0.2,
+     "better": 2,
+     "worse": 2
+    },
+    "smoulder": {
+     "mean": 0.0,
+     "lo": -0.2,
+     "hi": 0.2,
+     "better": 2,
+     "worse": 2
+    },
+    "false": {
+     "mean": 0.05,
+     "lo": -0.45,
+     "hi": 0.5,
+     "more": 8,
+     "fewer": 6
+    }
+   },
+   "nemotron-nearest": {
+    "valleys": 20,
+    "found": {
+     "mean": 0.05,
+     "lo": -0.15,
+     "hi": 0.25,
+     "better": 3,
+     "worse": 2
+    },
+    "smoulder": {
+     "mean": 0.05,
+     "lo": -0.15,
+     "hi": 0.25,
+     "better": 3,
+     "worse": 2
+    },
+    "false": {
+     "mean": -0.05,
+     "lo": -0.5,
+     "hi": 0.35,
+     "more": 7,
+     "fewer": 6
+    }
+   },
+   "nemotron-none": {
+    "valleys": 20,
+    "found": {
+     "mean": 0.3,
+     "lo": 0.0,
+     "hi": 0.6,
+     "better": 8,
+     "worse": 1
+    },
+    "smoulder": {
+     "mean": 0.3,
+     "lo": -0.05,
+     "hi": 0.6,
+     "better": 8,
+     "worse": 1
+    },
+    "false": {
+     "mean": -0.85,
+     "lo": -1.45,
+     "hi": -0.25,
+     "more": 2,
+     "fewer": 10
+    }
+   },
+   "rule-none": {
+    "valleys": 20,
+    "found": {
+     "mean": 0.3,
+     "lo": 0.0,
+     "hi": 0.6,
+     "better": 9,
+     "worse": 3
+    },
+    "smoulder": {
+     "mean": 0.3,
+     "lo": 0.0,
+     "hi": 0.6,
+     "better": 9,
+     "worse": 3
+    },
+    "false": {
+     "mean": -0.9,
+     "lo": -1.45,
+     "hi": -0.35,
+     "more": 3,
+     "fewer": 13
+    }
+   },
+   "nearest-none": {
+    "valleys": 20,
+    "found": {
+     "mean": 0.25,
+     "lo": -0.1,
+     "hi": 0.55,
+     "better": 9,
+     "worse": 4
+    },
+    "smoulder": {
+     "mean": 0.25,
+     "lo": -0.1,
+     "hi": 0.55,
+     "better": 9,
+     "worse": 4
+    },
+    "false": {
+     "mean": -0.8,
+     "lo": -1.3,
+     "hi": -0.3,
+     "more": 3,
+     "fewer": 12
+    }
+   },
+   "rule-nearest": {
+    "valleys": 20,
+    "found": {
+     "mean": 0.05,
+     "lo": 0.0,
+     "hi": 0.15,
+     "better": 1,
+     "worse": 0
+    },
+    "smoulder": {
+     "mean": 0.05,
+     "lo": 0.0,
+     "hi": 0.15,
+     "better": 1,
+     "worse": 0
+    },
+    "false": {
+     "mean": -0.1,
+     "lo": -0.25,
+     "hi": 0.0,
+     "more": 0,
+     "fewer": 2
+    }
+   }
+  }
+ },
+ "16": {
+  "arms": {
+   "none": {
+    "flights": 20,
+    "seeds": [
+     9300,
+     9301,
+     9302,
+     9303,
+     9304,
+     9305,
+     9306,
+     9307,
+     9308,
+     9309,
+     9310,
+     9311,
+     9312,
+     9313,
+     9314,
+     9315,
+     9316,
+     9317,
+     9318,
+     9319
+    ],
+    "split": "F4-N6-S6-R0",
+    "found_pct": 95.0,
+    "smoulder_pct": 68.0,
+    "overhang_found": 15,
+    "across_found": 20,
+    "type_found": [
+     20,
+     20,
+     15,
+     20,
+     20
+    ],
+    "false_per_flight": 1.5,
+    "checks_per_flight": 0.0,
+    "fire_checks": 0,
+    "unfound_checks": 0,
+    "checks": 0,
+    "phones_warned_pct": 94.9748743718593,
+    "classes": {
+     "smouldering": 68,
+     "after_spread": 27,
+     "not_credited": 0,
+     "hidden": 5,
+     "not_in_view": 0
+    },
+    "calls": 0,
+    "cost_usd": 0.0,
+    "invalid": 0,
+    "latency_s_median": null,
+    "crashes": 0,
+    "near_misses": 0,
+    "min_separation_m": 10.988
+   },
+   "nearest": {
+    "flights": 20,
+    "seeds": [
+     9300,
+     9301,
+     9302,
+     9303,
+     9304,
+     9305,
+     9306,
+     9307,
+     9308,
+     9309,
+     9310,
+     9311,
+     9312,
+     9313,
+     9314,
+     9315,
+     9316,
+     9317,
+     9318,
+     9319
+    ],
+    "split": "F4-N4-S4-C4-R0",
+    "found_pct": 96.0,
+    "smoulder_pct": 68.0,
+    "overhang_found": 17,
+    "across_found": 20,
+    "type_found": [
+     20,
+     20,
+     17,
+     19,
+     20
+    ],
+    "false_per_flight": 0.95,
+    "checks_per_flight": 4.75,
+    "fire_checks": 61,
+    "unfound_checks": 11,
+    "checks": 95,
+    "phones_warned_pct": 95.14237855946399,
+    "classes": {
+     "smouldering": 68,
+     "after_spread": 28,
+     "not_credited": 1,
+     "hidden": 3,
+     "not_in_view": 0
+    },
+    "calls": 0,
+    "cost_usd": 0.0,
+    "invalid": 0,
+    "latency_s_median": null,
+    "crashes": 0,
+    "near_misses": 0,
+    "min_separation_m": 7.592
+   },
+   "rule": {
+    "flights": 20,
+    "seeds": [
+     9300,
+     9301,
+     9302,
+     9303,
+     9304,
+     9305,
+     9306,
+     9307,
+     9308,
+     9309,
+     9310,
+     9311,
+     9312,
+     9313,
+     9314,
+     9315,
+     9316,
+     9317,
+     9318,
+     9319
+    ],
+    "split": "F4-N4-S4-C4-R0",
+    "found_pct": 96.0,
+    "smoulder_pct": 68.0,
+    "overhang_found": 17,
+    "across_found": 20,
+    "type_found": [
+     20,
+     20,
+     17,
+     19,
+     20
+    ],
+    "false_per_flight": 1.0,
+    "checks_per_flight": 4.0,
+    "fire_checks": 20,
+    "unfound_checks": 7,
+    "checks": 80,
+    "phones_warned_pct": 95.14237855946399,
+    "classes": {
+     "smouldering": 68,
+     "after_spread": 28,
+     "not_credited": 1,
+     "hidden": 3,
+     "not_in_view": 0
+    },
+    "calls": 0,
+    "cost_usd": 0.0,
+    "invalid": 0,
+    "latency_s_median": null,
+    "crashes": 0,
+    "near_misses": 0,
+    "min_separation_m": 5.254
+   }
+  },
+  "pairs": {
+   "rule-none": {
+    "valleys": 20,
+    "found": {
+     "mean": 0.05,
+     "lo": -0.15,
+     "hi": 0.25,
+     "better": 3,
+     "worse": 2
+    },
+    "smoulder": {
+     "mean": 0.0,
+     "lo": -0.25,
+     "hi": 0.25,
+     "better": 3,
+     "worse": 3
+    },
+    "false": {
+     "mean": -0.5,
+     "lo": -1.0,
+     "hi": 0.0,
+     "more": 5,
+     "fewer": 10
+    }
+   },
+   "nearest-none": {
+    "valleys": 20,
+    "found": {
+     "mean": 0.05,
+     "lo": -0.15,
+     "hi": 0.25,
+     "better": 3,
+     "worse": 2
+    },
+    "smoulder": {
+     "mean": 0.0,
+     "lo": -0.25,
+     "hi": 0.25,
+     "better": 3,
+     "worse": 3
+    },
+    "false": {
+     "mean": -0.55,
+     "lo": -1.1,
+     "hi": -0.05,
+     "more": 5,
+     "fewer": 10
+    }
+   },
+   "rule-nearest": {
+    "valleys": 20,
+    "found": {
+     "mean": 0.0,
+     "lo": 0.0,
+     "hi": 0.0,
+     "better": 0,
+     "worse": 0
+    },
+    "smoulder": {
+     "mean": 0.0,
+     "lo": 0.0,
+     "hi": 0.0,
+     "better": 0,
+     "worse": 0
+    },
+    "false": {
+     "mean": 0.05,
+     "lo": 0.0,
+     "hi": 0.15,
+     "more": 1,
+     "fewer": 0
+    }
+   }
+  }
+ }
+}

@@ -18,10 +18,13 @@ with its source. Results are in [results/wildfire_valley/REPORT.md](../results/w
 fire-direction results, on a second held-out set, in
 [results/wildfire_valley_7000/REPORT.md](../results/wildfire_valley_7000/REPORT.md).
 The station, the crew briefs, the cards and the alerts call no language model, and neither does the flight unless
-it is given a Nemotron supervisor; no result on this page uses one, so each flight behind them cost nothing to run.
-Two optional extras use Nemotron on Nebius Token Factory: reading a job in plain words into a patrol
-([results/valley_eval/REPORT.md](../results/valley_eval/REPORT.md)) and a test engineer that looks for conditions
-under which the station fails ([results/valley_stress/REPORT.md](../results/valley_stress/REPORT.md)).
+it is given a Nemotron supervisor; no result on this page uses one, so each flight behind them cost nothing to run,
+except the check team's flights with Nemotron picking strikes (USD 0.086 for 20 flights).
+Three optional extras use Nemotron on Nebius Token Factory: reading a job in plain words into a patrol
+([results/valley_eval/REPORT.md](../results/valley_eval/REPORT.md)), a test engineer that looks for conditions
+under which the station fails ([results/valley_stress/REPORT.md](../results/valley_stress/REPORT.md)), and picking
+which of last night's lightning strikes a check team looks at next
+([results/strike_checks/REPORT.md](../results/strike_checks/REPORT.md)).
 
 ![One flight: the true spread against the forecast, the fires found and the phones alerted](../results/wildfire_valley/map.png)
 
@@ -66,6 +69,12 @@ bootstrap intervals over seeds. Full tables: [REPORT.md](../results/wildfire_val
   squad on the floor and 84% for today's single sweep (within the noise; the squads beat the single sweep clearly
   only at 8 drones, 84% against 76%), and the fire across the valley in every valley. The cost was about one
   false fire per flight against 0.35 (see "Squads" below).
+- **Checking last night's strikes.** On another held-out set (seeds 9300 to 9319, 140 flights, flown once), a team
+  of 4 of 8 drones checking lightning strikes one at a time, picked by a hand-written triage rule or by Nemotron,
+  found 96% of fires, against 90% with every drone in the area squads (+0.3 per flight, at the edge of the noise),
+  with less than half the false fires (0.60 to 0.70 per flight against 1.50). Between Nemotron and the rule there
+  was no measurable difference: 96 of 100 fires each, +0.00 per flight (-0.20 to +0.20), for USD 0.086 over 20
+  flights (see "Checking last night's strikes" below).
 
 ![When each fire was reported and how big it was, by the drones and by today's methods](../results/wildfire_valley/detection.png)
 
@@ -216,6 +225,27 @@ hand-written rules and 39 with reasoning off (median 4.7 s and USD 0.016 for the
 refused the other request before any call):
 [results/valley_eval/REPORT.md](../results/valley_eval/REPORT.md). Without a key, the page replays recorded calls,
 and any other request falls back to the hand-written rules, saying so.
+
+**Checking last night's strikes (Nemotron).** With `checks` (`{"picker": "rule"}`, `"nearest"` or `"nemotron"`;
+`sim/strike_check.py`), a check team of 4 drones (squad C) flies to one strike at a time, patrols a 120 m square
+round it for one circuit and moves on, while the area squads patrol as before. It flies 20 m above the squads and
+keeps that height between strikes; its drones move in step to points beside the new square and join it together. The
+next strike is picked 40 s before a look ends, from a table code builds (night, hours ago, distance, ground and
+slope, whether a squad patrols it, how much of the ground round it a thermal camera has seen, the nearest located
+fire, unexplained smoke bearings that pass near it, and the nearest people), offering only strikes the team can
+reach and finish looking at before the patrol ends. Three pickers: nearest first (last night's strikes before the
+night before's); a hand-written triage rule (strikes a located fire explains last, unexplained smoke seen by two or
+more drones first, then last night's, then the night before's, nearest first); and Nemotron 3 Nano with reasoning,
+which answers with a strike and a one-sentence reason. Every pick passes the safety validator, and no picker sees
+which strike started a fire. On held-out seeds 9300 to 9319 (the plan written before the run:
+[PREREG.md](../results/strike_checks/PREREG.md)), at 8 drones Nemotron and the rule each found 96% of fires and 69%
+while smouldering (+0.00 per flight, -0.20 to +0.20); nearest found 95%, and no team (F4-N4) 90%, a gain at the edge
+of the noise (+0.3 per flight, interval from +0.00), mostly the fire across the valley, which F4-N4 does not patrol
+(19 or 20 of 20 against 14). With 16 drones the area squads already cover the valley and the team added nothing
+measurable (96% against 95%). Teams placed fewer false fires (0.60 to 1.00 per flight against 1.50), and phones
+warned in time did not change. Nemotron made 77 calls, none unusable, for USD 0.086 (median 10.8 s each). No flight
+crashed or logged a near miss, but the team brought two drones as close as 5.1 m, against 10.9 m with no team:
+[results/strike_checks/REPORT.md](../results/strike_checks/REPORT.md).
 
 **A test engineer (Nemotron).** `tools/wildfire_valley_stress.py` varies nine conditions of the day, from the
 wind and fuel moisture to haze and the number of drones, to find where the station fails: a late warning, a missed
@@ -503,10 +533,12 @@ and say when the head simply follows the fuel; this changes the wording of the b
   on rendered images.
 - The design's navigation error. The simulator's GNSS error is about a sixth of the scout's receiver
   ([hardware/README.md](../hardware/README.md) lists this and the other gaps between the design and the simulator).
-- Re-tasking from what the station finds. The swarm flies its sweep, or each squad its circuit until the patrol
-  ends, and lands. A strike list is used only before take-off, to set the lane each squad starts on (and, in a job
-  in plain words that names no area, which areas are flown). An operator can move drones between squads or hold
-  the swarm for aircraft, but no drone is sent on its own to watch a fire or check a doubtful fix.
+- Re-tasking from what the station finds, beyond the strike list. The swarm flies its sweep, or each squad its
+  circuit until the patrol ends, and lands. A strike list sets the lane each squad starts on (and, in a job in
+  plain words that names no area, which areas are flown). A check team, when flown, picks its next listed strike
+  partly from what the station has found (located fires and unexplained smoke), but never goes back to a strike it
+  has checked. An operator can move drones between squads or hold the swarm for aircraft, but no drone is sent to
+  watch a fire or check a doubtful fix that is not on the list.
 - Flying over flames. The scouts sweep 20 m above the canopy straight over a spreading fire, through its heat
   and smoke; a real crew would climb or route around it.
 - How people respond. An alert counts as delivered, not as acted on; there is no traffic on the valley road.
