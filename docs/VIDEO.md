@@ -11,6 +11,7 @@ There is no music, or only royalty-free music or music the entrant made. No thir
 Facts about the cut:
 
 * **Voiceover:** 409 words, about 139 words a minute; no row is faster than 149. Numbers are written as words, so the count is honest. Model and licence names are counted as written.
+* **Narration:** a synthetic voice, because the entrant lost their voice. Kokoro-82M text-to-speech (Apache-2.0), run locally, with the stock voice af_heart, reads the storyboard's lines at the recording guide's timings. Every line was transcribed back with Whisper and matched the script. The end card says the video is narrated by a synthetic voice; on YouTube, Studio's "AI use" is set to Yes and the description says the same.
 * **Valley footage:** about 80 s of wildfire-valley footage is used (rows 1-5, 7 and 8). The final valley takes were filmed once, on 21 October, after the features were frozen early, all under the pre-signed alert rules; the interim takes filmed on 20 October under today's rule are kept as spares.
 * **Dashboard footage:** about 100 s in all, above the rule that at least 1 minute shows the key modules in action.
 * **Moments that respond to input:**
@@ -67,7 +68,7 @@ Each caption is a short sentence in large type with at most one small line under
 | 13 | 2:14.2: "Failing conditions found, formation scenarios: **2.6 times the best baseline** · no better in the wildfire valley", small "Simulated · 39 against 15 for corner search · no more kinds of failure". | results/STRESS.md; results/valley_stress/ |
 | 14 | 2:22.2: "Halo scout, a priced design: **USD 1,095.33 per drone**", small "Prices checked on 2026-10-14, excluding shipping and tax". 2:26.2: "Estimate: a squad's 120-day season, about USD 100,000, **pays for itself on suppression alone if it stops one escape every 21 seasons** (Alberta), 6 to 13 (US)", small "Not yet measured: nobody fights the fires during the simulated flights". The chart on screen carries the patrol day (USD 837, about 29 strikes), the season and the escape costs in USD. 2:36.2, over the escape card: "A dry, windy day by design: escape rates far above real ones, so **the share prevented is the result**", small "Simulated; only for fires found smouldering; predictions written before the run". | hardware/BOM.md; docs/PATROL_COST.md; results/wildfire_initial_attack/REPORT.md |
 | 15 | 2:43.2: "**No key needed:** 24 held-out Nemotron replays", small "They matched the original flights' rows apart from compute time". 2:46.5: "So far: **a measured search in a simulated meadow**", small "Next: real autopilots via a software-in-the-loop bridge, then a Jetson". | docs/DEVPOST.md; results/README.md; results/hiker_search/REPORT.md |
-| 16 | End card: **Halo Systems** · the public repository's link (see the checks below) · Apache 2.0 · Every flight shown is a simulation · Evacuation alerts went to simulated phones only · Every number is in the repository · Built with NVIDIA Nemotron 3 Nano on Nebius Token Factory | |
+| 16 | End card: **Halo Systems** · the public repository's link (see the checks below) · Apache 2.0 · Every flight shown is a simulation · Evacuation alerts went to simulated phones only · Every number is in the repository · Narrated by a synthetic voice, Kokoro-82M text-to-speech · Built with NVIDIA Nemotron 3 Nano on Nebius Token Factory | |
 
 Where the spoken numbers come from:
 

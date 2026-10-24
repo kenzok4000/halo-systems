@@ -17,7 +17,7 @@ Physical AI
 ## Links
 
 * Repository: `https://github.com/kenzok4000/halo-systems` (Apache-2.0).
-* Video: the demo video on this page, public on YouTube and under 3 minutes.
+* Video: the demo video on this page, public on YouTube and under 3 minutes. The entrant lost their voice before recording, so a synthetic voice reads the script: Kokoro-82M text-to-speech (Apache-2.0), run locally, with one of the model's stock voices, not a clone of the entrant's or anyone else's. The end card says so. Every flight in the video is a simulation.
 * Everything a judge needs runs from the repository without a key: the README quick start replays the recorded Nemotron flights, `halo valley-eval --replay` replays the valley compiler's recorded calls, and the wildfire valley's flights call no language model at all, apart from the strike checks' Nemotron flights, which replay from their recorded calls.
 
 ## Inspiration
@@ -131,7 +131,7 @@ All from simulated flights, flown once on held-out seeds except where a bullet s
 
 ## Built with
 
-Python, numpy, matplotlib, three.js, CadQuery, NVIDIA Nemotron 3, Nebius Token Factory
+Python, numpy, matplotlib, three.js, CadQuery, NVIDIA Nemotron 3, Nebius Token Factory; the video's narration: Kokoro-82M text-to-speech
 
 ## NVIDIA and Nebius usage
 
@@ -183,3 +183,5 @@ Changes since the repository was first made public (16 October 2026):
 * 22 October: a five-line README opening, and the architecture figure redrawn around the ground station.
 * 23 October: an optional check team that flies to the night's reported lightning strikes one at a time, with Nemotron or a hand-written rule picking the next, and its held-out result (`results/strike_checks/`, seeds 9300-9319): no measurable difference between the two pickers.
 * 23 October: the entry's alert design flown once on 20 fresh held-out valleys (`results/wildfire_alerts_smoulders/`, seeds 9400-9419): its public alerts matched today's rule's alert for alert in every valley, and its card counts to fire dispatch the spreading-only rules'. The README, this text and the docs now say who would hold which alert power, list thermal clutter among what is not modelled and quote the breakdown of the detection lead by when each fire starts to spread; the README and the docs also map the levels to evacuation warnings and orders, and the README notes the words the keyword guard refuses.
+* 23 October: the demo video's on-screen captions shortened, 27 in place of 34, so each can be read while listening.
+* 24 October: the demo video narrated by a synthetic voice (Kokoro-82M text-to-speech), because the entrant lost their voice; the script and its timings are unchanged.
