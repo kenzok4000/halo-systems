@@ -26,6 +26,24 @@
 // the first entry's view is the opening one.
 // The video starts when the page opens, so it also holds the page load and set-up before the shot.
 //
+// --clean (with --film --cinema) films the clean look for the remade video (the page's ?clean=1): one slim badge with
+// SIMULATION, the scenario and seed, the swarm, the supervisor, the simulated phones and the drones' drawn size; the
+// clock with the playback speed; what just happened as lower-third toasts in large type (at most two at once, the most
+// important first); and in the 3D view a low warm morning sun, softer haze and shadows, a filmic grade, richer smoke,
+// drones with position lights and trails of where they just flew, clearer alert zones and head arrows, and labels drawn
+// larger, with any that would overlap a more important one or a card set back. The cards are left out, unless
+// --clean-cards names the ones to show, large (one is best): crew (the fire crew brief), alerts (the evacuation
+// alerts), dispatch (fire dispatch), squads, plan (a typed valley patrol's plan, or the swarm's plan elsewhere) or
+// stats (the counts); the toasts of that card's kind then come first. --clean-toasts alert,dispatch shows only those
+// toast kinds, in that order (kinds: clear, alert, dispatch, crew, fire, station, squad, aircraft, bad, event,
+// nemotron, plan; plan, the supervisor's formation changes, is left out of valley films unless named). --ss 1.5 draws
+// the 3D view at 1.5 times the pixels and lets the screenshot scale it down (smoother edges, slower; default 1).
+// Without --clean every frame is drawn as before. --skip-typing (with --valley) fills the request in at once and
+// films nothing before the flight (the edit cuts the typed request from the valley takes anyway).
+// Extra views, any shot: crane (from low on the side the camera is on, rising and pulling back over about 16 s),
+// dolly (a slow sideways track past the swarm) and low (a low pass just over the treetops behind the framed squad or
+// swarm, looking the way it flies; with --squad-focus, behind that squad), in --view and in --camera.
+//
 // --film [--fps 25] renders the shot frame by frame instead of screen-recording it, for a smooth video on a
 // machine without a GPU: the page (opened with ?film=1) buffers the run as it streams, then steps through it
 // one video frame at a time, and each frame is a screenshot of the whole page. --speed is then the playback
@@ -83,10 +101,15 @@ const out = args.out || (args.film ? "video/shot.mp4" : "video/shot.webm");
 const seconds = Number(args.seconds || 15);
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
+// The page's views: those with a button, and those only the recorder picks (no button).
+const VIEWS = ["follow", "chase", "orbit", "ride", "close", "top", "fire", "crane", "dolly", "low"], SCRIPTED = ["crane", "dolly", "low"];
+const CARDS = ["crew", "dispatch", "alerts", "squads", "plan", "stats"];
+const TOASTS = ["clear", "alert", "dispatch", "crew", "fire", "station", "squad", "aircraft", "bad", "event", "nemotron", "plan"];
+
 (async () => {
   mkdirSync(dirname(out), { recursive: true });
   if (args.film) return film();
-  for (const k of ["approve", "cancel", "allclear", "from", "ride-drone", "fire", "zoom", "panel", "cinema", "camera", "hold", "squad-move", "aircraft"]) if (args[k]) console.warn(`--${k} needs --film; ignored`);
+  for (const k of ["approve", "cancel", "allclear", "from", "ride-drone", "fire", "zoom", "panel", "cinema", "camera", "hold", "squad-move", "aircraft", "clean", "clean-cards", "clean-toasts", "ss"]) if (args[k]) console.warn(`--${k} needs --film; ignored`);
   if (args.mission && args.valley) throw new Error("--mission and --valley are two kinds of request: give one");
   if (args["squad-focus"] && !["F", "N", "S"].includes(args["squad-focus"])) throw new Error("--squad-focus takes a squad: F, N or S");
   const browser = await chromium.launch({ args: ["--use-angle=swiftshader", "--enable-unsafe-swiftshader", "--ignore-gpu-blocklist"] });
@@ -165,18 +188,27 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
 async function film() {
   const fps = Number(args.fps || 25), playback = Number(args.speed || 1);
+  // The clean look: its page options, checked before anything is filmed.
+  if ((args.clean || args["clean-cards"] || args["clean-toasts"] || args.ss) && !(args.clean && args.cinema)) throw new Error("--clean, --clean-cards, --clean-toasts and --ss need --clean with --cinema");
+  const listOf = (k, ok) => { const v = args[k] ? String(args[k]).split(",").map((x) => x.trim()).filter(Boolean) : [];
+    const bad = v.find((x) => !ok.includes(x)); if (bad) throw new Error(`--${k} takes ${ok.join(", ")}; not ${bad}`); return v; };
+  const cards = listOf("clean-cards", CARDS), toasts = listOf("clean-toasts", TOASTS);
+  if (args.ss && !(Number(args.ss) >= 0.5 && Number(args.ss) <= 2)) throw new Error("--ss takes a pixel ratio from 0.5 to 2");
+  const cleanOpts = args.clean ? `&clean=1${cards.length ? `&cards=${cards.join(",")}` : ""}${toasts.length ? `&toasts=${toasts.join(",")}` : ""}${args.ss ? `&ss=${Number(args.ss)}` : ""}` : "";
+  if (args.view && !VIEWS.includes(args.view)) throw new Error(`--view: no view ${args.view}`);
   const browser = await chromium.launch({ args: ["--use-angle=swiftshader", "--enable-unsafe-swiftshader", "--ignore-gpu-blocklist"] });
   const page = await browser.newPage({ viewport: { width: 1920, height: 1080 } });
   page.on("pageerror", (e) => console.error("page error:", e.message));
   if (args.mission && args.valley) throw new Error("--mission and --valley are two kinds of request: give one");
   if ((args["squad-focus"] || args["squad-move"]) && !args.valley) throw new Error("--squad-focus and --squad-move need a squad patrol (--valley)");
   const request = args.valley || args.mission;
-  const typed = Boolean((args.mission && args.type) || args.valley);   // a valley request is always typed
+  // A valley request is always typed, unless --skip-typing fills it in at once and films nothing before the flight.
+  const typed = Boolean((args.mission && args.type) || args.valley) && !args["skip-typing"];
   // Every option is checked before anything is filmed, so a typo does not cost minutes of rendering.
   // The camera program: [{ mode, zoom, at }] in video seconds; without --camera, --view and --zoom for the whole shot.
   const program = (args.camera || "").split(",").filter(Boolean).map((s) => {
     const [view, at] = s.split("@"), [mode, z] = view.split(":");
-    if (!["follow", "chase", "orbit", "ride", "close", "top", "fire"].includes(mode)) throw new Error(`--camera: no view ${mode}`);
+    if (!VIEWS.includes(mode)) throw new Error(`--camera: no view ${mode}`);
     return { mode, zoom: z ? Number(z) : Number(args.zoom || 1), at: Number(at || 0) };
   }).sort((a, b) => a.at - b.at);
   if (program.length) { args.view = program[0].mode; args.zoom = String(program[0].zoom); }
@@ -221,7 +253,7 @@ async function film() {
   }
   injects.sort((a, b) => a.at - b.at);
   if (args["squad-focus"] && !["F", "N", "S"].includes(args["squad-focus"])) throw new Error("--squad-focus takes a squad: F, N or S");
-  await page.goto(`${url}/?film=1${args.cinema ? "&cinema=1" : ""}${pageOpts}`);
+  await page.goto(`${url}/?film=1${args.cinema ? "&cinema=1" : ""}${cleanOpts}${pageOpts}`);
   await page.waitForFunction(() => document.querySelectorAll("#scenario option").length > 0);
   await page.waitForFunction(() => !/checking/.test(document.querySelector("#ai-pill").textContent));
   // The page's controls are worked by script, since the cinema layout hides the side panel they sit in.
@@ -259,7 +291,7 @@ async function film() {
         await shoot();
       }
       await hold(0.6);
-    } else await set("#mission-text", args.mission);
+    } else await set("#mission-text", request);
     await click("#compile");
     if (typed) {
       // One frame taken at once, while the compiler is still working, held for half a second; the rest of the
@@ -292,7 +324,8 @@ async function film() {
   }
   if (args["squad-focus"]) await page.evaluate((c) => { window.haloView.squadFocus = c; }, args["squad-focus"]);
   await click('#speed button[data-speed="5"]');   // buffer as fast as the server's pacing allows
-  if (args.view) await click(`#view-${args.view === "follow" ? "reset" : args.view}`);
+  if (args.view && SCRIPTED.includes(args.view)) await page.evaluate((m) => window.haloView.setMode(m), args.view);   // no button
+  else if (args.view) await click(`#view-${args.view === "follow" ? "reset" : args.view}`);
   if (args["ride-drone"]) await page.evaluate((i) => { window.haloView.rideDrone = i; window.haloView.ride = null; }, Number(args["ride-drone"]));
   if (args.fire) await page.evaluate((i) => { window.haloView.fireTarget = i; }, Number(args.fire) - 1);
   if (args.zoom) await page.evaluate((z) => window.haloView.setZoom(z), Number(args.zoom));
@@ -346,8 +379,10 @@ async function film() {
     await page.evaluate((ds) => window.haloFilm.seek(ds), Math.max(0, end - preSim - st.played_s));
     for (let k = 0; k < pre; k++) await page.evaluate(([dv, ds]) => window.haloFilm.step(dv, ds), [1 / fps, preSim / pre]);
   }
-  let cue = 1, unframed = 0;
+  let cue = 1, unframed = 0, tFirst = null;
+  const tLoop = Date.now();
   for (let k = 0; k < frames; k++) {
+    if (k === 1) tFirst = Date.now();   // the first frame also compiles the shaders: timed apart
     if (cue < program.length && k / fps >= program[cue].at) {
       const c = program[cue++];
       await page.evaluate(([m, z]) => { window.haloView.setZoom(z); window.haloView.setMode(m, true);
@@ -362,6 +397,10 @@ async function film() {
     if (k % fps === 0) process.stdout.write(`\r${k}/${frames} frames`);
   }
   if (unframed) console.warn(`\nthe fire view had no ${args.fire ? `Fire ${args.fire}` : "fire"} to frame in ${unframed} of ${frames} frames`);
+  // Seconds per frame: the first frame (with the shader compiles) and the mean of the rest.
+  const done = Date.now();
+  console.log(`\n${frames} frames in ${((done - tLoop) / 1000).toFixed(1)} s` + (tFirst && frames > 1
+    ? `: first ${((tFirst - tLoop) / 1000).toFixed(1)} s, then ${((done - tFirst) / 1000 / (frames - 1)).toFixed(2)} s a frame` : ""));
   return encode(browser, dir, fps);
 }
 

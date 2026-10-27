@@ -5,6 +5,11 @@
 // scenarios), and short notices for what just happened. Every line comes from the same run messages as the side
 // panel. Notices fade in and out on the view's own clock, so they move the same way in film mode, where each frame
 // takes seconds to draw.
+//
+// The clean layout (?clean=1, the recorder's --clean) is for the remade video: one slim badge with what is on screen
+// (SIMULATION, the scenario and seed, the swarm, the supervisor, the simulated phones, the drones' drawn size), the
+// clock with the playback speed, the notices as lower-third toasts (at most two at once, the most important first),
+// and only the cards a shot asks for (?cards=crew, alerts, dispatch, squads, plan or stats), drawn large.
 
 const esc = (s) => String(s ?? "").replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
 const fmt = (x, d = 1) => (x === null || x === undefined ? "–" : Number(x).toFixed(d));
@@ -28,6 +33,17 @@ export const SQUAD_SHORT = { F: "floor", N: "north", S: "south" };
 const FIT = [[3, 3, 5, "full"], [3, 2, 5, "full"], [3, 2, 5, "line"], [3, 2, 4, "line"], [3, 1, 4, "line"], [2, 2, 5, "line"],
   [2, 1, 5, "line"], [2, 1, 4, "line"], [2, 1, 4, null], [2, 1, 3, null], [1, 1, 3, null]];
 const code = (c) => (/^[A-Z]$/.test(String(c)) ? c : "x");
+// Clean layout: the supervisor as the badge names it, by the run's config.
+const SUPERVISOR = { "improved+rule": "rule supervisor", "improved+nemotron": "Nemotron supervisor", "improved+fixed": "fixed plan, no supervisor",
+  "original+fixed": "original controller, fixed plan" };
+// Clean layout: the toasts' kinds, most important first (the shot's card's kind is moved to the front), and the line
+// over each. "plan" (the supervisor's formation changes) is left out of wildfire valley films unless asked for.
+const TOAST_ORDER = ["clear", "alert", "dispatch", "crew", "fire", "station", "squad", "aircraft", "bad", "event", "nemotron", "plan"];
+const TOAST_HEAD = { clear: "Operator action", alert: "Evacuation alert", dispatch: "Fire dispatch", crew: "Crew update", fire: "Ground station",
+  station: "Ground station", squad: "Squads", aircraft: "Airspace", bad: "Safety", event: "Event", nemotron: "Nemotron supervisor", plan: "Supervisor" };
+const CARD_TOAST = { crew: "crew", alerts: "alert", dispatch: "dispatch", squads: "squad" };
+export const CLEAN_CARDS = ["crew", "dispatch", "alerts", "squads", "plan", "stats"];
+const MAX_TOASTS = 2;
 const usd = (c) => (c > 0 && c < 0.0001 ? "under $0.0001" : `$${Number(c).toFixed(4)}`);
 
 // What a fire dispatch card says, read from its own text (sim/wildfire.py _dispatch): the place it is near, how
@@ -68,12 +84,26 @@ const holdBadge = (a) => `<div class="s hold"><b>${PLANE}Hold at ${fmt(a.altitud
   `<span>above the treetops, for crewed aircraft · operator's order · since ${clock(a.since_s)}</span></div>`;
 
 export class Cinema {
-  constructor(root, view) {
+  // opts: { clean, cards: the clean layout's cards by name, toasts: the toast kinds to show, in order (default all) }
+  constructor(root, view, opts = {}) {
     this.view = view;
     this.notices = [];
+    this.clean = !!opts.clean;
+    this.cardsWanted = (opts.cards || []).filter((c) => CLEAN_CARDS.includes(c));
+    this.toastsAsked = opts.toasts && opts.toasts.length ? opts.toasts : null;
+    const lead = this.cardsWanted.map((c) => CARD_TOAST[c]).filter(Boolean);
+    this.toastOrder = this.toastsAsked || [...lead, ...TOAST_ORDER.filter((k) => !lead.includes(k))];
+    this.preflight = null;   // clean layout, before a flight: () => { seed, supervisor (the config), valley }, set by the page
     this.el = document.createElement("div");
     this.el.id = "cine";
-    this.el.innerHTML = `
+    this.el.innerHTML = this.clean ? `
+      <div class="cine-title glass"><div class="cine-head"><span class="badge">SIMULATION</span><span class="cine-scn"></span>
+        <span class="cine-brand"><span class="logo">◆</span> HALO SYSTEMS</span></div><div class="cine-sub"></div><div class="cine-note"></div></div>
+      <div class="cine-clock glass"><span class="t">00:00</span><span class="k">sim time</span><span class="speed"></span></div>
+      <div class="cine-cards"></div>
+      <div class="cine-notices"></div>
+      <div class="cine-request glass" hidden><h4>Operator request <span class="when">in plain words</span></h4><p class="text"></p><div class="out"></div></div>
+      <div class="cine-stats glass"></div>` : `
       <div class="cine-title glass"><div class="cine-brand"><span class="logo">◆</span> HALO SYSTEMS <span class="badge">SIMULATION</span></div>
         <div class="cine-scn"></div><div class="cine-sub"></div><div class="cine-note"></div></div>
       <div class="cine-clock glass"><span class="t">00:00</span><span class="k">flight time</span><span class="speed"></span></div>
@@ -82,6 +112,10 @@ export class Cinema {
       <div class="cine-request glass" hidden><h4>Operator request <span class="when">in plain words</span></h4><p class="text"></p><div class="out"></div></div>
       <div class="cine-stats glass"></div>`;
     this.el.classList.add("idle");   // no flight yet: no clock or counts
+    if (this.clean) {
+      this.el.classList.add("clean", ...this.cardsWanted.map((c) => `show-${c}`));
+      document.body.classList.add("clean");
+    }
     root.appendChild(this.el);
     this.$ = (s) => this.el.querySelector(s);
     this.cards = { html: "" };
@@ -97,9 +131,9 @@ export class Cinema {
       if (!card.hidden) this.$(".cine-request .out").innerHTML = "";   // an answer to the other kind of request
       card.hidden = false;
       this.requestHead = h;
-      this.$(".cine-scn").textContent = h.title;
-      this.$(".cine-sub").textContent = h.sub;
-    } else if (h !== REQUEST_HEAD) this.$(".cine-sub").textContent = h.sub;   // a valley request typed after a refusal
+      this._scn(h.title);
+      this._sub(h.sub);
+    } else if (h !== REQUEST_HEAD) this._sub(h.sub);   // a valley request typed after a refusal
     this.$(".cine-request .text").innerHTML = `${esc(text)}<span class="caret"></span>`;
   }
   // The Mission tab switched to another kind of request: show its draft, if a request is on screen.
@@ -115,11 +149,11 @@ export class Cinema {
     const s = c.spec, by = c.source === "nemotron" ? `Nemotron (${esc(String(c.model || "").split("/").pop())})` : c.source === "guard" ? "the safety guard" : "the regex baseline";
     if (s.refused) {
       out.innerHTML = `<div class="state bad"><b>Refused</b><span>by ${by}: ${esc(s.refusal_reason)}</span></div>`;
-      this.$(".cine-sub").textContent = "Refused before take-off";
+      this._sub("Refused before take-off");
       return;
     }
     const d = s.directive, r = s.route, problems = c.problems || [];
-    if (!flyable) this.$(".cine-sub").textContent = "Parsed, not flown";
+    if (!flyable) this._sub("Parsed, not flown");
     const cell = (v, unit, k) => `<div><b>${v === null || v === undefined ? '<i class="dflt">default</i>' : `${esc(v)}${unit}`}</b><span>${k}</span></div>`;
     const area = r && r.width_m ? `${fmt(r.width_m, 0)} × ${fmt(r.height_m, 0)}` : null;
     out.innerHTML = (flyable && !problems.length ? '<div class="state ok"><b>Checked mission plan</b>' : flyable ? '<div class="state"><b>Mission plan, with problems</b>' : '<div class="state"><b>Parsed, not flown</b>') +
@@ -137,17 +171,17 @@ export class Cinema {
     const out = this.$(".cine-request .out");
     // The title card's line under the title starts from the request's own each time, so a refusal's "Refused before
     // take-off" does not stay up over the next request's plan.
-    this.$(".cine-sub").textContent = (this.requestHead || REQUEST_HEAD).sub;
+    this._sub((this.requestHead || REQUEST_HEAD).sub);
     if (c.error) { out.innerHTML = `<div class="state bad"><b>Not compiled</b><span>${esc(c.error)}</span></div>`; return; }
     const s = c.spec || {}, p = c.plan || {}, nemotron = c.source === "nemotron";
     const by = nemotron ? `Nemotron (${esc(String(c.model || "").split("/").pop())})` : c.source === "guard" ? "the keyword guard" : "the regex baseline";
     if (p.refused || s.refused) {   // the keyword guard's reason already says it was the guard
       out.innerHTML = `<div class="state bad"><b>Refused</b><span>${c.source === "guard" ? "" : `by ${by}: `}${esc(p.reason || s.refusal_reason || "outside civilian use")}</span></div>`;
-      this.$(".cine-sub").textContent = "Refused before take-off";
+      this._sub("Refused before take-off");
       return;
     }
-    if (!flyable) this.$(".cine-sub").textContent = "Parsed, not flown";
-    else if (c.source === "regex-baseline") this.$(".cine-sub").textContent = "A request in plain words, read by fixed rules before take-off";
+    if (!flyable) this._sub("Parsed, not flown");
+    else if (c.source === "regex-baseline") this._sub("A request in plain words, read by fixed rules before take-off");
     const call = c.call || null, problems = [...(c.problems || []), ...(p.problems || [])];
     const spent = [...(call && call.latency_s != null ? [`${fmt(call.latency_s, 2)} s`] : []), ...(call && call.cost_usd != null ? [usd(call.cost_usd)] : [])];
     const facts = [`by ${by}`, ...(c.how === "replayed" ? [`recorded call, replayed${spent.length ? ` (${spent.join(", ")} when recorded)` : ""}`] : spent)];
@@ -164,6 +198,22 @@ export class Cinema {
       `${cell(`${esc(p.patrol_min)} min`, "patrol")}${cell(`${check}<small> of ${strikes.length}</small>`, "strikes to check")}` +
       `${cell(off.length, outside ? "outside every area" : "outside the areas flown")}</div>` +
       (problems.length ? `<p class="why">${esc(problems.join("; "))}</p>` : "");
+    // Clean layout: the same plan as a card over the flight (?cards=plan), with the same numbers.
+    this.patrolCard = !flyable ? "" : `<div class="card glass"><h4>Patrol plan <span class="when">${facts.map((f) => esc(f)).join(" · ")}</span></h4>` +
+      `<div class="plan-grid patrol">${cell(esc(p.drones), "drones")}${cell(areas.map((a) => esc(counts[a])).join(" · "), areas.map((a) => SQUAD_SHORT[a]).join(" · "))}` +
+      `${cell(`${esc(p.patrol_min)} min`, "patrol")}${cell(`${check}<small> of ${strikes.length}</small>`, "strikes to check")}</div></div>`;
+  }
+
+  // The title card's title and the line under it. In the clean layout, before a flight, the title takes the seed the
+  // request is for, and the line the supervisor and, for a valley patrol, the simulated phones.
+  _scn(title) {
+    const pf = this.clean && this.preflight ? this.preflight() : null;
+    if (!pf) { this.$(".cine-scn").textContent = title; return; }
+    this.$(".cine-scn").innerHTML = `${esc(title)}${pf.seed !== "" && pf.seed != null ? `<span class="seed">seed ${esc(pf.seed)}</span>` : ""}`;
+  }
+  _sub(text) {
+    const pf = this.clean && this.preflight ? this.preflight() : null;
+    this.$(".cine-sub").textContent = pf ? [text, SUPERVISOR[pf.supervisor] || pf.supervisor, pf.valley ? "alerts to simulated phones only" : ""].filter(Boolean).join(" · ") : text;
   }
 
   // note: the disclosures the side panel would show (replayed calls, the drones' drawn size).
@@ -177,6 +227,14 @@ export class Cinema {
     this.cards.html = "";
     this.cards.key = "";
     this.$(".cine-cards").innerHTML = "";
+    if (this.clean) {   // one badge: SIMULATION, the scenario and seed; the swarm, supervisor, phones and drawn size
+      this.$(".cine-scn").innerHTML = `${esc(run.scenario.title)}<span class="seed">seed ${esc(run.seed)}</span>`;
+      const notes = String(note || "").split(" · ").filter(Boolean).map((t) => t.replace(/^Drones drawn/, "drones drawn").replace(/(\d)x\b/g, "$1×"));
+      this.$(".cine-sub").textContent = [`${run.n} drones`, SUPERVISOR[run.config] || supervisor,
+        run.wildfire ? "alerts to simulated phones only" : "", ...notes].filter(Boolean).join(" · ");
+      this.$(".cine-note").textContent = "";
+      return;
+    }
     this.$(".cine-scn").textContent = run.scenario.title;
     this.$(".cine-sub").textContent = `${run.n} drones · ${supervisor}${run.wildfire ? (run.alertRule === "presigned" ? " · public alerts under pre-signed rules, to simulated phones only" : " · alerts to simulated phones only") : ""}`;
     this.$(".cine-note").textContent = note;
@@ -186,7 +244,7 @@ export class Cinema {
   frame(f, valley, speed) {
     const m = f.metrics;
     this.$(".cine-clock .t").textContent = clock(f.t);
-    this.$(".cine-clock .speed").textContent = speed && speed !== 1 ? `×${speed}` : "";
+    this.$(".cine-clock .speed").textContent = this.clean ? `${speed || 1}× speed` : speed && speed !== 1 ? `×${speed}` : "";
     const stat = (v, k, cls = "") => `<div class="s ${cls}"><b>${v}</b><span>${k}</span></div>`;
     const html = valley
       ? stat(valley.located, "fires located", valley.located ? "hot" : "") + stat(`${fmt(m.coverage_pct, 0)}%`, valley.squadRun ? "patrol area searched" : "survey block searched") +
@@ -201,6 +259,7 @@ export class Cinema {
 
   // The swarm's plan now (scenarios other than the valley), and who set it.
   plan(d) {
+    if (this.clean && !this.cardsWanted.includes("plan")) return;
     const src = this.planSrc || "plan";
     const html = `<div class="card glass"><h4>Swarm plan <span class="chip ${esc(src)}">${esc(src === "plan" ? "mission plan" : src)}</span></h4>` +
       `<div class="plan-grid"><div><b>${esc(d.formation)}</b><span>formation</span></div><div><b>${fmt(d.spacing_m)} m</b><span>spacing</span></div>` +
@@ -213,8 +272,17 @@ export class Cinema {
   // The fire crew brief and the raised zones (wildfire valley); with squads or fire dispatch cards (valley patrols),
   // those cards too, shortened until the column fits the frame.
   valley(valley) {
+    if (this.clean) { this._cleanCards(valley); return; }
     if (valley.squadRun || (valley.dispatch && valley.dispatch.length)) { this._fit(valley); return; }
     const html = this._brief(valley) + this._zones(valley);
+    if (html !== this.cards.html) this.$(".cine-cards").innerHTML = this.cards.html = html;
+  }
+
+  // Clean layout: only the cards the shot asked for, in its order, each kept short enough to read at a glance.
+  _cleanCards(valley) {
+    const make = { crew: () => this._brief(valley, 2), dispatch: () => this._dispatch(valley, 3), alerts: () => this._zones(valley, 6),
+      squads: () => this._squads(valley, "full"), plan: () => this.patrolCard || "" };
+    const html = this.cardsWanted.map((c) => (make[c] ? make[c]() : "")).join("");
     if (html !== this.cards.html) this.$(".cine-cards").innerHTML = this.cards.html = html;
   }
 
@@ -325,6 +393,7 @@ export class Cinema {
   // in valley patrols dispatch, or "squad sq-<code>" in the colour of the squad that drones join).
   // With a key, a notice still up under that key is rewritten in place (and kept up a little longer) instead.
   notice(kind, title, sub = "", key = null, data = null) {
+    if (this.clean) { this._toast(kind, title, sub, key, data); return; }
     const html = `<b>${esc(title)}</b>${sub ? `<span>${esc(sub)}</span>` : ""}`;
     const same = key && this.notices.find((q) => q.key === key && !q.leaving && this.view.vt - q.at < NOTICE_S - 1.5);
     if (same) {
@@ -345,6 +414,39 @@ export class Cinema {
     this.update(this.view.vt);
   }
 
+  // Clean layout: a notice as a lower-third toast: a line naming what kind of news it is, the news in large type, and
+  // under it the first part of the detail and any part saying what is simulated. At most MAX_TOASTS are up: a new one
+  // pushes out the least important (the oldest of equals), and one less important than all those up is not shown.
+  _toast(kind, title, sub, key, data) {
+    const k = String(kind).split(" "), cls = k.includes("clear") ? "clear" : k[0];
+    const wildfire = !!(this.run && this.run.wildfire);
+    if (cls === "plan" && wildfire && !this.toastsAsked) return;
+    const rank = this.toastOrder.indexOf(cls);
+    if (rank < 0) return;
+    let head = String(title), eyebrow = TOAST_HEAD[cls] || "";
+    const m = /^(Crew update|Fire dispatch|Rule supervisor|Nemotron supervisor|You)(?::\s*|\s+(?=UPDATE))(.+)$/.exec(head);
+    if (m) { eyebrow = m[1] === "You" ? "Operator" : m[1]; head = m[2]; }
+    if (/^UPDATE: /.test(head)) head = `Update: ${head.slice(8)}`;
+    head = head.charAt(0).toUpperCase() + head.slice(1);
+    const parts = String(sub || "").split(" · ").filter(Boolean), keep = parts.filter((p, i) => i === 0 || /simulated/i.test(p));
+    const html = `<div class="eyebrow">${esc(eyebrow)}</div><b>${esc(head)}</b>${keep.length ? `<span>${esc(keep.join(" · "))}</span>` : ""}`;
+    const vt = this.view.vt;
+    const same = key && this.notices.find((q) => q.key === key && !q.leaving && vt - q.at < NOTICE_S - 1.5);
+    if (same) { same.el.innerHTML = html; same.data = data; same.at = Math.max(same.at, vt - 0.35); this.update(vt); return; }
+    const live = this.notices.filter((n) => !n.leaving);
+    if (live.length >= MAX_TOASTS) {
+      const worst = live.slice().sort((a, b) => b.rank - a.rank || a.at - b.at)[0];
+      if (worst.rank < rank) return;   // everything up matters more
+      worst.leaving = true; worst.at = Math.min(worst.at, vt - NOTICE_S + 0.5);
+    }
+    const el = document.createElement("div");
+    el.className = `notice toast glass ${kind}`;
+    el.innerHTML = html;
+    this.$(".cine-notices").appendChild(el);
+    this.notices.push({ el, at: vt, key, data, rank });
+    this.update(vt);
+  }
+
   // Fade the notices in and out by the view's clock (and pulse the compiler's dots).
   update(vt) {
     const dots = this.$(".cine-request .dots");
@@ -354,7 +456,8 @@ export class Cinema {
       if (age > NOTICE_S) { n.el.remove(); return false; }
       const a = Math.min(1, age / 0.35, (NOTICE_S - age) / 0.6);
       n.el.style.opacity = a.toFixed(3);
-      n.el.style.transform = `translateX(${((1 - Math.min(1, age / 0.35)) * -24).toFixed(1)}px)`;
+      n.el.style.transform = this.clean ? `translateY(${((1 - Math.min(1, age / 0.35)) * 18).toFixed(1)}px)`
+        : `translateX(${((1 - Math.min(1, age / 0.35)) * -24).toFixed(1)}px)`;
       return true;
     });
   }

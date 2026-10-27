@@ -28,16 +28,39 @@ const GradeShader = {
     }`,
 };
 
+// The clean look's grade (scene3d.js CLEAN): a gentle S-curve for contrast after the soft AgX curve, more colour in
+// the mid-tones than in the shadows and highlights, cool shadows and warm highlights, a soft vignette, and a little
+// dither so the sky's gradient does not band.
+const CleanGradeShader = {
+  uniforms: { tDiffuse: { value: null }, uAspect: { value: 16 / 9 } },
+  vertexShader: GradeShader.vertexShader,
+  fragmentShader: `uniform sampler2D tDiffuse; uniform float uAspect;
+    varying vec2 vUv;
+    void main() {
+      vec3 c = texture2D(tDiffuse, vUv).rgb;   // display values, after tone mapping
+      c = mix(c, c * c * (3.0 - 2.0 * c), 0.42);
+      float l = dot(c, vec3(0.2126, 0.7152, 0.0722)), mid = 1.0 - abs(l - 0.5) * 2.0;
+      c = mix(vec3(l), c, 1.1 + 0.16 * mid);
+      c += vec3(-0.010, 0.002, 0.016) * (1.0 - smoothstep(0.0, 0.45, l)) + vec3(0.018, 0.006, -0.016) * smoothstep(0.5, 1.0, l);
+      vec2 d = (vUv - 0.5) * vec2(uAspect, 1.0);
+      c *= 1.0 - 0.3 * smoothstep(0.42, 1.2, length(d) / length(vec2(uAspect, 1.0) * 0.5));
+      c += (fract(sin(dot(gl_FragCoord.xy, vec2(12.9898, 78.233))) * 43758.5453) - 0.5) / 255.0;
+      gl_FragColor = vec4(clamp(c, 0.0, 1.0), 1.0);
+    }`,
+};
+
 export class FilmLook {
-  constructor(renderer, scene, camera) {
+  // clean: the clean look's softer, wider bloom (sun, flames, the drones' lights) and its grade.
+  constructor(renderer, scene, camera, clean = false) {
     this.renderer = renderer;
     const size = renderer.getDrawingBufferSize(new THREE.Vector2());
     const target = new THREE.WebGLRenderTarget(size.x, size.y, { type: THREE.HalfFloatType, samples: 4 });
     this.composer = new EffectComposer(renderer, target);
     this.render_ = new RenderPass(scene, camera);
     // Bloom only on what is several times brighter than sunlit ground: the threshold is in linear light.
-    this.bloom = new UnrealBloomPass(new THREE.Vector2(size.x, size.y), 0.55, 0.45, 2.4);
-    this.grade = new ShaderPass(GradeShader);
+    this.bloom = clean ? new UnrealBloomPass(new THREE.Vector2(size.x, size.y), 0.5, 0.6, 1.6)
+      : new UnrealBloomPass(new THREE.Vector2(size.x, size.y), 0.55, 0.45, 2.4);
+    this.grade = new ShaderPass(clean ? CleanGradeShader : GradeShader);
     this.composer.addPass(this.render_);
     this.composer.addPass(this.bloom);
     this.composer.addPass(new OutputPass());   // tone mapping and the screen's colour space

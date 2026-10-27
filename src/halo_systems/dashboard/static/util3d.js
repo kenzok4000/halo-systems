@@ -1,6 +1,9 @@
 // Halo Systems dashboard: small helpers shared by the 3D view's modules (geometry, canvas textures, noise).
 import * as THREE from "three";
 
+// The clean film look (?clean=1, the recorder's --clean; see scene3d.js). Off unless asked for.
+export const CLEAN = (() => { const v = new URLSearchParams(location.search).get("clean"); return v !== null && v !== "0"; })();
+
 export function mergeGeometries(geos) {
   // Concatenate non-indexed copies (position and normal only): enough for the solid parts drawn here.
   const parts = geos.map((g) => (g.index ? g.toNonIndexed() : g));

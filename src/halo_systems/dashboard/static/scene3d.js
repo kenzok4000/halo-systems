@@ -8,12 +8,17 @@
 // is a sitting hiker, under a clump of trees when the run hides them under tree crowns (their `cover`).
 import * as THREE from "three";
 import { OrbitControls } from "/static/vendor/OrbitControls.js";
-import { mergeGeometries, canvasTexture, hash, fbm, ridge, smooth, conifer, coniferFar, shrub, stoneColors } from "/static/util3d.js";
+import { mergeGeometries, canvasTexture, hash, fbm, ridge, smooth, conifer, coniferFar, shrub, stoneColors, CLEAN } from "/static/util3d.js";
 import { mergeVertices } from "/static/vendor/BufferGeometryUtils.js";
 import { WildfireLayer } from "/static/wildfire3d.js";
 import { loadDroneModel, DRONE_MODEL_URL } from "/static/drone_model.js";
 import { FilmLook } from "/static/postfx.js";
 
+// The clean film look (?clean=1, the recorder's --clean): a low warm morning sun under a soft sky, haze that warms
+// towards the sun, a filmic grade, richer smoke, drones with position lights and short trails of where they have just
+// flown, and fewer, larger labels. Looks only, like the rest of this file: every position still comes from the run.
+// Without it every frame draws exactly as before, so takes filmed without it can be made again.
+export { CLEAN };
 // Simulation frame is x east, y north, z up; three.js is y up, so (x, y, z) -> (x, z, -y).
 const toV = (p) => new THREE.Vector3(p[0], p[2], -p[1]);
 export const DRONE_SCALE = 4;   // drones are drawn up to this many times their real size so they show from 150 m away
@@ -30,14 +35,81 @@ const personSize = (dist) => Math.pow(PERSON_SCALE, smooth(0, 1, Math.log(Math.m
 // Status codes from sim/engine.py: 0 active, 1 failed (motor out, falling), 2 crashed, 3 retired, 4 down.
 const STATUS_COLOR = { 0: new THREE.Color(0x3fe0c8), 1: new THREE.Color(0xff4d45), 2: new THREE.Color(0xff4d45),
   3: new THREE.Color(0xb5bcc4), 4: new THREE.Color(0xff4d45) };
-const SKY_ZENITH = new THREE.Color(0x3f78bd), SKY_HORIZON = new THREE.Color(0xdfe3e2), HAZE = new THREE.Color(0xc9d2d8);
-const SUN_DIR = new THREE.Vector3(-0.78, 0.5, 0.36).normalize();   // late-morning sun from the west-south-west
-const FOG_DENSITY = 0.00062;
+const SKY_ZENITH = new THREE.Color(CLEAN ? 0x2a5fa8 : 0x3f78bd), SKY_HORIZON = new THREE.Color(CLEAN ? 0xc9d6df : 0xdfe3e2), HAZE = new THREE.Color(CLEAN ? 0xc3ccd2 : 0xc9d2d8);
+// Late-morning sun from the west-south-west; in the clean look a low morning sun from the east-south-east, 21 degrees up.
+const SUN_DIR = CLEAN ? new THREE.Vector3(0.865, 0.36, 0.352).normalize() : new THREE.Vector3(-0.78, 0.5, 0.36).normalize();
+const FOG_DENSITY = CLEAN ? 0.00054 : 0.00062;
+// Clean look: the haze and the horizon towards the sun take its warm light.
+const SUN_HAZE = new THREE.Color(0xf0c58e);
+// Clean look in film mode: the 3D view's pixels per page pixel (supersampling, downscaled by the browser).
+const CLEAN_SS = (() => { const v = Number(new URLSearchParams(location.search).get("ss")); return v >= 0.5 && v <= 2 ? v : 1; })();
+// The clean look's sky: deep blue overhead fading to a pale horizon that warms towards the low sun, a band of haze
+// along the skyline, a few thin clouds lit from the sun's side, and the sun's glow.
+const CLEAN_SKY = `uniform vec3 uZenith; uniform vec3 uHorizon; uniform vec3 uHaze; uniform vec3 uSun; uniform vec3 uSunHaze; uniform vec2 uDrift; varying vec3 vDir;
+  float h21(vec2 p) { return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
+  float vn(vec2 p) { vec2 i = floor(p), f = fract(p), u = f * f * (3.0 - 2.0 * f);
+    return mix(mix(h21(i), h21(i + vec2(1.0, 0.0)), u.x), mix(h21(i + vec2(0.0, 1.0)), h21(i + vec2(1.0, 1.0)), u.x), u.y); }
+  float fbm(vec2 p) { float a = 0.5, s = 0.0; for (int k = 0; k < 5; k++) { s += a * vn(p); p = p * 2.03 + vec2(17.1, 9.2); a *= 0.5; } return s; }
+  void main() { vec3 d = normalize(vDir); float h = d.y;
+    float s = max(0.0, dot(d, uSun));
+    vec2 dh = normalize(d.xz + vec2(1e-5)), sh = normalize(uSun.xz);
+    float toward = pow(0.5 + 0.5 * dot(dh, sh), 2.5);              // 1 under the sun, 0 opposite it
+    vec3 hor = mix(uHorizon, uSunHaze, toward * 0.85);
+    vec3 c = h > 0.0 ? mix(hor, uZenith, pow(clamp(h, 0.0, 1.0), 0.42)) : uHaze;
+    c = mix(c, mix(uHaze, uSunHaze, toward * 0.75), exp(-max(h, 0.0) * 16.0) * 0.85);
+    if (h > 0.0) {
+      vec2 p = d.xz / (h + 0.1) * 1.1 + uDrift;
+      float n = fbm(p * vec2(1.0, 2.2));
+      float cover = smoothstep(0.58, 0.8, n) * smoothstep(0.03, 0.25, h) * 0.75;
+      float lit = 0.5 + 0.5 * smoothstep(0.3, 0.9, fbm(p * 1.9 + 4.0 + uSun.xz)) + 0.6 * pow(s, 4.0);
+      vec3 cloud = mix(vec3(0.55, 0.58, 0.66), vec3(1.05, 0.92, 0.78), clamp(lit, 0.0, 1.0));
+      c = mix(c, mix(cloud, hor, exp(-h * 7.0) * 0.6), cover);
+    }
+    c += vec3(1.0, 0.86, 0.64) * (pow(s, 1400.0) * 9.0 + pow(s, 48.0) * 0.5 + pow(s, 6.0) * 0.16);
+    gl_FragColor = vec4(c, 1.0);
+    #include <colorspace_fragment>
+  }`;
+if (CLEAN) {
+  // Aerial haze that is warmer looking towards the sun and cooler away from it: the fog chunks of every built-in
+  // material, before any compiles. The view direction comes from the view-space position (viewMatrix is a uniform
+  // in every fragment shader three.js builds).
+  const s = SUN_DIR, h = SUN_HAZE, f = (x) => x.toFixed(4);
+  THREE.ShaderChunk.fog_pars_vertex = "#ifdef USE_FOG\n\tvarying float vFogDepth;\n\tvarying vec3 vFogView;\n#endif";
+  THREE.ShaderChunk.fog_vertex = "#ifdef USE_FOG\n\tvFogDepth = - mvPosition.z;\n\tvFogView = mvPosition.xyz;\n#endif";
+  THREE.ShaderChunk.fog_pars_fragment = `#ifdef USE_FOG
+	uniform vec3 fogColor;
+	varying float vFogDepth;
+	varying vec3 vFogView;
+	#ifdef FOG_EXP2
+		uniform float fogDensity;
+	#else
+		uniform float fogNear;
+		uniform float fogFar;
+	#endif
+#endif`;
+  THREE.ShaderChunk.fog_fragment = `#ifdef USE_FOG
+	#ifdef FOG_EXP2
+		float fogFactor = 1.0 - exp( - fogDensity * fogDensity * vFogDepth * vFogDepth );
+	#else
+		float fogFactor = smoothstep( fogNear, fogFar, vFogDepth );
+	#endif
+	vec3 fogDirW = normalize( ( vec4( vFogView, 0.0 ) * viewMatrix ).xyz );
+	float fogSun = pow( max( dot( fogDirW, vec3( ${f(s.x)}, ${f(s.y)}, ${f(s.z)} ) ), 0.0 ), 4.0 );
+	vec3 fogTint = mix( fogColor, vec3( ${f(h.r)}, ${f(h.g)}, ${f(h.b)} ), fogSun * 0.8 );
+	gl_FragColor.rgb = mix( gl_FragColor.rgb, fogTint, fogFactor );
+#endif`;
+}
 // Squads (wildfire valley runs flown as squads): one colour per patrol area, on each drone's slot ring and
 // far-away marker and on the area's lanes; a drone flying between squads is white. Other codes, if a run ever
 // has them, take the spare colours in turn.
 const SQUAD_HEX = { F: "#4fc3f7", N: "#9ccc65", S: "#ffd54f" }, SQUAD_SPARE = ["#f48fb1", "#ce93d8", "#80cbc4", "#ffab91"];
 const TRANSIT_COLOR = new THREE.Color(0xffffff);
+// Clean look: which labels give way when two would overlap (higher stays): located fires, then the arrows' tags, the
+// squads, then places.
+const LABEL_PRIO = { fire: 4, target: 4, head: 3, squad: 2, place: 1 };
+// Clean look: each drone's trail, where it flew in the last TRAIL_S simulated seconds (the run's own frames, 10 a
+// second), drawn TRAIL_PX pixels wide (at 1080 lines), fading out behind it.
+const TRAIL_S = 8, TRAIL_PTS = TRAIL_S * 10 + 4, TRAIL_PX = 3.2;
 function squadStyle(code, id) {
   const hex = SQUAD_HEX[code] || SQUAD_SPARE[Math.abs(id | 0) % SQUAD_SPARE.length], v = parseInt(hex.slice(1), 16);
   return { col: new THREE.Color(hex), rgb: `${(v >> 16) & 255},${(v >> 8) & 255},${v & 255}` };   // col: linear; rgb: for the 2D overlay
@@ -86,7 +158,7 @@ float gNoise(vec2 p) { vec2 i = floor(p), f = fract(p), u = f * f * (3.0 - 2.0 *
     #endif
     oc = linearToOutputTexel(vec4(oc, 1.0)).rgb;
     #ifdef USE_FOG
-      oc = mix(oc, fogColor, fogFactor);
+      oc = mix(oc, ${CLEAN ? "fogTint" : "fogColor"}, fogFactor);
     #endif
     gl_FragColor.rgb = mix(gl_FragColor.rgb, oc, ov.a);
   }`);
@@ -253,6 +325,42 @@ class WindStreaks {
 }
 
 // ---------------------------------------------------------------- particles (smoke, flames, embers)
+// The clean look's particle shading. Smoke: the side of each puff towards the sun in warm light and the other side in
+// cool shade, a glow where the camera looks towards the sun through it, and darker, browner smoke where it leaves the
+// fire (by the particle's age). Flames: brighter than sunlit ground, so the film look's bloom makes them glow.
+function cleanParticles(texture, additive) {
+  return {
+    defines: { ADDITIVE: additive ? 1 : 0 },
+    uniforms: { uTex: { value: texture }, uScale: { value: 600 }, fogColor: { value: HAZE }, fogDensity: { value: 0 },
+      uSun: { value: new THREE.Vector3(0, 0, 0) }, uSunW: { value: SUN_DIR }, uLight: { value: new THREE.Vector3(1.38, 1.15, 0.9) },
+      uShade: { value: new THREE.Vector3(0.6, 0.66, 0.76) } },
+    vertexShader: `attribute float aSize; attribute float aAlpha; attribute vec3 aColor; attribute float aRot; attribute float aF;
+      varying float vAlpha; varying vec3 vColor; varying float vRot; varying float vDepth; varying float vF; varying float vFwd;
+      uniform float uScale; uniform vec3 uSunW;
+      void main() { vec4 wp = modelMatrix * vec4(position, 1.0); vec4 mv = viewMatrix * wp; gl_Position = projectionMatrix * mv;
+        gl_PointSize = aSize * uScale / max(1.0, -mv.z); vAlpha = aAlpha; vColor = aColor; vRot = aRot; vDepth = -mv.z; vF = aF;
+        vFwd = pow(max(dot(normalize(wp.xyz - cameraPosition), uSunW), 0.0), 5.0); }`,
+    fragmentShader: `uniform sampler2D uTex; uniform vec3 fogColor; uniform float fogDensity; uniform vec3 uSun; uniform vec3 uLight; uniform vec3 uShade;
+      varying float vAlpha; varying vec3 vColor; varying float vRot; varying float vDepth; varying float vF; varying float vFwd;
+      void main() { vec2 c = gl_PointCoord - 0.5; float s = sin(vRot), k = cos(vRot);
+        vec4 t = texture2D(uTex, vec2(k * c.x - s * c.y, s * c.x + k * c.y) + 0.5);
+        float fog = 1.0 - exp(-fogDensity * fogDensity * vDepth * vDepth);
+        vec3 base = pow(vColor, vec3(2.2));   // vColor: display values
+        #if ADDITIVE
+          gl_FragColor = vec4(base * 2.6 * (1.0 - fog), t.a * vAlpha);
+        #else
+          float side = clamp(0.5 + 1.7 * uSun.z * dot(c, uSun.xy), 0.0, 1.0);
+          vec3 col = base * mix(uShade, uLight, side) + uLight * base * vFwd * 0.85;
+          col *= mix(vec3(0.6, 0.54, 0.48), vec3(1.0), smoothstep(0.0, 0.5, vF));
+          gl_FragColor = vec4(mix(col, fogColor, fog), t.a * vAlpha);
+        #endif
+        #include <colorspace_fragment>
+      }`,
+    transparent: true, depthWrite: false,
+    blending: additive ? THREE.AdditiveBlending : THREE.NormalBlending,
+  };
+}
+
 class Particles {
   constructor(max, additive, texture) {
     this.max = max; this.n = 0;
@@ -266,8 +374,9 @@ class Particles {
     this.aPos = attr(3); this.aSize = attr(1); this.aAlpha = attr(1); this.aColor = attr(3); this.aRot = attr(1);
     geo.setAttribute("position", this.aPos); geo.setAttribute("aSize", this.aSize);
     geo.setAttribute("aAlpha", this.aAlpha); geo.setAttribute("aColor", this.aColor); geo.setAttribute("aRot", this.aRot);
+    if (CLEAN) { this.aF = attr(1); geo.setAttribute("aF", this.aF); }   // each particle's age as a share of its life
     geo.setDrawRange(0, 0);
-    const mat = new THREE.ShaderMaterial({
+    const mat = new THREE.ShaderMaterial(CLEAN ? cleanParticles(texture, additive) : {
       // uSun: the sun's direction across the screen (point-sprite coordinates, y down) and how far it is to one
       // side; smoke puffs are lit on that side and in shade on the other. Flames (additive) are not shaded.
       uniforms: { uTex: { value: texture }, uScale: { value: 600 }, fogColor: { value: HAZE }, fogDensity: { value: 0 },
@@ -324,11 +433,13 @@ class Particles {
       this.aAlpha.array[j] = this.alpha0[j] * Math.min(1, f * 6) * (1 - f) * (1 - f);
       this.aColor.array.set([this.col[j * 3], this.col[j * 3 + 1], this.col[j * 3 + 2]], j * 3);
       this.aRot.array[j] = this.rot[j];
+      if (this.aF) this.aF.array[j] = f;
       j++;
     }
     this.n = j;
     this.points.geometry.setDrawRange(0, j);
     for (const a of [this.aPos, this.aSize, this.aAlpha, this.aColor, this.aRot]) a.needsUpdate = true;
+    if (this.aF) this.aF.needsUpdate = true;
   }
   clear() { this.n = 0; this.points.geometry.setDrawRange(0, 0); }
 }
@@ -343,6 +454,13 @@ export class SwarmView {
     r.toneMappingExposure = 1.0;
     r.shadowMap.enabled = true;
     r.shadowMap.type = THREE.PCFSoftShadowMap;
+    if (CLEAN) {
+      // A filmic curve that rolls the highlights off gently (the grade in postfx.js adds the contrast back), and in
+      // film mode a frame drawn at CLEAN_SS times the pixels, which the browser scales down: smoother edges.
+      r.toneMapping = THREE.AgXToneMapping;
+      r.toneMappingExposure = 1.3;
+      if (new URLSearchParams(location.search).has("film")) r.setPixelRatio(CLEAN_SS);
+    }
     const scene = this.scene = new THREE.Scene();
     scene.fog = new THREE.FogExp2(HAZE.clone(), FOG_DENSITY);
     scene.background = SKY_HORIZON.clone();
@@ -351,7 +469,7 @@ export class SwarmView {
     // The film look (postfx.js): bloom, tone mapping, grade and vignette; ?fx=0 draws straight to the screen.
     this.fx = null;
     if (new URLSearchParams(location.search).get("fx") !== "0") {
-      try { this.fx = new FilmLook(r, scene, this.camera); } catch (err) { console.warn("film look off", err); }
+      try { this.fx = new FilmLook(r, scene, this.camera, CLEAN); } catch (err) { console.warn("film look off", err); }
     }
     this.controls = new OrbitControls(this.camera, canvas);
     this.controls.enableDamping = true;
@@ -371,6 +489,10 @@ export class SwarmView {
     this.squads = null;       // squad runs: each squad's latest layout {id, code, name, area, n, members, path, ...}
     this._squadFocus = null;  // squadFocus: the squad code the follow, orbit, chase, ride and close views frame (null: all)
     this.focus = new THREE.Vector3();
+    // Clean look: labels are drawn by the page in a layer over the view (_pageLabel), under the cinema cards.
+    this.pageLabels = new Set();
+    if (CLEAN) { this.labelLayer = document.createElement("div"); this.labelLayer.id = "labels"; canvas.after(this.labelLayer); }
+    this.trailHist = [];      // clean look: the run's latest frames, for the drones' trails
     this.fade = { focus: { value: new THREE.Vector3(0, -1e4, 0) }, radius: { value: 0 }, cam: { value: new THREE.Vector3() }, ahead: { value: 0 } };
     this._textures();
     this._sky();
@@ -421,9 +543,9 @@ export class SwarmView {
     const mat = new THREE.ShaderMaterial({
       side: THREE.BackSide, depthWrite: false, fog: false,
       uniforms: { uZenith: { value: SKY_ZENITH }, uHorizon: { value: SKY_HORIZON }, uHaze: { value: HAZE }, uSun: { value: SUN_DIR },
-        uDrift: { value: new THREE.Vector2() } },
+        uDrift: { value: new THREE.Vector2() }, uSunHaze: { value: SUN_HAZE } },
       vertexShader: "varying vec3 vDir; void main() { vDir = normalize(position); gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }",
-      fragmentShader: `uniform vec3 uZenith; uniform vec3 uHorizon; uniform vec3 uHaze; uniform vec3 uSun; uniform vec2 uDrift; varying vec3 vDir;
+      fragmentShader: CLEAN ? CLEAN_SKY : `uniform vec3 uZenith; uniform vec3 uHorizon; uniform vec3 uHaze; uniform vec3 uSun; uniform vec2 uDrift; varying vec3 vDir;
         float h21(vec2 p) { return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
         float vn(vec2 p) { vec2 i = floor(p), f = fract(p), u = f * f * (3.0 - 2.0 * f);
           return mix(mix(h21(i), h21(i + vec2(1.0, 0.0)), u.x), mix(h21(i + vec2(0.0, 1.0)), h21(i + vec2(1.0, 1.0)), u.x), u.y); }
@@ -471,8 +593,9 @@ export class SwarmView {
   }
 
   _lights() {
-    this.scene.add(new THREE.HemisphereLight(0xbcd5f2, 0x665644, 0.85));   // cool skylight in the shade
-    const sun = this.sun = new THREE.DirectionalLight(0xffdcb2, 3.7);       // warm late-morning sun
+    // Clean look: a low, warmer morning sun, and a bluer skylight filling the long shadows.
+    this.scene.add(CLEAN ? new THREE.HemisphereLight(0xa9c8f0, 0x6e5a40, 1.15) : new THREE.HemisphereLight(0xbcd5f2, 0x665644, 0.85));   // cool skylight in the shade
+    const sun = this.sun = CLEAN ? new THREE.DirectionalLight(0xffc996, 4.3) : new THREE.DirectionalLight(0xffdcb2, 3.7);       // warm late-morning sun
     sun.castShadow = true;
     sun.shadow.mapSize.set(2048, 2048);
     const c = sun.shadow.camera;
@@ -480,6 +603,11 @@ export class SwarmView {
     sun.shadow.bias = -0.0004;
     sun.shadow.normalBias = 0.6;
     this.sunOffset = SUN_DIR.clone().multiplyScalar(380);
+    if (CLEAN) {   // the low sun: further out, so the ridges between it and the swarm cast their shadows too
+      c.far = 1300; sun.shadow.normalBias = 0.9;
+      this.sunOffset = SUN_DIR.clone().multiplyScalar(560);
+    }
+    this.shadowFar = c.far;
     this.scene.add(sun, sun.target);
   }
 
@@ -520,6 +648,28 @@ export class SwarmView {
       g.fillStyle = "rgba(20,22,26,.75)";
       for (const a of [0, Math.PI]) { g.save(); g.translate(c, c); g.rotate(a); g.beginPath(); g.ellipse(w * 0.24, 0, w * 0.24, w * 0.05, 0, 0, Math.PI * 2); g.fill(); g.restore(); }
     });
+    if (CLEAN) {
+      // A fuller, finer smoke puff, and a drone marker with a soft glow round its dark rim.
+      this.puffTex = canvasTexture(256, 256, (g, w) => {
+        for (let i = 0; i < 56; i++) {
+          const a = hash(i, 21) * 6.283, rr = Math.sqrt(hash(i, 22)) * w * 0.22;
+          const x = w / 2 + Math.cos(a) * rr, y = w / 2 + Math.sin(a) * rr, r = w * (0.08 + 0.15 * hash(i, 23));
+          const gr = g.createRadialGradient(x, y, 0, x, y, r);
+          gr.addColorStop(0, `rgba(255,255,255,${0.16 + 0.16 * hash(i, 24)})`); gr.addColorStop(0.6, `rgba(255,255,255,${0.06 + 0.06 * hash(i, 25)})`);
+          gr.addColorStop(1, "rgba(255,255,255,0)");
+          g.fillStyle = gr; g.fillRect(0, 0, w, w);
+        }
+      }, false);
+      this.markerTex = canvasTexture(128, 128, (g, w) => {
+        const c = w / 2, glow = g.createRadialGradient(c, c, w * 0.16, c, c, w * 0.5);
+        glow.addColorStop(0, "rgba(255,255,255,.55)"); glow.addColorStop(0.45, "rgba(255,255,255,.16)"); glow.addColorStop(1, "rgba(255,255,255,0)");
+        g.fillStyle = glow; g.fillRect(0, 0, w, w);
+        g.fillStyle = "rgba(10,16,22,.8)"; g.beginPath(); g.arc(c, c, w * 0.235, 0, Math.PI * 2); g.fill();
+        const gr = g.createRadialGradient(c, c, 0, c, c, w * 0.18);
+        gr.addColorStop(0, "rgba(255,255,255,1)"); gr.addColorStop(0.7, "rgba(240,240,240,1)"); gr.addColorStop(1, "rgba(210,210,210,1)");
+        g.fillStyle = gr; g.beginPath(); g.arc(c, c, w * 0.175, 0, Math.PI * 2); g.fill();
+      }, false);
+    }
     // Burnt ground around a hotspot, with a ragged edge.
     this.scorchTex = canvasTexture(256, 256, (g, w) => {
       const c = w / 2;
@@ -825,6 +975,7 @@ export class SwarmView {
     this.scene.add(this.world);
     this.smoke.clear(); this.flames.clear();
     this.footprints = null; this.ride = null; this.forestTrees = null; this.crownBase = null;
+    this.trailHist = []; this.squadLabels = null;
     this.worldPlants = [];
     // Terrain (heights[iy * nx + ix] on a grid from (x0, y0)) and land cover, when the run has them.
     const wt = hello.world.terrain;
@@ -839,6 +990,7 @@ export class SwarmView {
     this._buildOverlay(hello);
     this._buildPath(hello);
     this._buildDrones(hello);
+    if (CLEAN && this.squads) this._buildSquadLabels();
     this.prev = null; this.cur = null; this.lastFrame = null; this.vel = null;
     this.swarmCentre = null; this.extent = null; this.lastFilmT = null;
     this.userMoved = false;
@@ -1224,7 +1376,9 @@ export class SwarmView {
     }
   }
 
-  _label(text, dot = "#ff8a3d") {
+  // kind (place, fire, head, squad, target) ranks the labels in the clean look, where overlapping ones give way.
+  _label(text, dot = "#ff8a3d", kind = "target") {
+    if (CLEAN) return this._pageLabel(text, dot, kind);
     // A label that stays the same size on screen however far away it is.
     const cv = document.createElement("canvas");
     cv.width = 640; cv.height = 112;
@@ -1251,6 +1405,88 @@ export class SwarmView {
     };
     sprite.userData.setText(text);
     return sprite;
+  }
+
+  // Clean look: a label drawn by the page over the view, so its text is crisp at any size: a glass pill with a
+  // coloured dot, on a thin stem down to the point it names. The sprite returned is never drawn; it carries where
+  // the label points (its position), whether it shows (visible, in the scene) and its owner's opacity, as a drawn
+  // label's would, and its material's dispose removes it. Labels that would overlap give way to the more important
+  // one, and none shows under a card or notice (_declutter).
+  _pageLabel(text, dot, kind) {
+    const mat = new THREE.SpriteMaterial({ visible: false });
+    const sprite = new THREE.Sprite(mat);
+    const el = document.createElement("div");
+    el.className = `lbl lbl-${kind}`;
+    el.innerHTML = '<div class="pill"><i></i><span></span></div><div class="stem"></div>';
+    el.querySelector("i").style.background = dot;
+    el.style.opacity = "0";
+    this.labelLayer.appendChild(el);
+    const rec = { sprite, el, prio: LABEL_PRIO[kind] ?? 1, fade: 0, target: 0, w: 0, h: 0, x: null, y: 0, k: 1 };
+    this.pageLabels.add(rec);
+    mat.addEventListener("dispose", () => { el.remove(); this.pageLabels.delete(rec); });
+    sprite.userData.setText = (s) => { sprite.userData.text = s; el.querySelector("span").textContent = s; rec.w = 0; };
+    sprite.userData.setText(text);
+    return sprite;
+  }
+
+  // Clean look: place each page label over its point, largest priority first; one that would overlap a label already
+  // placed, a card or a notice, or run off the frame, fades out (and back in when it is clear), on the view's clock.
+  _declutter(dt) {
+    if (!this.pageLabels.size) return;
+    const W = this.canvas.clientWidth, H = this.canvas.clientHeight, cam = this.camera, base = this.canvas.getBoundingClientRect();
+    cam.updateMatrixWorld();
+    const ui = [...document.querySelectorAll("#cine .glass")].filter((e) => !e.hidden && e.offsetParent !== null && Number(getComputedStyle(e).opacity) > 0.05)
+      .map((e) => { const r = e.getBoundingClientRect(); return [r.left - base.left, r.top - base.top, r.right - base.left, r.bottom - base.top]; });
+    const v = new THREE.Vector3(), items = [];
+    for (const r of this.pageLabels) {
+      const s = r.sprite;
+      let shown = s.visible && s.material.opacity > 0.01, top = s;
+      for (let p = s.parent; shown && p; p = p.parent) { if (!p.visible) shown = false; top = p; }
+      if (shown && top === this.scene) {
+        s.getWorldPosition(v);
+        r.dist = v.distanceTo(cam.position);
+        v.project(cam);
+        shown = v.z < 1 && Math.abs(v.x) < 1.3 && Math.abs(v.y) < 1.3;
+      } else shown = false;
+      if (!shown) { r.target = 0; continue; }
+      r.k = s.scale.x;   // a smaller label (the arrows' tags) keeps its smaller size
+      if (!r.w) { r.w = r.el.offsetWidth; r.h = r.el.offsetHeight - (r.lift || 0) / r.k; }   // measured once per text, at the usual stem
+      r.x = ((v.x + 1) / 2) * W; r.y = ((1 - v.y) / 2) * H;
+      r.box = [r.x - (r.w * r.k) / 2, r.y - r.h * r.k, r.x + (r.w * r.k) / 2, r.y];
+      if (r.y > H - 36) { r.target = 0; continue; }   // the point it names at the frame's foot: no label
+      items.push(r);
+    }
+    // More important first; between equals, one already showing, then the nearer.
+    items.sort((a, b) => b.prio - a.prio || (b.fade > 0.5) - (a.fade > 0.5) || a.dist - b.dist);
+    const hit = (a, b, m) => a[0] < b[2] + m && a[2] > b[0] - m && a[1] < b[3] + m && a[3] > b[1] - m;
+    // A label (not a place's) that would cover a more important one is first tried higher up on a longer stem (one or
+    // two label heights), and set back only if none is free. A raised label comes down only when there is room to spare, and
+    // otherwise keeps the height it had, so it does not hop.
+    const kept = [];
+    for (const r of items) {
+      const step = r.h * r.k + 4, was = r.liftT || 0;
+      const tries = r.prio < 2 ? [0] : [...new Set(was ? [0, was, step, 2 * step] : [0, step, 2 * step])];   // a place is never raised
+      let at = null;
+      for (const L of tries) {
+        const b = [r.box[0], r.box[1] - L, r.box[2], r.box[3] - L], m = L === 0 && was ? 24 : 0, stem = [r.x - 2, b[3], r.x + 2, r.y];
+        if (b[0] > 12 && b[2] < W - 12 && b[1] > 12 && b[3] < H - 12 && !kept.some((q) => hit(b, q.box, 8 + m)) && !ui.some((u) => hit(b, u, 14 + m) || hit(stem, u, 4))) { at = L; r.box = b; break; }
+      }
+      r.target = at === null ? 0 : 1;
+      if (at !== null) { r.liftT = at; kept.push(r); }
+    }
+    const a = 1 - Math.exp(-dt * 7);
+    for (const r of this.pageLabels) {
+      r.fade += (r.target - r.fade) * a;
+      // A label coming in takes its height at once; one already up glides there.
+      r.lift = r.fade < 0.05 ? r.liftT || 0 : (r.lift || 0) + ((r.liftT || 0) - (r.lift || 0)) * a;
+      const op = r.fade * r.sprite.material.opacity;
+      r.el.style.opacity = op.toFixed(3);
+      r.el.style.visibility = op < 0.004 ? "hidden" : "visible";
+      r.el.style.zIndex = r.lift > 1 ? "1" : "2";   // a raised label's long stem passes behind the labels at their usual height
+      if (r.stem === undefined) r.stem = r.el.querySelector(".stem");
+      r.stem.style.height = `${(20 + r.lift / (r.k || 1)).toFixed(1)}px`;
+      if (r.x != null) r.el.style.transform = `translate(${r.x.toFixed(1)}px, ${r.y.toFixed(1)}px) translate(-50%, -100%) scale(${r.k.toFixed(3)})`;
+    }
   }
 
   _buildOverlay(hello) {
@@ -1370,7 +1606,7 @@ export class SwarmView {
         g.lineWidth = Math.max(1.5, 1.2 * px); g.strokeStyle = `rgba(${rgb},.7)`; g.stroke();
         g.setLineDash([]);
       }
-      if (Array.isArray(s.area) && s.area.length === 4 && s.name) {
+      if (Array.isArray(s.area) && s.area.length === 4 && s.name && !CLEAN) {   // the clean look labels the squads in the air instead
         const k = live.has(s.id) && live.get(s.id).flying != null ? live.get(s.id).flying : s.n;
         const text = k == null ? s.name : `${s.name} · ${k} drone${k === 1 ? "" : "s"}`;
         const fs = Math.round(11 * px);
@@ -1546,9 +1782,112 @@ export class SwarmView {
     markers.renderOrder = 9;
     group.add(markers);
     this.drones = { bodies, blades, leds, rotors, slots, fp, fpRing, markers, R, top };
+    this.navLights = this.trails = null;
+    if (CLEAN) this._buildLightsAndTrails(n, model, R, group);
     this.yaw = new Float32Array(n);
     this.camFootR = hello.sensor ? Math.tan((hello.sensor.fov_deg * Math.PI) / 360) : 0;
     this.resize();
+  }
+
+  // Clean look: position lights on each drone, red to port and green to starboard at its front arms and a white
+  // strobe underneath blinking on the view's clock, bright enough for the bloom to show them from afar; and each
+  // drone's trail, a ribbon a few pixels wide through its positions in the run's latest frames (_drawTrails).
+  _buildLightsAndTrails(n, model, R, group) {
+    const hubs = this.motorOffsets;   // [x, z] in the drone's frame: x forward, z to starboard
+    const pick = (sgn) => hubs.filter(([, z]) => Math.sign(z) === sgn).sort((a, b) => b[0] - a[0])[0] || [0, sgn * R];
+    const port = pick(-1), star = pick(1), y = this.rotorY - 0.02 * R;
+    const lights = new THREE.InstancedMesh(new THREE.SphereGeometry((model ? 0.055 : 0.08) * R, 8, 6),
+      new THREE.MeshBasicMaterial({ color: 0xffffff, toneMapped: false }), n * 3);
+    lights.instanceMatrix.setUsage(THREE.DynamicDrawUsage); lights.frustumCulled = false;
+    const red = new THREE.Color(7, 0.3, 0.2), green = new THREE.Color(0.25, 7, 1.1), white = new THREE.Color(9, 9, 9);
+    for (let i = 0; i < n; i++) { lights.setColorAt(i * 3, red); lights.setColorAt(i * 3 + 1, green); lights.setColorAt(i * 3 + 2, white); }
+    group.add(lights);
+    this.navLights = { lights, at: [[port[0], y, port[1]], [star[0], y, star[1]], [0, -0.28 * R, 0]] };
+    const P = TRAIL_PTS, cnt = n * P * 2, g = new THREE.BufferGeometry();
+    const attr = (k) => new THREE.BufferAttribute(new Float32Array(cnt * k), k).setUsage(THREE.DynamicDrawUsage);
+    for (const [k, w] of [["position", 3], ["aPrev", 3], ["aNext", 3], ["aCol", 3], ["aA", 1]]) g.setAttribute(k, attr(w));
+    g.setAttribute("aSide", new THREE.BufferAttribute(Float32Array.from({ length: cnt }, (_, k) => (k % 2 ? 1 : -1)), 1));
+    const idx = [];
+    for (let i = 0; i < n; i++) for (let k = 0; k + 1 < P; k++) { const a = (i * P + k) * 2; idx.push(a, a + 1, a + 2, a + 1, a + 3, a + 2); }
+    g.setIndex(idx);
+    const trails = new THREE.Mesh(g, new THREE.ShaderMaterial({
+      uniforms: { uRes: { value: new THREE.Vector2(1920, 1080) }, uHalf: { value: TRAIL_PX / 2 } },
+      vertexShader: `attribute vec3 aPrev; attribute vec3 aNext; attribute vec3 aCol; attribute float aA; attribute float aSide;
+        uniform vec2 uRes; uniform float uHalf; varying vec3 vCol; varying float vA;
+        void main() {
+          mat4 m = projectionMatrix * modelViewMatrix;
+          vec4 c = m * vec4(position, 1.0), p = m * vec4(aPrev, 1.0), q = m * vec4(aNext, 1.0);
+          vec2 d = (q.xy / q.w - p.xy / p.w) * uRes;
+          d = length(d) > 1e-4 ? normalize(d) : vec2(1.0, 0.0);
+          c.xy += vec2(-d.y, d.x) * aSide * uHalf * 2.0 / uRes * c.w;
+          gl_Position = c; vCol = aCol; vA = aA; }`,
+      fragmentShader: "varying vec3 vCol; varying float vA; void main() { gl_FragColor = vec4(vCol, vA); }",
+      transparent: true, depthWrite: false }));
+    trails.frustumCulled = false; trails.renderOrder = 7;
+    group.add(trails);
+    this.trails = trails;
+  }
+
+  // Each flying drone's trail: its positions in the frames of the last TRAIL_S simulated seconds, then where it is
+  // drawn now, fading out towards the oldest. Unused points sit on the newest one, invisible.
+  _drawTrails(now, f, sqOf) {
+    const P = TRAIL_PTS, g = this.trails.geometry, at = this.dronePos;
+    const pos = g.attributes.position.array, prev = g.attributes.aPrev.array, next = g.attributes.aNext.array;
+    const col = g.attributes.aCol.array, al = g.attributes.aA.array;
+    const hist = this.trailHist.filter((h) => h.t < now - 0.02 && h.t > now - TRAIL_S);
+    const pts = [];
+    for (let i = 0; i < this.n; i++) {
+      pts.length = 0;
+      if (f.s[i] === 0) {
+        for (const h of hist) if (h.s[i] === 0 && h.p[i]) { const q = h.p[i]; pts.push([q[0], q[2], -q[1], (now - h.t) / TRAIL_S]); }
+        pts.push([at[i][0], at[i][1], at[i][2], 0]);
+      }
+      const first = Math.max(0, pts.length - P), m = pts.length - first;
+      const c = sqOf ? this._squadColour(sqOf[i]) : STATUS_COLOR[0];
+      for (let k = 0; k < P; k++) {
+        const kk = Math.min(k, Math.max(0, m - 1));
+        const cur = pts[first + kk], pv = pts[first + Math.max(0, kk - 1)], nx = pts[first + Math.min(m - 1, kk + 1)];
+        const a = m && k < m ? 0.6 * Math.pow(1 - cur[3], 1.5) : 0;
+        for (let v = 0; v < 2; v++) {
+          const o = (i * P + k) * 2 + v;
+          if (!m) { pos.fill(0, o * 3, o * 3 + 3); al[o] = 0; continue; }
+          pos[o * 3] = cur[0]; pos[o * 3 + 1] = cur[1]; pos[o * 3 + 2] = cur[2];
+          prev[o * 3] = pv[0]; prev[o * 3 + 1] = pv[1]; prev[o * 3 + 2] = pv[2];
+          next[o * 3] = nx[0]; next[o * 3 + 1] = nx[1]; next[o * 3 + 2] = nx[2];
+          col[o * 3] = c.r; col[o * 3 + 1] = c.g; col[o * 3 + 2] = c.b;
+          al[o] = a;
+        }
+      }
+    }
+    for (const k of ["position", "aPrev", "aNext", "aCol", "aA"]) g.attributes[k].needsUpdate = true;
+    this.trails.visible = this.mode !== "close" && this.mode !== "ride";   // among the drones they would cross the picture
+  }
+
+  // Clean look, squad runs: each squad's name and drones flying, over the middle of its flying drones.
+  _buildSquadLabels() {
+    this.squadLabels = new Map();
+    for (const s of this.squads) this._squadLabel(s);
+  }
+  _squadLabel(s) {
+    const st = this.squadStyles.get(s.id) || squadStyle(s.code, s.id), lab = this._label(String(s.name || s.code), `rgb(${st.rgb})`, "squad");
+    lab.visible = false;
+    this.world.add(lab);
+    const rec = { lab, text: "" };
+    this.squadLabels.set(s.id, rec);
+    return rec;
+  }
+  _placeSquadLabels(sqOf, f) {
+    const at = this.dronePos;
+    for (const s of this.squads) {
+      const rec = this.squadLabels.get(s.id) || this._squadLabel(s);
+      let k = 0, x = 0, z = 0, top = -Infinity;
+      for (let i = 0; i < at.length; i++) if (f.s[i] === 0 && sqOf[i] === s.id) { k++; x += at[i][0]; z += at[i][2]; top = Math.max(top, at[i][1]); }
+      rec.lab.visible = k > 0;
+      if (!k) continue;
+      rec.lab.position.set(x / k, top + 5, z / k);
+      const text = `${s.name || s.code} · ${k} drone${k === 1 ? "" : "s"}`;
+      if (text !== rec.text) { rec.text = text; rec.lab.userData.setText(text); }
+    }
   }
 
   // -- per frame ----------------------------------------------------------------------------------
@@ -1564,6 +1903,10 @@ export class SwarmView {
     this.cur = { t: f.t, p, at: now, interval: this.prev ? Math.min(400, Math.max(30, now - this.prev.at)) : 100 };
     this.simLatest = f.t;
     this.lastFrame = f;
+    if (CLEAN) {   // the drones' trails are drawn from these, the run's own positions
+      this.trailHist.push({ t: f.t, p: f.p, s: f.s });
+      while (this.trailHist.length > TRAIL_PTS + 8) this.trailHist.shift();
+    }
     if (this.squads) this.squadLive = f.squads || null;
     this.wind.set(f.wind[0], 0, -f.wind[1]);
     if (f.found) f.found.forEach((hit, i) => {
@@ -1606,6 +1949,7 @@ export class SwarmView {
   setMode(mode, cut = false) {
     this.mode = mode;
     this.fireLook = this.fireHold = null;
+    this.modeAt = this.vt; this.moveDir = null; this.lowHd = null;   // the crane, dolly and low views run from here
     if (cut) {
       this.cut = true;
       if (this.ride) this.ride.offset = this.ride.target = this.ride.aim = null;
@@ -1623,7 +1967,7 @@ export class SwarmView {
   setZoom(z) {
     this.zoom = Math.max(0.3, Math.min(4, Number(z) || 1));
     const c = this.sun.shadow.camera, half = 140 * Math.max(1, this.zoom);
-    c.left = -half; c.right = half; c.top = half; c.bottom = -half; c.far = 900 * Math.max(1, this.zoom);
+    c.left = -half; c.right = half; c.top = half; c.bottom = -half; c.far = (CLEAN ? this.shadowFar : 900) * Math.max(1, this.zoom);
     c.updateProjectionMatrix();
   }
 
@@ -1635,13 +1979,18 @@ export class SwarmView {
     this.camera.updateProjectionMatrix();
     const pr = this.renderer.getPixelRatio();
     this.smoke.points.material.uniforms.uScale.value = this.flames.points.material.uniforms.uScale.value = r.height * pr * 0.9;
-    if (this.drones) this.drones.markers.material.uniforms.uSize.value = Math.max(11, Math.min(18, r.height / 70)) * pr;
+    if (this.drones) this.drones.markers.material.uniforms.uSize.value = Math.max(11, Math.min(18, r.height / 70)) * pr * (CLEAN ? 1.6 : 1);
+    if (this.trails) {
+      this.trails.material.uniforms.uRes.value.set(r.width * pr, r.height * pr);
+      this.trails.material.uniforms.uHalf.value = (TRAIL_PX / 2) * (r.height * pr) / 1080;
+    }
   }
 
   // One view step: dtView in view seconds (camera, spinning rotors), dtSim in simulated seconds
   // (particles), simNow the simulated time to draw drones at (null: interpolate on the wall clock).
   _step(dtView, dtSim, simNow) {
     this.vt += dtView;
+    const cut = this.cut;
     if (this.cut && this.hello && this.cur) this._camera(0);   // a cut: move the camera first, so the drones' drawn size and the cutaway use it
     if (this.hello && this.cur) this._drawDrones(simNow);
     this._drawFire(dtSim, this.vt);
@@ -1666,7 +2015,28 @@ export class SwarmView {
     const sv = SUN_DIR.clone().transformDirection(this.camera.matrixWorldInverse), side = Math.hypot(sv.x, sv.y);
     this.smoke.points.material.uniforms.uSun.value.set(sv.x / Math.max(1e-3, side), -sv.y / Math.max(1e-3, side), 0.9 * Math.min(1, side));
     for (const p of [...(this.sceneryPlants || []), ...(this.worldPlants || [])]) p.update(this.camera.position);
+    if (CLEAN) { this._frameShift(dtView, cut); this._declutter(dtView); }
     if (this.fx) this.fx.render(); else this.renderer.render(this.scene, this.camera);
+  }
+
+  // Clean look: with a card up on the right, the picture's centre (what the camera looks at: the fire, the swarm)
+  // moves left into the open part of the frame, and a little up, clear of the toasts; it glides when a card comes or
+  // goes, and moves at once on a cut. Only the framing moves (the camera's view offset); nothing in the scene does.
+  _frameShift(dt, cut) {
+    const cards = document.querySelector("#cine .cine-cards");
+    const W = this.canvas.clientWidth, H = this.canvas.clientHeight;
+    let wx = 0;
+    if (cards && cards.children.length && cards.offsetParent !== null) {
+      const r = cards.getBoundingClientRect(), base = this.canvas.getBoundingClientRect();
+      if (r.width > 0 && r.left - base.left > W * 0.4) wx = Math.min(W * 0.2, (base.right - r.left) / 2);
+    }
+    const wy = H * 0.05, k = cut || this.shiftX == null ? 1 : 1 - Math.exp(-dt * 1.2);
+    this.shiftX = (this.shiftX ?? 0) + (wx - (this.shiftX ?? 0)) * k;
+    this.shiftY = (this.shiftY ?? 0) + (wy - (this.shiftY ?? 0)) * k;
+    const v = this.camera.view;
+    if (!v || Math.abs(v.offsetX - this.shiftX) > 0.05 || Math.abs(v.offsetY - this.shiftY) > 0.05 || v.fullWidth !== W || v.fullHeight !== H) {
+      this.camera.setViewOffset(W, H, this.shiftX, this.shiftY, W, H);
+    }
   }
 
   // Film mode: draw the scene at simulated time simNow, one video frame of dtView seconds after the last.
@@ -1711,6 +2081,14 @@ export class SwarmView {
       leds.setMatrixAt(i, m.matrix.clone().multiply(part.matrix));
       const col = STATUS_COLOR[st] || STATUS_COLOR[0];
       leds.setColorAt(i, col);
+      if (this.navLights) {   // on while the rotors turn; the strobe flashes briefly about once a second
+        const on = st === 0 || st === 3;
+        this.navLights.at.forEach((o, k) => {
+          const lit = on && (k < 2 || (t * 0.85 + i * 0.37) % 1 < 0.07);
+          part.position.set(o[0], o[1], o[2]); part.rotation.set(0, 0, 0); part.scale.setScalar(lit ? 1 : 1e-4); part.updateMatrix();
+          this.navLights.lights.setMatrixAt(i * 3 + k, m.matrix.clone().multiply(part.matrix));
+        });
+      }
       const turning = st === 0 || st === 3, spin = turning ? t * 55 + i : 0;
       this.motorOffsets.forEach(([ox, oz], j) => {
         part.position.set(ox, this.rotorY, oz); part.rotation.set(0, (j % 2 ? 1 : -1) * spin, 0);
@@ -1744,6 +2122,9 @@ export class SwarmView {
     leds.instanceColor.needsUpdate = true;
     if (sqOf && slots.instanceColor) slots.instanceColor.needsUpdate = true;
     mPos.needsUpdate = mCol.needsUpdate = mAlpha.needsUpdate = true;
+    if (this.navLights) this.navLights.lights.instanceMatrix.needsUpdate = true;
+    if (this.trails) this._drawTrails(simNow ?? this.simLatest, f, sqOf);
+    if (this.squadLabels) this._placeSquadLabels(sqOf, f);
     this.droneGroup.visible = true;
     this._frameSwarm(pts.length ? pts : others);
   }
@@ -1877,6 +2258,37 @@ export class SwarmView {
       want = new THREE.Vector3(f.x - Math.cos(hd) * back, f.y + (10 + e * 0.28) * z, f.z + Math.sin(hd) * back);
     } else if (this.mode === "top" && !this.userMoved) {
       want = new THREE.Vector3(f.x, f.y + Math.max(150, e * 2.6 + 70) * z, f.z + 1);
+    } else if ((this.mode === "crane" || this.mode === "dolly") && !this.userMoved) {
+      // Crane: from low on the side the camera is on, rising and pulling back over about 16 s while turning slowly.
+      // Dolly: a slow sideways track past the swarm at the follow view's height, keeping it in frame.
+      const tau = this.vt - (this.modeAt ?? this.vt);
+      if (!this.moveDir) {
+        const d = this.camera.position.clone().sub(f); d.y = 0;
+        if (d.lengthSq() < 1) d.set(-0.6, 0, 0.8);
+        this.moveDir = d.normalize();
+      }
+      const d = this.moveDir;
+      if (this.mode === "crane") {
+        const u = smooth(0, 16, tau), ang = Math.atan2(d.z, d.x) + tau * 0.014;
+        const el = ((6 + 28 * u) * Math.PI) / 180, dist = (e * 1.45 + 75) * z * (0.78 + 0.4 * u);
+        want = new THREE.Vector3(f.x + Math.cos(ang) * Math.cos(el) * dist, f.y + Math.sin(el) * dist, f.z + Math.sin(ang) * Math.cos(el) * dist);
+        aim = dist * 0.1 * (1 - u);
+      } else {
+        const dist = (e * 1.35 + 70) * z, side = new THREE.Vector3(-d.z, 0, d.x);
+        want = f.clone().addScaledVector(d, dist * 0.92).addScaledVector(side, dist * 0.04 * (tau - 6)).add(new THREE.Vector3(0, dist * 0.32, 0));
+        aim = dist * 0.13;
+      }
+    } else if (this.mode === "low" && !this.userMoved && this.lastFrame) {
+      // Low pass: just over the treetops behind the framed squad (squadFocus) or swarm, looking past it the way it
+      // flies, drifting slowly from one side to the other; the heading is smoothed so a lane's end turns it gently.
+      const tau = this.vt - (this.modeAt ?? this.vt), hd = this._heading();
+      this.lowHd = this.lowHd == null ? hd : this.lowHd + Math.atan2(Math.sin(hd - this.lowHd), Math.cos(hd - this.lowHd)) * (1 - Math.exp(-dt * 0.5));
+      const h = this.lowHd, back = (e * 0.9 + 34) * z, lat = back * 0.4 * Math.sin(tau * 0.08 - 0.7);
+      const fwd = new THREE.Vector3(Math.cos(h), 0, -Math.sin(h)), right = new THREE.Vector3(Math.sin(h), 0, Math.cos(h));
+      const gx = f.x - fwd.x * back + right.x * lat, gz = f.z - fwd.z * back + right.z * lat;
+      const ground = this.sceneryHeight ? this.sceneryHeight(gx, -gz) : 0, canopy = this._canopyAt(gx, -gz);
+      want = new THREE.Vector3(gx, Math.max(f.y - 4, ground + canopy + 9), gz);
+      aim = -3;
     }
     if (want) this.camera.position.lerp(want, snap ? 1 : this.film ? Math.min(1, dt * 2.5) : k);
     // Never under the ground (on a run with hills the camera can swing behind a slope).
@@ -1884,6 +2296,16 @@ export class SwarmView {
     if (cp.y < floor) cp.y = floor;
     this.aim = this.aim == null ? aim : this.aim + (aim - this.aim) * k;
     this.controls.target.set(f.x, f.y + this.aim, f.z);
+  }
+
+  // The tallest tree crown within a cell of (x, y), simulated metres north and east (0 off the run's land cover).
+  _canopyAt(x, y) {
+    const lc = this.landcover;
+    if (!lc || !lc.canopy_m) return 0;
+    const ix = Math.round((x - lc.x0) / lc.cell_m), iy = Math.round((y - lc.y0) / lc.cell_m);
+    let h = 0;
+    for (let j = iy - 1; j <= iy + 1; j++) for (let i = ix - 1; i <= ix + 1; i++) if (i >= 0 && j >= 0 && i < lc.nx && j < lc.ny) h = Math.max(h, lc.canopy_m[j * lc.nx + i] || 0);
+    return h;
   }
 
   // The way the framed drones fly (radians, 0 east, anticlockwise): the focused squad's, else the run's.

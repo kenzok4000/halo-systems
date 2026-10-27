@@ -4,7 +4,7 @@
 // forecast, its evacuation alerts and the simulated phones they go to. Flame and smoke particles are
 // drawn at the simulated burning cells and rise to the simulated plume tops; their look is decoration.
 import * as THREE from "three";
-import { hash, noise2, stoneColors } from "/static/util3d.js";
+import { hash, noise2, stoneColors, CLEAN } from "/static/util3d.js";
 
 const FLAME_S = 300;   // a cell is drawn flaming for this long after the fire reaches it, then charred
 const UP = 4;          // overlay grids are drawn this many pixels per cell, so their edges are smooth curves
@@ -27,7 +27,31 @@ const COMPASS = ["east", "east-northeast", "northeast", "north-northeast", "nort
 const HEAD_MIN = 60;   // a head arrow runs to where the brief puts the fire's head this many minutes from now (head_xy)
 const GROW_S = 1.6;    // view seconds an arrow takes to draw itself out when the crews are told of its fire
 // A phone's dot, by the latest alert level it received (0: none or cleared).
+// Clean look: labels stand on a stem down to the point they name, so they are anchored just above the ground.
+const LABEL_UP = CLEAN ? { place: 3, fire: 3, head: 2 } : { place: 18, fire: 16, head: 6 };
 const PHONE_RGB = { 0: [0.93, 0.95, 0.97], 1: [1.0, 0.62, 0.12], 2: [1.0, 0.24, 0.24], 3: [1.0, 0.26, 0.22], 4: [0.74, 0.38, 1.0], 5: [0.2, 0.2, 0.24] };
+
+// Clean look: the head arrow more solid and brighter (a little above sunlit ground, so the bloom lifts it), with
+// light chevrons and a crisp light rim that keep it apart from the orange forecast bands under it.
+// The part of an arrow much nearer the camera than what it looks at (a low orbit passing over one) fades out, so it
+// does not sweep across the frame huge.
+const ARROW_CLEAN_VS = `attribute float aU; attribute float aV; varying float vU; varying float vV; varying float vD;
+  void main() { vU = aU; vV = aV; vec4 mv = modelViewMatrix * vec4(position, 1.0); vD = -mv.z; gl_Position = projectionMatrix * mv; }`;
+const ARROW_CLEAN = `uniform float uT, uAlpha, uGrow, uNear; varying float vU; varying float vV; varying float vD;
+  void main() {
+    float edge = smoothstep(0.78, 0.95, abs(vV));
+    float c = fract((vU + abs(vV) * 5.0) / 16.0 - uT * 0.45);
+    float band = smoothstep(0.0, 0.06, c) * (1.0 - smoothstep(0.28, 0.36, c));
+    // A spreading fire's arrow (uAlpha 0.95) solid and bright; a what-if arrow (a smouldering fire's, or a spreading
+    // one whose direction is unsure) stays faint and plain, as before.
+    float sure = smoothstep(0.6, 0.9, uAlpha);
+    float a = uAlpha * smoothstep(0.0, 16.0, vU) * mix(0.3 + 0.45 * band + 0.3 * edge, 0.62 + 0.3 * band + 0.38 * edge, sure)
+      * (1.0 - smoothstep(uGrow - 10.0, uGrow, vU)) * smoothstep(0.35 * uNear, 0.65 * uNear, vD);
+    vec3 col = mix(vec3(1.0, 0.36, 0.08), vec3(1.0, 0.9, 0.72), band * 0.75);
+    col = mix(col, vec3(1.0, 0.97, 0.92), edge * 0.85 * sure);
+    gl_FragColor = vec4(pow(col, vec3(2.2)) * mix(1.0, 1.35, sure), min(1.0, a));
+    #include <colorspace_fragment>
+  }`;
 
 export class WildfireLayer {
   constructor(view, hello) {
@@ -44,6 +68,7 @@ export class WildfireLayer {
     this.forecast = null;        // the latest forecast event
     this.told = new Map();       // fire -> simulated time of its latest crew update
     this.arrows = new Map();     // fire -> its head arrow { mesh, tags, L, born, pending }
+    this.nearU = { value: 400 };  // clean look: the camera's distance to what it looks at (the arrows' near fade)
     this.into = new Map();       // a merged fire -> the fire it was merged into
     this.t = 0;
     this.group = new THREE.Group();
@@ -59,8 +84,8 @@ export class WildfireLayer {
     this._overhangs(wf.overhangs || []);
     this._phones(wf.phones, new Set(hello.wildfire.phones_unreachable || []));
     for (const p of wf.places || []) {
-      const label = view._label(p.name, "#7cc4ff");
-      label.position.set(p.x, view.groundAt(p.x, p.y) + 18, -p.y);
+      const label = view._label(p.name, "#7cc4ff", "place");
+      label.position.set(p.x, view.groundAt(p.x, p.y) + LABEL_UP.place, -p.y);
       this.group.add(label);
     }
     this.labels = new Map();     // located fire id -> label sprite
@@ -238,12 +263,12 @@ export class WildfireLayer {
       const text = `Fire ${l.id + 1} · ${l.by === "thermal" ? "thermal fix" : "from smoke"} ±${Math.max(1, Math.round(l.err_m))} m`;
       let label = this.labels.get(l.id);
       if (!label) {
-        label = this.view._label(text);
+        label = this.view._label(text, "#ff8a3d", "fire");
         this.labels.set(l.id, label);
         this.group.add(label);
       }
       if (label.userData.text !== text) { label.userData.setText(text); changed = true; }
-      label.position.set(l.x, this.view.groundAt(l.x, l.y) + 16, -l.y);
+      label.position.set(l.x, this.view.groundAt(l.x, l.y) + LABEL_UP.fire, -l.y);
     }
     // A located fire folded into another (both on one patch of burning ground) drops out of the list.
     const ids = new Set(list.map((l) => l.id));
@@ -427,18 +452,27 @@ export class WildfireLayer {
     this.zones.forEach((z, i) => {
       const lvl = this.zoneLevel[i], rgb = ZONE_RGB[lvl];
       path(z.polygon);
-      if (rgb) {
+      if (rgb && CLEAN) {
+        // Clean look: a clearer edge, a deep colour line over a soft dark one, with a wider glow inside it.
+        g.fillStyle = `rgba(${rgb},${lvl === 5 ? 0.16 : 0.1})`; g.fill();
+        g.save(); g.clip();
+        g.lineWidth = 22 * px; g.strokeStyle = `rgba(${rgb},${lvl === 5 ? 0.3 : 0.2})`; g.stroke();
+        g.lineWidth = 8 * px; g.strokeStyle = `rgba(${rgb},.42)`; g.stroke();
+        g.restore();
+        g.lineWidth = Math.max(4, 3.4 * px); g.strokeStyle = "rgba(14,12,20,.35)"; g.stroke();
+        g.lineWidth = Math.max(2.5, 2 * px); g.strokeStyle = `rgba(${rgb},1)`; g.stroke();
+      } else if (rgb) {
         g.fillStyle = `rgba(${rgb},${lvl === 5 ? 0.12 : 0.07})`; g.fill();
         g.save(); g.clip();
         g.lineWidth = 14 * px; g.strokeStyle = `rgba(${rgb},${lvl === 5 ? 0.32 : 0.24})`; g.stroke();
         g.restore();
         g.lineWidth = Math.max(2.5, 1.1 * px); g.strokeStyle = `rgba(${rgb},.95)`; g.stroke();
       } else {
-        g.lineWidth = Math.max(1, 0.4 * px); g.strokeStyle = "rgba(255,255,255,.45)";
+        g.lineWidth = Math.max(1, 0.4 * px); g.strokeStyle = CLEAN ? "rgba(255,255,255,.3)" : "rgba(255,255,255,.45)";
         g.setLineDash([3 * px, 3 * px]); g.stroke(); g.setLineDash([]);
       }
       const [cu, cw] = z.polygon.reduce(([a, b], p) => { const [u, w] = v._toPx(p[0], p[1]); return [a + u / z.polygon.length, b + w / z.polygon.length]; }, [0, 0]);
-      g.font = `600 ${Math.round(9 * px)}px Inter, system-ui, sans-serif`; g.textAlign = "center"; g.textBaseline = "middle";
+      g.font = `${CLEAN ? 700 : 600} ${Math.round((CLEAN ? 12 : 9) * px)}px Inter, system-ui, sans-serif`; g.textAlign = "center"; g.textBaseline = "middle";
       g.lineWidth = Math.max(2, 0.8 * px); g.strokeStyle = "rgba(20,20,24,.55)"; g.strokeText(z.code, cu, cw);
       g.fillStyle = rgb ? "rgba(255,255,255,.95)" : "rgba(255,255,255,.7)"; g.fillText(z.code, cu, cw);
     });
@@ -522,9 +556,9 @@ export class WildfireLayer {
       if (spreading) {   // only a spreading fire's arrow is labelled
         const name = `Fire ${b.fire + 1}`;
         const text = !sure ? `${name} · direction uncertain` : timed ? `${name} head in ${mins >= 60 ? `${+(mins / 60).toFixed(1)} h` : `${mins} min`}` : `${name} heading ${b.direction}`;
-        const tag = this.view._label(text, "#ff9a4a");
-        tag.position.copy(arrow.tip).add(new THREE.Vector3(0, 6, 0));
-        tag.scale.multiplyScalar(0.8);
+        const tag = this.view._label(text, "#ff9a4a", "head");
+        tag.position.copy(arrow.tip).add(new THREE.Vector3(0, LABEL_UP.head, 0));
+        tag.scale.multiplyScalar(CLEAN ? 0.92 : 0.8);
         rec.tags.push(tag);
         for (const t of rec.tags) { t.material.opacity = 0; this.heads.push(t); this.group.add(t); }
       }
@@ -541,6 +575,7 @@ export class WildfireLayer {
     this.tick(this.view.vt);
   }
   tick(vt) {
+    if (CLEAN) this.nearU.value = Math.max(60, this.view.camera.position.distanceTo(this.view.focus));
     for (const r of this.arrows.values()) {
       if (r.born == null) continue;
       const k = Math.max(0, Math.min(1, (vt - r.born) / GROW_S)), ease = 1 - (1 - k) ** 3;
@@ -583,7 +618,7 @@ export class WildfireLayer {
     const h = top.map((_, i) => { const w = top.slice(Math.max(0, i - 10), i + 11); return w.reduce((a, b) => a + b, 0) / w.length; });
     const len = [0];
     for (let i = 1; i < path.length; i++) len.push(len[i - 1] + Math.hypot(path[i][0] - path[i - 1][0], path[i][1] - path[i - 1][1]));
-    const L = len[len.length - 1], W = thin * Math.max(3.5, Math.min(9, L * 0.03)), headL = Math.min(L * 0.3, W * 4.2);
+    const L = len[len.length - 1], W = thin * Math.max(3.5, Math.min(9, L * 0.03)) * (CLEAN ? 1.2 : 1), headL = Math.min(L * 0.3, W * 4.2);
     const pos = [], aU = [], aV = [], idx = [];
     const push = (i, w) => {
       const p = path[i], q = path[Math.min(path.length - 1, i + 1)], o = path[Math.max(0, i - 1)];
@@ -607,10 +642,10 @@ export class WildfireLayer {
     geo.setAttribute("aV", new THREE.Float32BufferAttribute(aV, 1));
     geo.setIndex(idx);
     const mat = new THREE.ShaderMaterial({
-      uniforms: { uT: this.view.swayT, uAlpha: { value: alpha }, uGrow: { value: 1e6 } },
-      vertexShader: `attribute float aU; attribute float aV; varying float vU; varying float vV;
+      uniforms: { uT: this.view.swayT, uAlpha: { value: alpha }, uGrow: { value: 1e6 }, ...(CLEAN ? { uNear: this.nearU } : {}) },
+      vertexShader: CLEAN ? ARROW_CLEAN_VS : `attribute float aU; attribute float aV; varying float vU; varying float vV;
         void main() { vU = aU; vV = aV; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }`,
-      fragmentShader: `uniform float uT, uAlpha, uGrow; varying float vU; varying float vV;
+      fragmentShader: CLEAN ? ARROW_CLEAN : `uniform float uT, uAlpha, uGrow; varying float vU; varying float vV;
         void main() {
           float edge = smoothstep(0.7, 1.0, abs(vV));
           float c = fract((vU + abs(vV) * 5.0) / 16.0 - uT * 0.45);           // chevrons, moving towards the head

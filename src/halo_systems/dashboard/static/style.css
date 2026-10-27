@@ -281,3 +281,87 @@ body.cinema #wind svg { width: 22px; height: 22px; fill: #7fb6ff; }
 .cine-stats .s.hold { padding-left: 26px; border-left: 1px solid rgba(255, 255, 255, .16); }
 .cine-stats .s.hold b { color: #c9d4ff; white-space: nowrap; }
 .cine-stats .plane { width: 26px; height: 26px; margin-right: 9px; vertical-align: -3px; fill: #c9d4ff; }
+
+/* The clean film layout (?clean=1: cinema.js, the recorder's --clean) and the clean 3D look's labels (scene3d.js
+   _pageLabel). Only a page opened with clean=1 has these classes and the #labels layer, so every other layout looks as
+   before. One slim badge, the clock, lower-third toasts in large type, and only the cards a shot asks for, large. */
+body.clean { --edge: 36px; }
+#labels { position: absolute; inset: 0; pointer-events: none; overflow: hidden; }
+#labels .lbl { position: absolute; left: 0; top: 0; display: flex; flex-direction: column; align-items: center; transform-origin: 50% 100%; visibility: hidden; }
+#labels .pill { display: flex; align-items: center; gap: 9px; padding: 6px 15px 7px 11px; border-radius: 999px; background: rgba(13, 17, 23, .78);
+  border: 1px solid rgba(255, 255, 255, .17); color: #f6f8fa; font: 600 22px/1.15 Inter, "Segoe UI", system-ui, sans-serif; white-space: nowrap;
+  letter-spacing: -.003em; box-shadow: 0 6px 18px rgba(0, 0, 0, .3); }
+#labels .pill i { width: 10px; height: 10px; border-radius: 50%; flex: none; box-shadow: 0 0 0 3px rgba(255, 255, 255, .12); }
+#labels .stem { position: relative; width: 2px; height: 20px; background: rgba(255, 255, 255, .78); }
+#labels .stem::after { content: ""; position: absolute; left: -3px; bottom: -4px; width: 8px; height: 8px; border-radius: 50%; background: #fff;
+  box-shadow: 0 0 0 2px rgba(10, 14, 20, .5); }
+#labels .lbl-fire .pill { background: rgba(46, 20, 10, .82); border-color: rgba(255, 150, 90, .5); }
+#labels .lbl-head .pill { background: rgba(46, 20, 10, .82); border-color: rgba(255, 170, 110, .45); }
+#cine.clean { font-family: Inter, "Segoe UI", system-ui, sans-serif; }
+#cine.clean .glass { background: rgba(11, 15, 21, .6); border: 1px solid rgba(255, 255, 255, .12); border-radius: 16px;
+  backdrop-filter: blur(14px) saturate(1.2); box-shadow: 0 12px 34px rgba(0, 0, 0, .24); }
+#cine.clean .cine-title { left: var(--edge); top: var(--edge); padding: 12px 20px 13px 14px; max-width: 1180px; }
+#cine.clean .cine-head { display: flex; align-items: center; gap: 13px; }
+#cine.clean .cine-head .badge { font-size: 13px; font-weight: 700; letter-spacing: .14em; padding: 5px 9px 4px; border-radius: 7px; color: #fff;
+  background: rgba(222, 78, 58, .92); line-height: 1; }
+#cine.clean .cine-scn { font: 650 26px/1.1 "Inter Display", Inter, sans-serif; letter-spacing: -.01em; margin: 0; white-space: nowrap; }
+#cine.clean .cine-scn .seed { margin-left: 12px; font: 500 19px Inter, sans-serif; color: #b3bfcb; letter-spacing: 0; }
+#cine.clean .cine-brand { margin-left: auto; padding-left: 26px; font-size: 12px; letter-spacing: .2em; color: #9fd8d1; font-weight: 700; white-space: nowrap; }
+#cine.clean .cine-sub { margin-top: 6px; font-size: 18px; color: #c6cfd9; padding-left: 2px; }
+#cine.clean .cine-note:empty { display: none; }
+#cine.clean .cine-clock { right: var(--edge); top: var(--edge); padding: 11px 20px 12px 22px; display: grid; grid-template-columns: auto auto;
+  column-gap: 14px; row-gap: 2px; align-items: center; }
+#cine.clean .cine-clock .t { grid-row: 1 / span 2; font: 600 42px/1 "Inter Display", Inter, sans-serif; font-variant-numeric: tabular-nums; letter-spacing: -.01em; }
+#cine.clean .cine-clock .k { font-size: 13px; font-weight: 600; letter-spacing: .14em; color: #aeb9c5; text-transform: uppercase; }
+#cine.clean .cine-clock .speed { font-size: 16px; font-weight: 650; color: #ffd28a; }
+body.clean #wind { top: calc(var(--edge) + 90px); right: var(--edge); font-size: 15px; padding: 5px 13px 5px 8px; border-radius: 999px;
+  background: rgba(11, 15, 21, .55); border-color: rgba(255, 255, 255, .12); }
+#cine.clean .cine-notices { left: var(--edge); bottom: var(--edge); width: 1000px; gap: 10px; align-items: flex-start; }
+#cine.clean .toast { position: relative; max-width: 1000px; padding: 12px 26px 14px 26px; border-left: 0 !important; border-radius: 18px; --tc: #5fd3c6; }
+#cine.clean .toast::before { content: ""; position: absolute; left: 0; top: 16px; bottom: 16px; width: 5px; border-radius: 0 4px 4px 0; background: var(--tc); }
+#cine.clean .toast .eyebrow { font-size: 15px; font-weight: 700; letter-spacing: .13em; text-transform: uppercase; color: var(--tc); margin-bottom: 4px; }
+#cine.clean .toast b { display: block; font: 650 33px/1.14 "Inter Display", Inter, sans-serif; letter-spacing: -.008em; color: #fbfcfd; }
+#cine.clean .toast span { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; margin-top: 6px;
+  font-size: 22px; line-height: 1.3; color: #cfd7e0; }
+#cine.clean .toast.alert { --tc: #c98bff; } #cine.clean .toast.dispatch { --tc: #ff6f96; } #cine.clean .toast.crew { --tc: #ffa45c; }
+#cine.clean .toast.fire { --tc: #ffb347; } #cine.clean .toast.station { --tc: #ffc861; } #cine.clean .toast.squad { --tc: #4fc3f7; }
+#cine.clean .toast.squad.sq-N { --tc: #9ccc65; } #cine.clean .toast.squad.sq-S { --tc: #ffd54f; } #cine.clean .toast.aircraft { --tc: #a3b8ff; }
+#cine.clean .toast.bad { --tc: #ff6b5e; } #cine.clean .toast.event { --tc: #f2c94c; } #cine.clean .toast.nemotron { --tc: #8ed11a; }
+#cine.clean .cine-cards { top: calc(var(--edge) + 140px); width: 610px; gap: 16px; }
+#cine.clean .cine-cards .card { padding: 18px 24px 16px; }
+#cine.clean .cine-cards h4 { font-size: 15px; margin-bottom: 12px; }
+#cine.clean .cine-cards h4 .when { font-size: 15px; white-space: normal; text-align: right; line-height: 1.3; }
+#cine.clean .cine-cards .why { font-size: 18px; }
+#cine.clean .cine-cards .brief li { gap: 16px; padding: 11px 0; font-size: 23px; }
+#cine.clean .cine-cards .brief .line { font-size: 20px; line-height: 1.32; }
+#cine.clean .cine-cards .brief .st { font-size: 15px; padding: 2px 8px; }
+#cine.clean .cine-cards .cone { font-size: 16px; }
+#cine.clean .rose { flex-basis: 60px; width: 60px; height: 60px; }
+#cine.clean .cine-cards .bands { font-size: 16px; margin-top: 10px; }
+#cine.clean .cine-cards .zones li { font-size: 22px; padding: 7px 0; gap: 12px; }
+#cine.clean .cine-cards .zones .lvl { font-size: 16px; padding: 3px 10px; }
+#cine.clean .cine-cards .zones li { align-items: baseline; }
+#cine.clean .cine-cards .zones .lvl { flex: none; align-self: center; }
+#cine.clean .cine-cards .zones .name { white-space: normal; line-height: 1.25; }
+#cine.clean .cine-cards .key { font-size: 16px; margin-top: 8px; }
+#cine.clean .cine-cards .dispatch li, #cine.clean .cine-cards .squads li { font-size: 22px; padding: 8px 0; }
+#cine.clean .cine-cards .dispatch .line { font-size: 18px; }
+#cine.clean .cine-cards .dispatch .st, #cine.clean .cine-cards .dispatch .upd { font-size: 14px; }
+#cine.clean .cine-cards .squads li b { min-width: 160px; }
+#cine.clean .cine-cards .squads li .k { font-size: 20px; }
+#cine.clean .cine-cards .plan-grid { grid-template-columns: .7fr 1.7fr .9fr 1.2fr; gap: 12px; }
+#cine.clean .cine-cards .plan-grid span { white-space: nowrap; }
+#cine.clean .cine-cards .plan-grid b { font: 650 30px/1.15 "Inter Display", Inter, sans-serif; }
+#cine.clean .cine-cards .plan-grid b small { font-size: 18px; font-weight: 500; color: #b6c0cc; }
+#cine.clean .cine-cards .plan-grid span { font-size: 13px; }
+#cine.clean .cine-stats { display: none; }
+#cine.clean.show-stats .cine-stats { display: flex; left: auto; right: var(--edge); bottom: var(--edge); padding: 12px 24px; }
+#cine.clean.idle .cine-stats { display: none; }
+#cine.clean .cine-request { bottom: 110px; width: 1220px; padding: 26px 36px 28px; }
+#cine.clean .cine-request h4 { font-size: 15px; margin-bottom: 12px; }
+#cine.clean .cine-request h4 .when { font-size: 15px; }
+#cine.clean .cine-request .text { font: 500 38px/1.32 "Inter Display", Inter, sans-serif; min-height: 100px; }
+#cine.clean .cine-request .state { font-size: 21px; } #cine.clean .cine-request .state b { font-size: 25px; }
+#cine.clean .cine-request .plan-grid b { font: 650 36px/1.15 "Inter Display", Inter, sans-serif; }
+#cine.clean .cine-request .plan-grid span { font-size: 14px; }
+#cine.clean .cine-request .why { font-size: 18px; }

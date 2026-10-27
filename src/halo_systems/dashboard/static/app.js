@@ -1,5 +1,5 @@
 // Halo Systems dashboard: live controls and logs. Talks to the local Python server; the 3D view is scene3d.js.
-import { SwarmView, DRONE_SCALE, PERSON_SCALE } from "/static/scene3d.js";
+import { SwarmView, DRONE_SCALE, PERSON_SCALE, CLEAN } from "/static/scene3d.js";
 import { Cinema, dispatchFacts, dispatchHead } from "/static/cinema.js";
 
 const $ = (s) => document.querySelector(s);
@@ -16,10 +16,14 @@ const api = async (path, body) => {
 const view = new SwarmView($("#scene"));
 window.haloView = view;   // for the recorder and for poking at the scene from the browser console
 // Cinema layout (?cinema=1): the view fills the window, with glass cards over it (cinema.js). Its controls are
-// hidden, so a flight is started by script (the recorder) or by a link that starts one.
-const CINEMA = new URLSearchParams(location.search).get("cinema");
+// hidden, so a flight is started by script (the recorder) or by a link that starts one. ?clean=1 (which implies the
+// cinema layout) gives it the clean film look: one badge, the clock, lower-third toasts and only the cards named in
+// ?cards= (crew, alerts, dispatch, squads, plan, stats); ?toasts= picks the toasts' kinds, most important first.
+const URLP = new URLSearchParams(location.search);
+const CINEMA = URLP.get("cinema") ?? (CLEAN ? "1" : null);
+const list = (k) => (URLP.get(k) || "").split(",").map((x) => x.trim()).filter(Boolean);
 let cine = null;
-if (CINEMA !== null) { cine = new Cinema($("#view"), view); view.resize(); }
+if (CINEMA !== null) { cine = new Cinema($("#view"), view, { clean: CLEAN, cards: list("cards"), toasts: list("toasts") }); view.resize(); }
 
 // Film mode (?film=1), for the demo video: the run plays as usual, but what it streams is buffered
 // with its simulated time and played back by the recorder one video frame at a time
@@ -51,7 +55,9 @@ window.haloFilm = {
   seek(dtSim) {
     const t = this.step(0, dtSim);
     if (view.wildfire) view.wildfire.warm();
-    if (cine) cine.clearNotices();   // what happened in the skipped stretch is not news when the shot starts
+    // What happened in the skipped stretch is not news when the shot starts. The clean look keeps the news of a seek
+    // that skips nothing (a shot from the flight's first frame), which arrives with that frame.
+    if (cine && (dtSim > 0 || !CLEAN)) cine.clearNotices();
     view.cut = true;                 // and the camera lands where it should be, rather than gliding from where it was
     return t;
   },
@@ -330,7 +336,7 @@ function onValleyEvent(e) {
       const a = e.alert != null ? valley.alerts.get(e.alert) : null;
       if (a) a.state = "cancelled";
       const what = e.kind === "all_clear" ? `all-clear${zoneText(e.zone)}` : `alert ${e.alert + 1}${zoneText(e.zone)} cancelled`;
-      if (cine) cine.notice("plan", e.kind === "all_clear" ? `All-clear for zone ${e.zone}` : `Alert ${e.alert + 1} cancelled`, `${plural(e.phones ?? 0, "simulated phone")} told`);
+      if (cine) cine.notice("plan clear", e.kind === "all_clear" ? `All-clear for zone ${e.zone}` : `Alert ${e.alert + 1} cancelled`, `${plural(e.phones ?? 0, "simulated phone")} told`);
       logItem("station", `<span class="chip station">station</span> ${t} ${what} by ${esc(e.by || "the station")}; ${plural(e.phones ?? 0, "simulated phone")} told` +
         `${e.message ? `<div class="why">${esc(e.message)}</div>` : ""}`);
       drawValley();
@@ -831,6 +837,8 @@ $("#fly-mission").addEventListener("click", () => {
 const VALLEY_HEAD = { title: "Valley patrol after lightning", sub: "A request in plain words, checked before take-off" };
 const VALLEY_COMPILING = '<p class="muted">Compiling…</p>';
 let missionMode = "search", valleyPlan = null, valleyAsk = 0;
+// The clean layout's badge before a flight: the seed and supervisor the request will fly with, and whether it is a valley patrol.
+if (cine) cine.preflight = () => ({ seed: missionMode === "valley" ? $("#valley-seed").value : $("#seed").value, supervisor: $("#config").value, valley: missionMode === "valley" });
 const missionDrafts = { valley: { text: $(".valley-examples button").dataset.ex, out: "", fly: true } };
 function setMissionMode(mode) {
   if (mode === missionMode || !["search", "valley"].includes(mode)) return;
