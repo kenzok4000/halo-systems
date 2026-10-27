@@ -145,6 +145,7 @@ export class Cinema {
   // flyable: the page's own verdict (a typed request the regex baseline parsed has had no civilian check).
   compiled(c, flyable) {
     const out = this.$(".cine-request .out");
+    this.patrolCard = "";   // a refused or failed request leaves no plan card from an earlier one
     if (c.error) { out.innerHTML = `<div class="state bad"><b>Not compiled</b><span>${esc(c.error)}</span></div>`; return; }
     const s = c.spec, by = c.source === "nemotron" ? `Nemotron (${esc(String(c.model || "").split("/").pop())})` : c.source === "guard" ? "the safety guard" : "the regex baseline";
     if (s.refused) {
