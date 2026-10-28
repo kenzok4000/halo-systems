@@ -221,6 +221,26 @@ class DashboardSmokeTest(unittest.TestCase):
         committed = _results(Path(__file__).resolve().parents[1] / "results")
         self.assertEqual(len(committed["wildfire_valley"]["charts"]), 3)
 
+    def test_a_new_speed_carries_on_from_where_the_flight_is(self):
+        # Lowering the speed mid-flight must not leave the flight standing still while the wall clock catches
+        # up with the faster pace it had before.
+        from halo_systems.dashboard.server import LiveRun
+        from halo_systems.eval.scenarios import make
+        run = LiveRun(make("open_transit", 1), "improved+rule", 1)
+        run.thread.start()
+        try:
+            time.sleep(0.5)
+            run.speed = 5.0
+            time.sleep(1.0)
+            run.speed = 1.0
+            t0 = run.sim.t
+            time.sleep(1.0)
+            self.assertFalse(run.sim.ended)
+            self.assertGreater(run.sim.t - t0, 0.4)
+        finally:
+            run.stop = True
+            run.thread.join(timeout=10)
+
     def test_server_runs_a_flight_and_streams_frames(self):
         from http.server import ThreadingHTTPServer
         from pathlib import Path

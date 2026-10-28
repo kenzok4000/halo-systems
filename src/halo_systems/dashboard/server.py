@@ -155,14 +155,16 @@ class LiveRun:
         sim = self.sim
         next_frame = 0.0
         # Simulated time follows the wall clock times the speed: the loop steps while the simulation is behind
-        # that target and sleeps while it is ahead. A pause resets the reference, so a resumed run does not race
-        # to catch up.
-        wall0, sim0 = time.perf_counter(), sim.t
+        # that target and sleeps while it is ahead. A pause or a new speed resets the reference, so the flight
+        # carries on from where it is, at the new pace, instead of racing to catch up or standing still.
+        wall0, sim0, speed0 = time.perf_counter(), sim.t, self.speed
         while not self.stop and not sim.ended:
             if self.paused:
                 time.sleep(0.05)
                 wall0, sim0 = time.perf_counter(), sim.t
                 continue
+            if self.speed != speed0:
+                wall0, sim0, speed0 = time.perf_counter(), sim.t, self.speed
             target = sim0 + (time.perf_counter() - wall0) * self.speed
             if sim.t >= target:
                 time.sleep(min(0.01, sim.dt / max(self.speed, 0.1)))
@@ -327,7 +329,7 @@ class State:
                 oldest.stop = True
                 del self.runs[oldest.id]
             run = LiveRun(scenario, config, seed, kw)
-            run.speed = float(body.get("speed", 1.0))
+            run.speed = float(min(20.0, max(0.1, float(body.get("speed", 1.0)))))   # the same range as /control
             self.runs[run.id] = run
         run.thread.start()
         return run
