@@ -22,6 +22,8 @@ Everything here was produced by the commands in [docs/REPRODUCE.md](../docs/REPR
 
 Development seeds, not held out: 0-9 for tuning, and 2000-2011 and 3000-3019 for the valley and the later studies ([docs/REPRODUCE.md](../docs/REPRODUCE.md#seeds)). The aircraft-inbound demo (`airspace_hold/`) and the compute table (`compute/`) fly only these seeds.
 
+Labels in brackets, such as (T3), (T4), (T5a), (T5b), (T9), (T10) and (T11), are the work items' own numbers, kept because their plans and reports use them. In `wildfire_alerts/PREREG.md` and `docs/WILDFIRE.md`, T3, T4 and T5 can also name the pre-signed trigger rules for alert Levels 3, 4 and 5.
+
 ## Held-out seeds (1000-1019), run once
 
 | File | What it is | Commit |
