@@ -1656,7 +1656,8 @@ class Wildfire:
             level[p3 >= pol.prob_threshold] = 3
             level[p4 >= pol.prob_threshold] = 4
             level[p5 >= pol.emergency_prob] = 5
-            # The probability behind the level given, which the alert carries and AlertCheck tests.
+            # The probability behind the level given, which the alert carries. AlertCheck tests it at every level
+            # under the pre-signed rules, and at Levels 4 and 5 under the forecast rule.
             prob = np.select([level == 5, level == 4, level == 3], [p5, p4, p3], 0.0)
         # The median arrival at each phone, the sooner of the two runs, for the time the message gives.
         for src in (act, pot):
@@ -1744,8 +1745,8 @@ class Wildfire:
         a = self.alerts[alert_id]
         if a["state"] != "checked":
             return {"ok": False, "reason": f"alert is {a['state']}"}
-        # A modelled approval takes effect at its drawn time, even when the station's once-a-second check or the
-        # end of the flight gets to it later.
+        # A modelled approval takes effect at its drawn time, whether the station's once-a-second check reaches it
+        # a moment later or the flight ends before that time comes.
         t = a["approve_at"] if a.get("approve_at") is not None and by.endswith("(modelled)") else sim.t
         a["state"] = "approved"
         a["approved_t"] = round(t, 2)

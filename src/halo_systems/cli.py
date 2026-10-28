@@ -184,8 +184,9 @@ def cmd_valley_eval(args) -> int:
     for name in args.sets.split(","):
         rows = []
         for it in load_set(name):
-            # Each request is about one seed's valley, so the gold answer, the baseline and the model are all
-            # read against that seed's list of lightning strikes.
+            # Each request is about one seed's valley. The model reads only the words, never the strike list; the
+            # strike filters in its answer, in the gold answer and in the baseline's are all applied to that seed's
+            # list of lightning strikes, so all three are scored against the same strikes.
             strikes = valley_strikes(it["seed"])
             gold = gold_spec(it)
             row = {"id": it["id"], "seed": it["seed"], "text": it["text"], "gold": flatten(gold, strikes),

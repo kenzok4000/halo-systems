@@ -351,8 +351,8 @@ class Simulation:
         self.thrust = thrust
         self.distance_m += np.where(active, np.linalg.norm(self.p - p0, axis=1), 0.0)
 
-        # Bookkeeping: collisions and strikes, energy and retirement, the airspace hold's record, the wildfire
-        # valley and the ground sensor (every SENSE_EVERY steps), the recorded series and the end check.
+        # Bookkeeping: collisions, obstacle and ground strikes, energy and retirement, the airspace hold's record,
+        # the wildfire valley and the ground sensor (every SENSE_EVERY steps), the recorded series and the end check.
         self._collisions(p0, airborne)
         self._energy(thrust, powered, np.linalg.norm(self.v - wind, axis=1))
         if self._hold is not None:
@@ -494,7 +494,8 @@ class Simulation:
             pairs = np.argwhere(np.triu(hit, 1))
             for i, j in pairs:
                 if self.status[i] in (ACTIVE, FAILED) or self.status[j] in (ACTIVE, FAILED):
-                    # One collision, two drones lost: the report counts each collision as two crashed drones.
+                    # The report counts each collision as two crashed drones, but in a pile-up one of the pair may
+                    # already have crashed with an earlier pair, so the report then counts more drones than were lost.
                     self.collisions += 1
                     self.event("collision", int(i), other=int(j), distance_m=round(float(cd[i, j]), 3))
                     for d in (i, j):

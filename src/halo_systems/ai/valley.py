@@ -441,7 +441,9 @@ def regex_baseline(text: str) -> dict:
     spec["per_area"] = per or None
     areas = _areas_in(low)
     spec["areas"] = areas or None
-    # A duration straight after "last" or "past" is a strike filter ("in the last 5 hours"), not the patrol.
+    # A duration straight after "last" or "past" is meant as a strike filter ("in the last 5 hours"), not the
+    # patrol. The look-behind guards only a one-digit number: "last 12 hours" is still read from its 2, as a
+    # 2-hour patrol, one of the frozen baseline's rough edges.
     m = re.search(r"(?<!last )(?<!past )(\d+(?:\.\d+)?)\s*(?:-\s*)?(min|mins|minutes|minute|hours?|hrs?)\b", low)
     if m:
         v = float(m.group(1))

@@ -90,7 +90,8 @@ def run_one(scenario: str, seed: int, config: str, n: int | None = None, record_
         sup_kw.setdefault("strict", True)   # a dead key or spent budget fails the run instead of mislabelling it
     # Nothing about the configuration reaches the scenario above, and the simulation splits its own random
     # streams (wind, sensing, starting positions and charge) from the same seed. So every configuration flown on
-    # a seed meets the same layout, gusts, sensor noise and radio losses: the paired comparison in eval/stats.
+    # a seed meets the same layout, gusts, sensor noise and radio losses, which is what the paired comparison in
+    # eval/stats relies on.
     sim = Simulation(sc, make_controller(ctrl_spec, body, sc.world), make_supervisor(sup_spec, **sup_kw),
                      seed=seed, body=body, record_hz=record_hz)
     t0 = time.perf_counter()

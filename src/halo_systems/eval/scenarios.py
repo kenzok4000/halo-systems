@@ -582,7 +582,7 @@ def wildfire_valley(seed: int = 0, n: int = 16, alert_rule: str = "forecast", ap
     for _ in range(3):
         sx, sy = _pick(rng, terrain, inner, lambda x, y: cover(x, y) == FOREST)
         cyls.append(Cylinder(sx, sy, 0.6, ground(sx, sy) + float(terrain.canopy_at(sx, sy)) + float(rng.uniform(18.0, 26.0))))
-    # -- people: homes down the valley, a campground up it, hikers, drivers and a ranch ----------------------------
+    # -- people: homes up the valley, a campground down it, hikers, drivers and a ranch ----------------------------
     phones, places = [], []
 
     def add(group, pts):
