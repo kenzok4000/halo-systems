@@ -74,7 +74,7 @@ One drone with a thermal camera sweeps one strip of ground; sixteen flying line 
 
 ## Results at a glance
 
-Every flight result below comes from held-out seeds 1000-1019, each flown once after tuning on seeds 0-9 was finished, unless a row names its own held-out seeds; the stress search flies its own search seeds, and the compilers are scored on held-out requests. All of it can be regenerated from the rows committed in [results/](results/README.md). The full tables, intervals and figures are in [docs/RESULTS.md](docs/RESULTS.md).
+Every flight result below comes from held-out seeds 1000-1019, each flown once after tuning on seeds 0-9 was finished, unless a row names its own held-out seeds; the alert row also counts 8 development valleys and 40 valleys flown again under both rules after their first run, the stress search flies its own search seeds, and the compilers are scored on held-out requests. All of it can be regenerated from the rows committed in [results/](results/README.md). The full tables, intervals and figures are in [docs/RESULTS.md](docs/RESULTS.md).
 
 | Question | Answer | Evidence |
 |---|---|---|
