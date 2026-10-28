@@ -74,11 +74,14 @@ class SensorConfig:
 
 @dataclass
 class Scenario:
+    # Everything a flight needs apart from the controller, the supervisor and the run's own random streams.
+    # Times are seconds of simulated time and distances metres, in a frame with x east, y north and z up.
     name: str
     title: str
     description: str
     n: int = 16
     duration_s: float = 60.0
+    # One engine step: 0.02 s is the 50 Hz control loop.
     dt: float = 0.02
     waypoints: list = field(default_factory=lambda: [(0.0, 0.0), (200.0, 0.0)])
     loop: bool = False
@@ -91,6 +94,7 @@ class Scenario:
     battery_fraction: float = 1.0
     battery_spread: float = 0.0            # +- uniform spread of starting charge
     battery_reserve: float = 0.15          # leave the formation below this charge
+    # Simulated seconds between status reports to the supervisor (a fixed plan gets none).
     supervisor_period_s: float = 5.0
     altitude_max_m: float = 120.0          # airspace ceiling for this mission (validator bound)
     end_when_done: bool = True

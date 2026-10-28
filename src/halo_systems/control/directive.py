@@ -35,4 +35,6 @@ class Directive:
         return replace(self, **changes)
 
     def same_plan(self, other: "Directive") -> bool:
+        # Reason and source are not part of the plan, so a new reason alone is not a change: the validator's
+        # rate limit ignores it and the controller does not rebuild its slots.
         return all(getattr(self, f) == getattr(other, f) for f in DIRECTIVE_FIELDS)

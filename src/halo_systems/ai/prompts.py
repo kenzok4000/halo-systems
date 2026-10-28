@@ -60,6 +60,8 @@ Always give all five values. To keep the current directive, repeat it."""
 
 
 def _num(x) -> str:
+    # Numbers are written with :g, so 6.0 reads as 6. The format is part of the message text, and so of the
+    # cache key, like every other character here.
     return f"{x:g}" if isinstance(x, (int, float)) else str(x)
 
 

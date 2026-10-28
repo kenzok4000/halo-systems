@@ -168,6 +168,8 @@ class World:
         p = points[:, None, :]
         centre = 0.5 * (lo + hi)
         half = 0.5 * (hi - lo)
+        # The usual signed distance to an axis-aligned box: q is how far the point lies beyond each pair of
+        # faces (negative inside them), so the distance comes out negative inside the box.
         q = np.abs(p - centre) - half
         outside = np.linalg.norm(np.maximum(q, 0.0), axis=2)
         inside = np.minimum(np.max(q, axis=2), 0.0)
@@ -202,6 +204,9 @@ class World:
         lat = np.array([-h[1], h[0]])
         c = np.asarray(centre, dtype=float)[:2]
         lo_list, hi_list = [], []
+        # Only obstacles that reach within 1 m of the flight altitude narrow the lane. ``across`` is measured
+        # to the left of the path line, so the lane runs from the nearest edge on the right to the nearest on
+        # the left.
         if len(self._cyl):
             tall = self._cyl[:, 3] > altitude - 1.0
             xy = self._cyl[tall, :2] - c

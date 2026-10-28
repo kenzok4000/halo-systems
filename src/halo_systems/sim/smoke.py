@@ -72,6 +72,8 @@ def pm_concentration(points: np.ndarray, base: np.ndarray, area_m2: np.ndarray, 
     points = np.asarray(points, dtype=float).reshape(-1, 3)
     base = np.asarray(base, dtype=float).reshape(-1, 3)
     u = float(np.hypot(*wind_xy))
+    # The Gaussian plume divides by the wind speed and needs a wind to carry the smoke, so below 0.5 m/s
+    # (or with no fires) every point reads zero.
     if u < 0.5 or not len(base):
         return np.zeros(len(points))
     ux, uy = wind_xy[0] / u, wind_xy[1] / u
@@ -88,6 +90,7 @@ def pm_concentration(points: np.ndarray, base: np.ndarray, area_m2: np.ndarray, 
     q = cfg.pm_g_per_s_per_m2 * np.asarray(area_m2, dtype=float)[None, :] * 1e6   # ug/s
     c = q / (2 * math.pi * u * sy * sz) * np.exp(-cross ** 2 / (2 * sy ** 2)) * (
         np.exp(-(zrel - h) ** 2 / (2 * sz ** 2)) + np.exp(-(zrel + h) ** 2 / (2 * sz ** 2)))
+    # No smoke reaches a point upwind of its fire, or less than a metre downwind of it.
     c = np.where(down > 1.0, c, 0.0)
     return c.sum(axis=1)
 
@@ -108,10 +111,13 @@ def triangulate(sightings: np.ndarray, min_angle_deg: float = 15.0, min_baseline
     p1, p2 = s[i, :2], s[j, :2]
     d1 = np.stack([np.cos(s[i, 2]), np.sin(s[i, 2])], axis=1)
     d2 = np.stack([np.cos(s[j, 2]), np.sin(s[j, 2])], axis=1)
+    # The cross product of two unit bearings is the sine of the angle between them; near-parallel
+    # pairs are dropped.
     cross = d1[:, 0] * d2[:, 1] - d1[:, 1] * d2[:, 0]
     ok = np.abs(cross) >= math.sin(math.radians(min_angle_deg))
     ok &= np.linalg.norm(p2 - p1, axis=1) >= min_baseline_m
     w = p2 - p1
+    # Distance along each line to the crossing (Cramer's rule); a negative one lies behind its observer.
     with np.errstate(divide="ignore", invalid="ignore"):
         t1 = (w[:, 0] * d2[:, 1] - w[:, 1] * d2[:, 0]) / cross
         t2 = (w[:, 0] * d1[:, 1] - w[:, 1] * d1[:, 0]) / cross
@@ -178,6 +184,7 @@ def bearing_fix(sightings: np.ndarray, guess: np.ndarray, bearing_sigma_deg: flo
     for _ in range(iterations):
         dx, dy = est[0] - s[:, 0], est[1] - s[:, 1]
         r = np.maximum(np.hypot(dx, dy), 1.0)
+        # Each line's unit normal: its dot product with the offset from the observer is the distance off the line.
         nx, ny = -np.sin(s[:, 2]), np.cos(s[:, 2])
         perp = np.abs(nx * dx + ny * dy)
         ahead = (np.cos(s[:, 2]) * dx + np.sin(s[:, 2]) * dy) > 0
@@ -185,6 +192,8 @@ def bearing_fix(sightings: np.ndarray, guess: np.ndarray, bearing_sigma_deg: flo
         if use.sum() < 2:
             return None
         w = 1.0 / r[use] ** 2
+        # The normal equations of that weighted fit over the lines that count: a 2 x 2 system, solved in
+        # closed form.
         a11 = float(np.sum(w * nx[use] ** 2))
         a12 = float(np.sum(w * nx[use] * ny[use]))
         a22 = float(np.sum(w * ny[use] ** 2))
@@ -212,6 +221,7 @@ def bearing_fix(sightings: np.ndarray, guess: np.ndarray, bearing_sigma_deg: flo
     drones = s[use, 3]
     err_without = max((sigma_m(drones != d) for d in np.unique(drones)), default=math.inf)
     miss = (nx[use] * dx + ny[use] * dy) / (sig * r)
+    # The angle the lines span, seen from the fix: 360 degrees less the widest gap between their directions.
     angles = np.sort(np.mod(np.arctan2(dy, dx), 2 * math.pi))
     gaps = np.diff(np.concatenate([angles, angles[:1] + 2 * math.pi]))
     spread = math.degrees(2 * math.pi - float(gaps.max())) if len(angles) > 1 else 0.0

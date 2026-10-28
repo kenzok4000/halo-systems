@@ -41,6 +41,8 @@ def autopilot_thrust(a_cmd: np.ndarray, v_est: np.ndarray, body: DroneBody) -> n
 
 def integrate(p, v, thrust, thrust_cmd, wind, powered, body: DroneBody, dt: float):
     """Advance one step. Returns new (p, v, thrust, accel)."""
+    # Motor lag: the thrust follows the command as a first-order lag with time constant motor_tau_s. A drone
+    # that is not powered has no thrust at all.
     alpha = min(1.0, dt / max(body.motor_tau_s, 1e-9))
     thrust = thrust + alpha * (thrust_cmd - thrust)
     thrust = np.where(powered[:, None], thrust, 0.0)
@@ -72,6 +74,7 @@ def closest_approach(p0: np.ndarray, p1: np.ndarray, mask: np.ndarray):
     d0 = p0[:, None, :] - p0[None, :, :]
     dd = (p1 - p0)[:, None, :] - (p1 - p0)[None, :, :]
     denom = np.sum(dd * dd, axis=2)
+    # s is the fraction of the step at which each pair is closest, clipped to the step itself.
     s = np.where(denom > 1e-12, -np.sum(d0 * dd, axis=2) / np.maximum(denom, 1e-12), 0.0)
     s = np.clip(s, 0.0, 1.0)
     closest = d0 + s[..., None] * dd

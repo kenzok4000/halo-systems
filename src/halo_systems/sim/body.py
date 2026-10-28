@@ -50,6 +50,8 @@ class DroneBody:
         """
         thrust_n = np.asarray(thrust_n, dtype=float)
         v = np.asarray(airspeed_mps, dtype=float)
+        # vh2 is v_h^2 = T / (2 rho A), the hover induced velocity squared. Glauert's relation is a quadratic
+        # in v_i^2, and vi is the square root of its positive root.
         vh2 = thrust_n / (2.0 * AIR_DENSITY * self.rotor_disk_area_m2)
         vi = np.sqrt(np.maximum(0.0, 0.5 * (-v ** 2 + np.sqrt(v ** 4 + 4.0 * vh2 ** 2))))
         induced = thrust_n * vi / self.figure_of_merit
@@ -60,6 +62,8 @@ class DroneBody:
         """Electrical power in steady level flight at an airspeed (scalar or array)."""
         v = np.asarray(airspeed_mps, dtype=float)
         drag = 0.5 * AIR_DENSITY * self.drag_area_m2 * v ** 2
+        # In steady level flight the rotors hold up the weight and balance the drag, so the thrust is the
+        # vector sum of the two.
         thrust = np.hypot(self.mass_kg * GRAVITY, drag)
         return self.rotor_power_w(thrust, v) + self.avionics_power_w
 

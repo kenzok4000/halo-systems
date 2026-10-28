@@ -128,6 +128,8 @@ def build(params: dict, seed: int) -> Scenario:
 
 
 def severity(m: dict) -> float:
+    # Drones lost (a collision takes two) weigh most, then near misses, then up to 3 for a closest approach
+    # under 3 m, so a near pass scores before anything fails. No recorded closest approach counts as 10 m.
     crashes = 2 * m["collisions"] + m["obstacle_crashes"] + m["ground_crashes"]
     sep = m["min_separation_m"] if m["min_separation_m"] is not None else 10.0
     return 10.0 * crashes + 2.0 * m["near_misses"] + max(0.0, 3.0 - sep)
@@ -154,6 +156,8 @@ def evaluate(params: dict, seed: int, config: str = "improved+rule") -> dict:
 
 
 # ------------------------------------------------------------------ searchers
+# Random, corner and cross-entropy search work in the unit cube; this maps a point back to parameters and,
+# like every proposal, through clip_params.
 def _unit_to_params(u: np.ndarray) -> dict:
     out = {}
     for k, x in zip(NAMES, u):
@@ -258,6 +262,8 @@ class NemotronSearch:
                  "near_misses": h["outcome"]["near_misses"], "closest_m": h["outcome"]["min_separation_m"]} for h in history]
         user = (f"Tests so far ({len(rows)}):\n{json.dumps(rows, separators=(',', ':'))}\n\n"
                 f"Propose exactly {k} new tests.")
+        # These calls are not recorded for replay. A saved search keeps each test's parameters and seed
+        # instead, and replay() flies them again.
         try:
             res = self.client.chat(self.model, [{"role": "system", "content": self.system}, {"role": "user", "content": user}],
                                    role="test-engineer", temperature=self.temperature,
@@ -283,6 +289,9 @@ def run_search(searcher, budget: int = 40, batch: int = 4, seed: int = 0, worker
     with ProcessPoolExecutor(workers) as ex:
         while len(history) < budget:
             k = min(batch, budget - len(history))
+            # Each batch is proposed only after the previous one has flown, so an adaptive searcher sees every
+            # outcome so far. Test i gets the same flight seed whichever searcher proposed it, so two searches
+            # with the same seed differ only in the conditions they chose.
             props = searcher.propose(history, k)
             seeds = [seed * 10007 + len(history) + i for i in range(k)]
             outcomes = list(ex.map(evaluate, [p["params"] for p in props], seeds))

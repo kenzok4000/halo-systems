@@ -28,6 +28,8 @@ def append(path: str | os.PathLike, obj) -> None:
     try:
         if fcntl:
             fcntl.flock(fd, fcntl.LOCK_EX)
+        # os.write may take only part of the line; the rest follows while the lock is still held, so another
+        # process's append cannot land in the middle of it.
         view = memoryview(data)
         while view:
             view = view[os.write(fd, view):]

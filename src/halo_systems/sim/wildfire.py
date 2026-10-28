@@ -104,10 +104,13 @@ class ForecastConfig:
     horizon_s: float = 3 * 3600.0
     every_s: float = 120.0
     min_gap_s: float = 30.0               # news (a new fire, one taking off) brings the next forecast forward, to no sooner than this
+    # Each ensemble member draws one turn of the wind, one wind speed factor, one spread-rate factor and one shift
+    # of dead fuel moisture, each held over its whole run.
     wind_dir_sigma_deg: float = 10.0
     wind_speed_sigma: float = 0.15
     ros_sigma: float = 0.3
     moisture_sigma: float = 0.01
+    # Error of the modelled wind measurement that every member of a forecast starts from.
     measured_wind_sigma_mps: float = 0.5
     measured_dir_sigma_deg: float = 5.0
     elevation_sigma_deg: float = 1.0      # error on the angle up to a plume's top, used to size the fire
@@ -161,16 +164,22 @@ class AlertPolicy:
     emergency_within_s: float = 900.0      # Level 5, at even odds
     emergency_prob: float = 0.5
     danger_radius_m: float = 50.0     # fire this close to a phone counts as reaching it
+    # The "distance" ablation's radii round a located fire: Level 3 from any located fire, Levels 4 and 5 from
+    # one believed spreading.
     distance_evacuate_m: float = 800.0
     distance_warn_m: float = 1600.0
     distance_emergency_m: float = 150.0
     approval: str = "auto"            # "auto" (sent once checked), "manual" (a tap), or "modelled" (a modelled delay)
     hold_after_cancel_s: float = 1800.0    # after a cancel or all-clear the rules re-alert that zone only above
                                            # the level it had (after a cancel, at Level 5 at least)
+    # A "modelled" approval waits a lognormal delay with median approval_median_s. In every mode, cell broadcast
+    # reaches each phone after a uniform lag within delivery_s, and the unreachable_share of phones with no
+    # signal never receive it.
     approval_median_s: float = 90.0
     approval_sigma: float = 0.5
     delivery_s: tuple[float, float] = (5.0, 30.0)
     unreachable_share: float = 0.05
+    # AlertCheck refuses an alert to more phones or a larger zone than these: such an alert needs escalation.
     max_recipients: int = 5000
     max_zone_ha: float = 5000.0
     max_chars: int = 360              # Wireless Emergency Alerts and EU-Alert carry up to 360 characters
@@ -331,6 +340,7 @@ def front_owner(X: np.ndarray, Y: np.ndarray, arrival: np.ndarray, t0: float,
     out = cells & ~now
     cx, cy = X[out], Y[out]
     k = np.empty(len(cx), dtype=int)
+    # In blocks of 2048 cells, so the table of distances to the edge cells stays small.
     for a in range(0, len(cx), 2048):
         d2 = (cx[a:a + 2048, None] - ex) ** 2 + (cy[a:a + 2048, None] - ey) ** 2
         k[a:a + 2048] = np.argmin(d2, axis=1)
@@ -507,6 +517,8 @@ class AlertCheck:
             reasons.append(f"{n} recipients is more than {p.max_recipients}; needs escalation")
         if not 3600 <= alert.get("expires_in_s", 0) <= 12 * 3600:
             reasons.append("expiry must be 1 to 12 hours")
+        # Pre-signed rules: an automatic alert must name the trigger rule for its level and cite the current
+        # forecast, and the probability it carries must meet that rule's threshold.
         if p.rule == "presigned" and level in LEVELS:
             if not alert.get("trigger") or alert["trigger"].get("rule") != f"T{level}":
                 reasons.append(f"an automatic Level {level} alert must name the pre-signed rule T{level}")
@@ -581,6 +593,9 @@ class Wildfire:
         self.cfg: WildfireConfig = sc.wildfire
         self.terrain: Terrain = sc.world.terrain
         cfg = self.cfg
+        # The valley's own random stream, from the seed alone. Its first draws, the truth's patchiness and
+        # the phones without signal, are the same for every configuration flown on that seed, so each meets
+        # the same fires spreading the same way.
         self.rng = np.random.default_rng(np.random.SeedSequence([sim.seed, 7707]))
         self.fires = cfg.fires
         nf = len(self.fires)
@@ -591,6 +606,8 @@ class Wildfire:
         noise = smooth_noise(self.rng, probe.z.shape, 40.0 / tr, octaves=2)
         mult = np.exp(cfg.heterogeneity_sigma * noise - 0.5 * cfg.heterogeneity_sigma ** 2)
         self.truth = SpreadGrid(self.terrain, tr, ros_multiplier=mult)
+        # The truth burns twice: all fires together on the fine grid, for when fire really reaches each phone, and
+        # each fire alone on the forecast's grid with the same patches, for its area, the thermal map and scoring.
         coarse = SpreadGrid(self.terrain, cfg.forecast.cell_m)
         iy, ix = probe.cell_of(coarse.X, coarse.Y)
         self.truth10 = SpreadGrid(self.terrain, cfg.forecast.cell_m, ros_multiplier=mult[iy, ix])
@@ -600,11 +617,14 @@ class Wildfire:
         self.arrival10 = np.min(self.fire_arrival, axis=0) if nf else np.full(coarse.z.shape, np.inf)
         # What the station models with: the same terrain and fuel map, no knowledge of the patchiness.
         self.grid = coarse
+        # Where each true plume rises and what hides its foot: used only to make what the cameras and sensor see.
         self.base = np.array([[f.x, f.y, float(self.terrain.height(f.x, f.y))] for f in self.fires]).reshape(-1, 3)
         self.occluder = np.array([f.occluder_m for f in self.fires])
         # -- phones ----------------------------------------------------------------------------
         self.phones = cfg.phones
         self.phone_xy = np.array([[p.x, p.y] for p in self.phones], dtype=float).reshape(-1, 2)
+        # Each phone's cells within danger_radius_m: on the forecast grid for the alert rules, and on the truth's
+        # fine grid for when the fire really reaches it (scoring only).
         self._phone_cells = [self._cells_near(self.grid, x, y, cfg.alerts.danger_radius_m) for x, y in self.phone_xy]
         self._phone_cells_truth = [self._cells_near(self.truth, x, y, cfg.alerts.danger_radius_m) for x, y in self.phone_xy]
         self.phone_truth_s = np.array([float(self.arrival[c].min()) if len(c[0]) else math.inf
@@ -692,8 +712,13 @@ class Wildfire:
 
     # -- per sensing tick -------------------------------------------------------------------------
     def tick(self, sim, elapsed: float) -> None:
+        # Called every few control steps (SENSE_EVERY in the engine), elapsed being the simulated time since
+        # the last call. Smoke is sensed every call, the thermal map every mapping.every_s and the station
+        # runs once a second.
         t = sim.t
         area = self.area(t)
+        # The engine's ground sensor looks for the fires as its targets, in the same order; each target's radius
+        # follows its fire's true burning area.
         if len(sim.targets):
             sim.targets[:, 2] = np.sqrt(area / math.pi)
         act = np.nonzero(sim.active_mask())[0]
@@ -802,6 +827,7 @@ class Wildfire:
                 if len(comp) < 2:
                     continue                    # one hot cell alone is not called a fire
                 cx, cy = float(xs.mean()), float(ys.mean())
+                # Scoring only (report_v2): the true fires burning in these cells; the station never reads it.
                 self._own_src = [i for i in range(len(self.fires)) if np.any(self.fire_arrival[i].ravel()[comp] <= sim.t)]
                 new |= self._locate(sim, cx, cy, self.grid.cell_m, "thermal", len(comp) * cell2)
                 self._own_src = None
@@ -814,12 +840,15 @@ class Wildfire:
         return new
 
     def _sense_smoke(self, sim, act: np.ndarray, area: np.ndarray, elapsed: float) -> None:
+        # First the forward cameras, tested against points up each true plume's centreline; then the
+        # particulate sensors.
         cfg = self.cfg.smoke
         t = sim.t
         wind = np.asarray(self.wind_at(t), dtype=float)
         p = sim.p[act]
         v = sim.v[act, :2]
         speed = np.linalg.norm(v, axis=1)
+        # The forward camera looks along the drone's track; below 1 m/s a drone keeps its last heading.
         moving = speed > 1.0
         self._heading[act[moving]] = v[moving] / speed[moving, None]
         heading = self._heading[act]
@@ -854,6 +883,8 @@ class Wildfire:
                 low = int(np.argmax(seen[d_local, f]))                           # lowest visible point
                 top = k - 1 - int(np.argmax(seen[d_local, f][::-1]))             # highest visible point
                 r = float(rng[d_local, f, low])
+                # Noticed in this tick with probability 1 - exp(-hazard x elapsed), at the range of the lowest
+                # visible smoke (the hazard model in smoke.py).
                 hazard = math.log(2.0) * (r50[f] / max(r, 1.0)) ** 3
                 if sim.rng_misc.random() >= 1.0 - math.exp(-hazard * elapsed):
                     continue
@@ -861,6 +892,7 @@ class Wildfire:
                 b = float(bearing[d_local, f, low]) + math.radians(cfg.bearing_sigma_deg) * float(sim.rng_misc.normal())
                 e = float(elev[d_local, f, top]) + el_sigma * float(sim.rng_misc.normal())
                 e_low = float(elev[d_local, f, low]) + el_sigma * float(sim.rng_misc.normal())
+                # Reported from where the drone believes it is; f, the true fire, rides along for scoring only.
                 est = sim.obs.p_est[d] if sim.obs is not None else sim.p[d]
                 self.sightings.append((t, int(d), float(est[0]), float(est[1]), float(est[2]), b, e, "camera", e_low, f))
                 if t - self._last_event.get((int(d), "camera"), -math.inf) >= EVENT_GAP_S:
@@ -878,6 +910,9 @@ class Wildfire:
                 continue
             self.last_sighting[key] = t
             self.contacts += 1
+            # All the sensor tells is that the source is upwind: the reverse of the wind, with 10 degrees of
+            # noise. These contacts are logged and counted; the station locates fires from camera bearings
+            # and thermal finds.
             upwind = math.atan2(-wind[1], -wind[0]) + math.radians(10.0) * float(sim.rng_misc.normal())
             est = sim.obs.p_est[d] if sim.obs is not None else sim.p[d]
             self.sightings.append((t, d, float(est[0]), float(est[1]), float(est[2]), upwind, 0.0, "particulate", 0.0, -1))
@@ -894,6 +929,9 @@ class Wildfire:
             self._thermal_seen[j] = True
             by = int(sim.target_found_by[j])
             est = sim.obs.p_est[by] if sim.obs is not None else sim.p[by]
+            # Fire j is the engine's target j. The find lands where the drone believes the fire is: the true
+            # position shifted by the drone's navigation error. The error the fix states is that shift's size
+            # plus a metre, a number taken from the truth.
             err = float(np.linalg.norm(est[:2] - sim.p[by, :2]))
             x = float(self.fires[j].x + est[0] - sim.p[by, 0])
             y = float(self.fires[j].y + est[1] - sim.p[by, 1])
@@ -914,6 +952,8 @@ class Wildfire:
             if self.sightings[i][7] == "camera" and not self._associate(self.sightings[i], wind):
                 self._pool.append(i)
         self._next_sighting = len(self.sightings)
+        # Every 2 s, the camera bearings no located fire explains, from the last 60 s (the newest 160 at
+        # most), are crossed in pairs and the crossings clustered.
         if t >= self._next_triangulate:
             self._next_triangulate = t + 2.0
             self._pool = [i for i in self._pool if t - self.sightings[i][0] <= 60.0][-160:]
@@ -927,11 +967,13 @@ class Wildfire:
                     if not fix_is_sound(fix):
                         continue
                     x, y = self._drift_back(sim, fix, [self._pool[i] for i in fix["used"]])
+                    # Scoring only: the true fires behind the bearings used; the station never reads them.
                     self._fix_src = sorted({int(self.sightings[self._pool[i]][9]) for i in fix["used"]})
                     self._fix_votes = [int(self.sightings[self._pool[i]][9]) for i in fix["used"]]
                     new |= self._locate(sim, x, y, max(fix["err_m"], 3.0), "smoke", None)
                     self._fix_src = None
                     self._fix_votes = []
+                # Bearings that a new fix now explains leave the pool.
                 self._pool = [i for i in self._pool if not self._associate(self.sightings[i], wind)]
         # Sizes. Mapped burning ground and the hotspot image measure a fire directly; the plume top only infers
         # it (area grows as the top to the power 2.9, and the tallest plumes all look alike), so it sizes a
@@ -958,6 +1000,8 @@ class Wildfire:
                 loc["area_m2"] = est_area
                 if (est_area >= SMOULDER_AREA_M2) != was:
                     new = True              # a fire taking off (or found smaller) changes the forecast
+        # News brings the next forecast forward to now, or to min_gap_s after the last one if that is later;
+        # otherwise, once a fire is located, a forecast runs every every_s of simulated time.
         if new:
             last = self.forecasts[-1]["t"] if self.forecasts else -math.inf
             self.next_forecast_t = min(self.next_forecast_t, max(t, last + self.cfg.forecast.min_gap_s))
@@ -987,6 +1031,7 @@ class Wildfire:
         the swarm's own estimate, the rise speed from the plume model.
         """
         ground = float(self.terrain.height(fix["x"], fix["y"]))
+        # The height of the lowest smoke each drone saw, from its elevation angle and its distance to the fix.
         heights = []
         for i in used:
             _t, _d, x, y, z, _b, _e, _k, e_low = self.sightings[i][:9]
@@ -1010,6 +1055,8 @@ class Wildfire:
         cfg = self.cfg.smoke
         sigma = math.radians(cfg.bearing_sigma_deg)
         hits, could = [], 0
+        # A hit is a located fire whose plume, at its estimated size, lies along the bearing; could counts the
+        # fires whose plume might explain it at the tallest size.
         for loc in self.located:
             if self._on_plume(loc, float(plume_top(max(loc["area_m2"], 1.0), cfg)), x, y, b, wind, sigma, 7):
                 hits.append(loc)
@@ -1026,6 +1073,8 @@ class Wildfire:
             for _ in range(4):
                 r_top = math.hypot(loc["x"] + wind[0] * h / cfg.rise_mps - x, loc["y"] + wind[1] * h / cfg.rise_mps - y)
                 h = min(max(z + r_top * math.tan(e) - g, 0.0), cfg.top_max_m)
+            # The top's height error: the elevation error at that range, plus the fire's position error
+            # seen at that elevation.
             sig = r_top * math.radians(self.cfg.forecast.elevation_sigma_deg) + loc["err_m"] * abs(math.tan(e))
             loc["tops"].append((t, h, s[9], sig, s[1]))
         return True
@@ -1038,11 +1087,13 @@ class Wildfire:
         px = loc["x"] + wind[0] * top * frac / cfg.rise_mps
         py = loc["y"] + wind[1] * top * frac / cfg.rise_mps
         r = np.maximum(np.hypot(px - x, py - y), 1.0)
+        # Three bearing errors, plus the angle the fire's position error (25 m at least) subtends at that range.
         tol = 3.0 * sigma + np.arctan2(max(loc["err_m"], 25.0), r)
         return bool(np.any(np.abs(_wrap(b - np.arctan2(py - y, px - x))) <= tol))
 
     def _locate(self, sim, x: float, y: float, err: float, method: str, area_est: float | None) -> bool:
         """Add or refine a located fire; True when something new was learnt."""
+        # Is it a fire already located? The gap is to its fix, its mapped ground and, for a smoke fix, its plume.
         for loc in self.located:
             gap = math.hypot(loc["x"] - x, loc["y"] - y)
             cells = self._loc_cells.get(loc["id"])
@@ -1063,6 +1114,8 @@ class Wildfire:
                 if cells is not None and len(cells):
                     agree += math.sqrt(max(loc["area_m2"], 0.0) / math.pi)
                 same = gap <= min(agree, reach)
+            # The same fire: a thermal find moves a smoke fix onto the hotspot, a thermal find on a thermal fix
+            # only updates the area seen, and a smoke fix adds nothing.
             if same:
                 if method == "thermal" and loc["method"] == "smoke":
                     if self.cfg.station == "tight":
@@ -1084,6 +1137,7 @@ class Wildfire:
                 if method == "thermal":
                     loc["seen_m2"] = max(loc["seen_m2"], area_est or 0.0)
                 return False
+        # A new fire. Scoring only: the true fire it lands on is kept with it, and the station never reads it.
         truth, truth_err = self._match_truth(x, y, sim.t)
         loc = {"id": self._loc_id, "x": x, "y": y, "err_m": err, "method": method, "t": round(sim.t, 2),
                "area_m2": area_est if area_est is not None else 0.5 * SMOULDER_AREA_M2, "tops": [],
@@ -1130,11 +1184,13 @@ class Wildfire:
     def _members(self, t0: float) -> list[list[Period]]:
         """Weather for each ensemble member: measured wind now, the weather forecast later, perturbed."""
         fc = self.cfg.forecast
+        # The wind measured now: the true wind at t0 with the measurement's error, drawn once per forecast.
         tw = np.asarray(self.wind_at(t0), dtype=float)
         sp = float(np.hypot(*tw)) + fc.measured_wind_sigma_mps * float(self.rng.normal())
         dr = math.atan2(tw[1], tw[0]) + math.radians(fc.measured_dir_sigma_deg) * float(self.rng.normal())
         measured = (max(sp, 0.0) * math.cos(dr), max(sp, 0.0) * math.sin(dr))
         self._measured_wind = measured
+        # After now, the weather forecast the station was given, not the weather the fires really burn in.
         later = [p for p in self.cfg.weather_forecast if p.start_s > t0]
         now = [p for p in self.cfg.weather_forecast if p.start_s <= t0]
         base = [Period(t0, measured, now[-1].moisture if now else Moisture())] + later
@@ -1177,6 +1233,8 @@ class Wildfire:
         burning = [(float(self._gx[c]), float(self._gy[c]), t0) for c in mapped]
         act, pot = [], []
         for weather in members:
+            # Per member: a spread-rate error (lognormal, mean 1), and each located fire's position jittered by
+            # its location error.
             scale = float(np.exp(fc.ros_sigma * self.rng.normal() - 0.5 * fc.ros_sigma ** 2))
             seeds_act, seeds_all = list(burning), list(burning)
             for loc, on in zip(located, spreading):
@@ -1188,16 +1246,20 @@ class Wildfire:
             a = self.grid.arrival(seeds_act, weather, horizon, scale=scale, cache=False) if seeds_act \
                 else np.full(self.grid.z.shape, np.inf)
             act.append(a)
+            # With no smoulders, the potential run is the active one.
             pot.append(a if all(spreading) else self.grid.arrival(seeds_all, weather, horizon, scale=scale, cache=False))
         return {"t": t0, "active": self._stats(np.array(act), t0), "potential": self._stats(np.array(pot), t0),
                 "located": [{k: v for k, v in l.items() if k != "tops"} for l in located],
                 "mapped_cells": [int(c) for c in mapped], "measured_wind": [float(v) for v in self._measured_wind]}
 
     def _stats(self, stack: np.ndarray, t0: float) -> dict:
+        # A member that never reaches a cell counts as a very late arrival in the median; a median that late
+        # means never.
         finite = np.where(np.isfinite(stack), stack, 1e12)
         p50 = np.median(finite, axis=0)
         p50 = np.where(p50 >= 1e11, np.inf, p50)
         probs = {m: (stack <= t0 + 60 * m).mean(axis=0) for m in (30, 60, 120, 180)}
+        # Each member's earliest arrival within danger_radius_m of each phone: what the alert rules read.
         phone_arr = np.array([[float(a[c].min()) if len(c[0]) else math.inf for c in self._phone_cells] for a in stack]) \
             if len(self.phones) else np.zeros((len(stack), 0))
         return {"p50": p50, "probs": probs, "phone_arrivals": phone_arr, "members": stack}
@@ -1219,6 +1281,8 @@ class Wildfire:
                   prob_reach_60min=[round(float(v), 2) for v in act["probs"][60].ravel()],
                   potential_prob_180min=[round(float(v), 2) for v in pot["probs"][180].ravel()],
                   isochrones_min=[30, 60, 120, 180], mapped_cells=fc["mapped_cells"], brief=brief)
+        # What the forecast feeds, in order: briefs to the crews, cards to fire dispatch (pre-signed rules only),
+        # then the public alerts.
         self._relay_to_crews(sim, fc)
         if self.cfg.alerts.rule == "presigned":
             self._dispatch(sim, fc)
@@ -1291,6 +1355,8 @@ class Wildfire:
             place_cells[g.cell_of(pl["x"], pl["y"])] = True
         smouldering = [l["area_m2"] < SMOULDER_AREA_M2 for l in locs]
         owned, heads, ahead = {}, {}, {}
+        # The active run is read for fires believed spreading and the potential run for smouldering ones (as if
+        # they took off now), each only when some fire needs it.
         for key, used in (("active", not all(smouldering)), ("potential", any(smouldering))):
             if not used:
                 continue
@@ -1305,9 +1371,13 @@ class Wildfire:
                 if f is not None:
                     iy, ix = g.cell_of(f[0], f[1])
                     anchored[iy, ix] = min(anchored[iy, ix], t0)
+            # On the median run, which fire each cell belongs to: the cells reached within two hours, and the
+            # cell of every named place.
             owned[key] = front_owner(g.X, g.Y, anchored, t0, lit, (p50 <= t0 + 7200.0) | place_cells, MAP_JOIN_M)
             heads[key] = []
             ahead[key] = np.zeros((len(locs),) + g.X.shape)
+            # In each member, each fire's head in the next hour; ahead counts, per cell, the members in which
+            # that fire burns it within the hour.
             for a in src["members"]:
                 own = front_owner(g.X, g.Y, a, t0, lit, a <= t0 + 3600.0, MAP_JOIN_M)
                 heads[key].append([head_of(g.X, g.Y, a, t0, own, i) for i in range(len(locs))])
@@ -1442,6 +1512,8 @@ class Wildfire:
             slope_push = phi_s * (sx * hx + sy * hy) / tan if tan > 0 else 0.0
         else:
             wind_push, slope_push = wind_part, slope_part
+        # A push under a tenth of the larger factor counts as none; a factor is the main driver when its
+        # push is at least twice the other's.
         small = 0.1 * max(phi_w, phi_s)
         against = None
         if phi_e <= 0:
@@ -1488,6 +1560,8 @@ class Wildfire:
         """
         cc = self.cfg.crew
         briefed = {b["fire"] for b in fc["brief"]}
+        # A fire the crews were told about that this forecast no longer briefs (it was merged into another) is
+        # withdrawn.
         for fire in [f for f in self._crew_last if f not in briefed]:
             del self._crew_last[fire]
             into = next((l["merged_into"] for l in self.merged if l["id"] == fire and "merged_into" in l), None)
@@ -1547,6 +1621,8 @@ class Wildfire:
     # -- alerts ------------------------------------------------------------------------------------------
     def _zone_targets(self, fc: dict) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
         """The level each phone's situation calls for under the rule, with its probability and median arrival."""
+        # The alert decision itself, made by fixed rules over the forecast (or, in the distance ablation, over the
+        # distance to located fires). No language model takes part.
         pol = self.cfg.alerts
         t0 = fc["t"]
         act, pot = fc["active"], fc["potential"]
@@ -1568,6 +1644,8 @@ class Wildfire:
             level[near_spreading <= pol.distance_emergency_m] = 5
             prob[level > 0] = 1.0
         else:
+            # A level's probability is the share of members in which fire reaches the phone within its window.
+            # Levels 4 and 5 read only the fires believed spreading.
             p3 = (act["phone_arrivals"] <= t0 + pol.warn_within_s).mean(axis=0)
             if pol.rule != "presigned" or pol.smoulder_alerts:
                 # The forecast rule (and pre-signed T3 with smoulder_alerts) also warns for smoulders, as if they
@@ -1578,7 +1656,9 @@ class Wildfire:
             level[p3 >= pol.prob_threshold] = 3
             level[p4 >= pol.prob_threshold] = 4
             level[p5 >= pol.emergency_prob] = 5
+            # The probability behind the level given, which the alert carries and AlertCheck tests.
             prob = np.select([level == 5, level == 4, level == 3], [p5, p4, p3], 0.0)
+        # The median arrival at each phone, the sooner of the two runs, for the time the message gives.
         for src in (act, pot):
             arr = src["phone_arrivals"]
             if arr.size:
@@ -1596,9 +1676,11 @@ class Wildfire:
             members = np.nonzero(self.zone_of_phone == k)[0]
             if not len(members):
                 continue
+            # A zone takes the highest level any of its phones calls for.
             target = int(level[members].max())
             if t0 < self.zone_hold_until[k] and target <= self.zone_hold_level[k]:
                 continue                                        # an operator cancelled or cleared here recently
+            # Only a rise to Level 3 or above goes out: the rules never lower a zone's level.
             if target < 3 or target <= self.zone_level[k]:
                 continue
             if any(a["state"] == "checked" and a["zone"] == zone["code"] and a["level"] >= target for a in self.alerts):
@@ -1627,6 +1709,7 @@ class Wildfire:
                 smoulders_count = (pol.rule == "forecast" or pol.smoulder_alerts) and target == 3
                 alert["drivers"] = [{"id": l["id"], "truth": l["truth"]} for l in fc["located"]
                                     if smoulders_count or l["area_m2"] >= SMOULDER_AREA_M2]
+            # Every alert passes AlertCheck first; a rejected one is kept with its reasons and sent nowhere.
             recent = [a for a in self.alerts if a["state"] not in ("rejected",)]
             result = self.check.check(alert, fc, recent, int(self.zone_level[k]))
             alert["check"] = result.to_dict()
@@ -1641,6 +1724,8 @@ class Wildfire:
                 if b["state"] == "checked" and b["zone"] == zone["code"]:
                     b["state"] = "superseded"
                     b["superseded_by"] = alert["id"]
+            # "auto": sent at once under the fixed rules; "modelled": after a drawn approval delay;
+            # "manual": when an operator approves it on the dashboard.
             if pol.approval == "auto":
                 self.approve(sim, alert["id"], by="automatic (fixed rules)")
             elif pol.approval == "modelled":
@@ -1659,6 +1744,8 @@ class Wildfire:
         a = self.alerts[alert_id]
         if a["state"] != "checked":
             return {"ok": False, "reason": f"alert is {a['state']}"}
+        # A modelled approval takes effect at its drawn time, even when the station's once-a-second check or the
+        # end of the flight gets to it later.
         t = a["approve_at"] if a.get("approve_at") is not None and by.endswith("(modelled)") else sim.t
         a["state"] = "approved"
         a["approved_t"] = round(t, 2)
@@ -1695,6 +1782,8 @@ class Wildfire:
 
     def _broadcast(self, phones, level: int, t: float, t_auto: float) -> int:
         lo, hi = self.cfg.alerts.delivery_s
+        # Each delivery keeps its time and the time it would have had if sent when drafted (t_auto), so the scores
+        # can show what an approval delay costs.
         delivered = 0
         for ph in phones:
             if self.unreachable[ph]:
@@ -1782,8 +1871,11 @@ class Wildfire:
     # -- evaluation against the truth ------------------------------------------------------------------
     def evaluate(self, sim) -> dict:
         """Locating, forecasting and warning scores for one flight (keys described in docs/WILDFIRE.md)."""
+        # Scoring reads the truth freely; nothing here writes to the station's state, so none of it feeds back
+        # into the flight.
         out: dict = {}
         nf = len(self.fires)
+        # Each true fire is credited to the first fix that landed on it.
         first = {}
         made = sorted(self.located + self.merged, key=lambda l: l["id"])
         if self.cfg.station == "tight":
@@ -1989,6 +2081,7 @@ class Wildfire:
         """Who was warned before the fire reached them, how early, and who was told to leave for nothing."""
         horizon = 3 * 3600.0
         truth = self.phone_truth_s
+        # Phones the true fire reaches within the first 3 h of the flight, not those it reached by take-off.
         reached = (truth > 0.0) & (truth <= horizon)
         first_any = np.full(len(self.phones), np.inf)
         first_evac = np.full(len(self.phones), np.inf)

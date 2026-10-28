@@ -53,6 +53,8 @@ class WindField:
     def step(self, dt: float) -> None:
         c = self.config
         if c.gust_sigma_mps > 0:
+            # An Euler step of an Ornstein-Uhlenbeck process: it decays toward zero over gust_tau_s, with
+            # noise scaled so that its steady-state standard deviation is about gust_sigma_mps.
             a = dt / c.gust_tau_s
             self.shared += -a * self.shared + c.gust_sigma_mps * np.sqrt(2 * a) * self.rng.standard_normal(3)
             # The 0.3 factor (vertical gusts are weaker near the ground) is applied to the state on every
@@ -84,6 +86,8 @@ class WindField:
                 out += front.factor(t) * vel
                 continue
             u = vel[:2] / horiz
+            # The front travels at its own wind speed (at least 5 m/s), so a drone further downwind of the
+            # swarm centre meets it later.
             delay = ((positions[:, :2] - centre[:2]) @ u) / max(horiz, 5.0)
             f = np.array([front.factor(t - d) for d in delay])
             out += f[:, None] * vel[None, :]

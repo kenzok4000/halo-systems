@@ -70,6 +70,8 @@ class AirspaceCheck:
         return self.action != "rejected"
 
 
+# One validator per flight. It keeps the time of the last plan change for the rate limit, and a log of every
+# verdict with its source, which the run reports as its validator_log.
 class SafetyValidator:
     def __init__(self, body_radius_m: float, nav_sigma_m: float = 0.3, limits: Limits | None = None):
         self.body_radius_m = body_radius_m
@@ -80,6 +82,8 @@ class SafetyValidator:
 
     def spacing_floor(self, margin: float) -> float:
         """Smallest spacing the controller can hold safely: bodies + margin + 3 sigma relative nav error."""
+        # Two drones' position errors are independent, so the error in the distance between them is sqrt(2)
+        # times one drone's.
         rel_sigma = math.sqrt(2.0) * self.nav_sigma_m
         return max(self.limits.spacing_m[0], 2 * self.body_radius_m + margin + 3 * rel_sigma)
 
@@ -131,6 +135,7 @@ class SafetyValidator:
         floor = self.spacing_floor(merged["safety_margin_m"])
         if merged["spacing_m"] < floor:
             violations.append(f"spacing {merged['spacing_m']:.2f} m below safe floor {floor:.2f} m; raised")
+            # Rounded up to the next centimetre, never down, so the raised spacing still clears the floor.
             merged["spacing_m"] = math.ceil(floor * 100.0) / 100.0
             clamped = True
 
@@ -140,6 +145,8 @@ class SafetyValidator:
                               reason=reason, source=source)
 
         # 4. Rate limit (only for real plan changes).
+        # Compared after clamping: a proposal that clamps back to the plan in force is a repeat, not a change.
+        # The clock moves only when a change is accepted, so a rejected one does not restart the wait.
         if not directive.same_plan(current) and t - self.last_change_t < self.limits.min_change_interval_s:
             return self._reject(current, t, violations + [
                 f"plan change {t - self.last_change_t:.1f} s after the previous one (minimum {self.limits.min_change_interval_s:g} s)"], source)
@@ -193,6 +200,8 @@ class SafetyValidator:
             after = flying_by_squad[dst] + incoming.get(dst, 0) + k
             if after > caps[dst]:
                 bad.append(f"squad {dst} would have {after}, more than fit across its area ({caps[dst]})")
+        # As with directives, only an accepted order restarts the wait. _last_squad_t does not exist until an
+        # order is accepted, so the first order needs no gap.
         last = getattr(self, "_last_squad_t", -math.inf)
         if t - last < self.SQUAD_ORDER_GAP_S:
             bad.append(f"squad orders must be {self.SQUAD_ORDER_GAP_S:.0f} s apart")
@@ -209,6 +218,8 @@ class SafetyValidator:
         """Check an order sending the strike-check team to a strike: {"op": "check", "strike": id}. The strike must
         be on the night's list and not already checked or refused, the team must have a drone flying, and no
         airspace hold may be in force. Returns the violations (empty: accepted); logged with ``kind`` "strike"."""
+        # The validator only rules on the order. Flying the team to the strike is done by code in
+        # sim/strike_check.py, never by the picker that proposed it.
         bad = []
         sid = order.get("strike")
         if order.get("op") != "check":

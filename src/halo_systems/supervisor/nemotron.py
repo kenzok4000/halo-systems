@@ -53,6 +53,7 @@ class NemotronSupervisor(Supervisor):
         if not self.model:
             raise ValueError("no model id: pass model= or set HALO_SUPERVISOR_MODEL (see `halo doctor`)")
         self.cache = cache
+        # Any other value ("none", say) means no fallback: a failed call then leaves the directive in force.
         self.fallback = RuleSupervisor() if fallback == "rule" else None
         self.temperature = temperature
         self.think = think
@@ -86,6 +87,8 @@ class NemotronSupervisor(Supervisor):
         # fails or its reply cannot be parsed.
         rule_decision = self.fallback.decide(summary, current, t) if self.fallback else None
         messages = self._messages(summary)
+        # The cache key covers the model, the exact message text, the temperature, the reasoning switch and the
+        # token limit, so a replay only ever answers the very request the live run made.
         key = request_key(self.model, messages, self.temperature,
                           {"extra_body": self.extra_body, "max_tokens": self.max_tokens})
         meta = {"role": "supervisor", "model": self.model, "prompt_version": PROMPT_VERSION, "cached": False,
@@ -120,6 +123,8 @@ class NemotronSupervisor(Supervisor):
                     self.cache.put(key, content, rec)
             proposal = parse_directive(content)
         except (NebiusError, ValueError) as exc:
+            # Only a strict run stops, and only on an error marked fatal. Every other failure, an unusable reply
+            # included, falls back below.
             if self.strict and getattr(exc, "fatal", False):
                 raise
             err = getattr(exc, "record", None)
@@ -127,8 +132,12 @@ class NemotronSupervisor(Supervisor):
                 latency = err.latency_s
                 meta.update({k: getattr(err, k, None) for k in ("prompt_tokens", "completion_tokens", "total_tokens",
                                                                 "cost_usd", "request_id", "attempts")})
+                # A fatal failure is not stored, so a later run with a working key or budget makes the call
+                # instead of replaying the failure.
                 if self.cache is not None and not getattr(exc, "fatal", False):
                     self.cache.put(key, None, err.to_dict(), error=str(exc))
+            # The fallback waits out the failed call's latency, so it takes effect no sooner than the failure
+            # was known. Marked in meta, it goes in under the source "fallback" and counts in ai_fallbacks.
             meta.update({"fallback": True, "error": str(exc)[:300]})
             fb = rule_decision.directive if rule_decision is not None else None
             return Decision(fb, latency_s=latency, raw=(content or "")[:2000], meta=meta)
@@ -138,6 +147,8 @@ class NemotronSupervisor(Supervisor):
         # these entries is part of the prompt that recorded calls are looked up by.
         self.history.append({"t": round(t, 1), **{k: proposal[k] for k in DIRECTIVE_FIELDS}, "reason": proposal.get("reason", "")})
         proposal["source"] = "nemotron"
+        # Still only a proposal: the engine holds it until the call's latency has passed in simulated time,
+        # then puts it through the safety validator (Simulation._supervise and _apply in sim/engine.py).
         return Decision(proposal, latency_s=latency, raw=content[:2000], meta=meta)
 
 
@@ -147,6 +158,7 @@ def parse_directive(content: str) -> dict:
     missing = [k for k in DIRECTIVE_FIELDS if k not in obj]
     if missing:
         raise ValueError(f"reply is missing {', '.join(missing)}")
+    # The shape name is only tidied here; the validator rejects an unknown shape, whoever proposed it.
     out = {"formation": str(obj["formation"]).strip().lower()}
     for k in DIRECTIVE_FIELDS[1:]:
         try:

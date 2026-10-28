@@ -176,6 +176,8 @@ def compile_with_model(text: str, client, model: str, temperature: float = 0.0, 
 
 
 # ----------------------------------------------------------------------------- baseline
+# The baseline is frozen: it has not changed since it was first written, rough edges included, so its scores
+# stay a fair comparison for the model.
 _NUM = r"(\d+(?:\.\d+)?)"
 _UNIT_SPEED = {"m/s": 1.0, "mps": 1.0, "metres per second": 1.0, "meters per second": 1.0, "km/h": 1 / 3.6,
                "kph": 1 / 3.6, "mph": 0.44704, "knots": 0.5144, "kts": 0.5144, "knot": 0.5144}
@@ -198,6 +200,7 @@ def _to_m(value: float, unit: str) -> float:
 def regex_baseline(text: str) -> dict:
     """A careful keyword-and-regex parser: the conventional baseline for the mission compiler."""
     spec = empty_spec()
+    # Padded with spaces so the word lists can match at either end of the text (" v " for example).
     low = " " + text.lower().replace("×", "x") + " "
     if harmful(low):
         spec.update(refused=True, refusal_reason="keyword guard")
@@ -223,11 +226,15 @@ def regex_baseline(text: str) -> dict:
         spec["constraints"]["altitude_max_m"] = round(_to_m(float(m.group(1)), m.group(2)), 2)
     m = re.search(r"(?:altitude|height|at|up)\s*(?:of)?\s*" + _NUM + r"\s*(m|metres|meters|ft|feet)\b(?!\s*(?:apart|spacing|between|gaps?|x|by))", low) or \
         re.search(_NUM + r"\s*(m|metres|meters|ft|feet)\s*(?:up|altitude|height|high)", low)
+    # A height equal to the ceiling just read is that ceiling, not the altitude to fly.
     if m and not (spec["constraints"]["altitude_max_m"] and abs(_to_m(float(m.group(1)), m.group(2)) - spec["constraints"]["altitude_max_m"]) < 1e-6):
         spec["directive"]["altitude_m"] = round(_to_m(float(m.group(1)), m.group(2)), 2)
     m = re.search(r"(?:safety )?margin\s*(?:of)?\s*" + _NUM + r"\s*m", low) or re.search(_NUM + r"\s*m\s*safety margin", low)
     if m:
         spec["directive"]["safety_margin_m"] = float(m.group(1))
+    # Route: "A x B" with a survey or area word anywhere in the text is a survey of that size; survey words
+    # alone, a survey with no size; loop words, a loop. Anything else is a transit, its length the first
+    # distance in m or km not followed by a spacing or height word or by "/s".
     m = re.search(_NUM + r"\s*(m|km)?\s*(?:x|by)\s*" + _NUM + r"\s*(m|km)", low)
     if m and any(w in low for w in ("survey", "search", "sweep", "map", "scout", "area", "field", "farm")):
         spec["route"]["type"] = "survey"
@@ -249,6 +256,8 @@ def regex_baseline(text: str) -> dict:
 
 
 # ----------------------------------------------------------------------------- scoring
+# How far a number may be from the gold answer and still count as right, in the field's own units. A number
+# not listed here (the drone count) must match exactly, and so must names and the refusal.
 TOLERANCE = {"spacing_m": 0.25, "speed_mps": 0.25, "altitude_m": 0.5, "safety_margin_m": 0.1, "length_m": 1.0,
              "width_m": 1.0, "height_m": 1.0, "lane_m": 0.5, "altitude_max_m": 0.5}
 

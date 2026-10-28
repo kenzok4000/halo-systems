@@ -99,6 +99,7 @@ class Budget:
         with self.path.open("rb") as fh:
             fh.seek(self._offset)
             chunk = fh.read()
+        # Only whole lines: a line another process is still writing is left for the next look.
         end = chunk.rfind(b"\n") + 1
         for line in chunk[:end].splitlines():
             try:
@@ -133,6 +134,8 @@ class Budget:
         entry = {"t": round(time.time(), 3), "call_id": call_id, "model": model, "role": role, "status": status,
                  "prompt_tokens": int(prompt_tokens), "completion_tokens": int(completion_tokens),
                  "cost_usd": round(float(cost_usd), 6), "pricing": pricing, "note": note}
+        # The entry only goes to the file. The running total picks it up at the next _refresh, the same way
+        # as another process's entries.
         with self._lock:
             jsonl.append(self.path, entry)
 

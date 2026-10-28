@@ -174,6 +174,8 @@ class StrikeChecker:
         sim.event("strike_check", None, state="done", strike=cur["strike"], result=cur["result"])
 
     def _decide(self, sim) -> None:
+        # The picker (a fixed rule or Nemotron) sees only the table and context that code builds here from
+        # what the swarm knows, never the true fires.
         table, ctx = strike_table(sim, self)
         if not table:
             self.finished = True
@@ -188,6 +190,8 @@ class StrikeChecker:
         self.decisions.append(rec)
         sid = got.get("strike")
         latency = float(got.get("latency_s", 0.0))
+        # No strike: either the picker chose to stop, or its reply was unusable, which is recorded as invalid
+        # (strike_invalid) and never replaced by the rule's pick.
         if sid is None:
             if got.get("valid", True):
                 self.finished = True
@@ -197,12 +201,16 @@ class StrikeChecker:
                 # after the reply came.
                 self.wait_until = sim.t + latency + float(sim.ctrl.plan.squads[self.sq].pass_s or 60.0)
             return
+        # The pick is held until the call's latency has passed in simulated time; tick then applies it once the
+        # team is free, if the strike can still be checked in time.
         self.pending = {"strike": int(sid), "why": got.get("why", ""), "t_apply": sim.t + latency,
                         "t_pick": round(sim.t, 2)}
 
     def _apply(self, sim, obs, pick: dict) -> None:
         plan = sim.ctrl.plan
         order = {"op": "check", "strike": pick["strike"]}
+        # The safety validator checks every pick, whoever made it, before the team moves; code then places the
+        # square and moves the team.
         bad = sim.validator.check_strike(order, set(self.strikes), set(self.checked) | self.refused,
                                          self._flying(plan, sim), sim.t, self.picker.source,
                                          airspace_hold=sim._hold is not None)
@@ -299,6 +307,7 @@ def strike_table(sim, checker: StrikeChecker) -> tuple[list[dict], dict]:
     t = sim.t
     act = sim.active_mask()
     team = [d for d in checker._team(plan) if act[d]]
+    # Where the team is, by the drones' own navigation estimates rather than their true positions.
     pos = sim.obs.p_est if sim.obs is not None else sim.p
     here = pos[team, :2].mean(axis=0) if team else np.array(plan.parts[checker.sq].centre()[:2])
     from ..control.squads import TRANSIT_SPEED_MPS
@@ -323,6 +332,7 @@ def strike_table(sim, checker: StrikeChecker) -> tuple[list[dict], dict]:
         if busy_s + dist / TRANSIT_SPEED_MPS + JOIN_MARGIN_S + look_s > left_s:
             continue                                     # cannot be reached and looked at before the patrol ends
         near = nearest_located(sim, x, y)
+        # Unexplained bearings that pass within SMOKE_NEAR_M of the strike, ahead of the drone that took them.
         lines, drones = 0, set()
         for sx, sy, b, d in smoke:
             rx, ry = x - sx, y - sy
@@ -332,6 +342,8 @@ def strike_table(sim, checker: StrikeChecker) -> tuple[list[dict], dict]:
             if abs(rx * math.sin(b) - ry * math.cos(b)) <= SMOKE_NEAR_M:
                 lines += 1
                 drones.add(d)
+        # Seen cells inside the circle over the circle's area in cells; the count of whole cells can run a
+        # little over that area, hence the cap at 1.
         mask = ((checker._seen_x[:, None] - x) ** 2 + (checker._seen_y[None, :] - y) ** 2) <= SEEN_RADIUS_M ** 2
         total = math.pi * SEEN_RADIUS_M ** 2 / (checker._cell ** 2)
         seen = min(1.0, float(np.count_nonzero(checker.seen & mask)) / total)

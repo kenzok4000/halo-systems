@@ -25,6 +25,8 @@ import sys
 
 def _seeds(text: str):
     from .eval.runner import HELD_OUT_SEEDS, TUNING_SEEDS
+    # "tuning" and "heldout" name the two fixed seed sets in eval/runner. Anything else is a list such as
+    # 0-9,20, where a range includes both ends.
     if text == "tuning":
         return list(TUNING_SEEDS)
     if text == "heldout":
@@ -50,6 +52,7 @@ def cmd_list(args) -> int:
 def cmd_run(args) -> int:
     from .eval.runner import run_one
     kw = {}
+    # Only a Nemotron supervisor uses the call cache and the log; make_supervisor drops them for fixed and rule.
     if args.cache or args.ai_log:
         kw["supervisor_kw"] = {"cache_path": args.cache, "cache_mode": args.cache_mode, "log_path": args.ai_log}
     opts = _valley_options(args)
@@ -96,6 +99,8 @@ def cmd_bench(args) -> int:
     ns = [int(x) for x in args.n.split(",")] if args.n else None
     rows = run_grid(args.scenarios.split(","), _seeds(args.seeds), args.configs.split(","), args.out,
                     n=ns, workers=args.workers, extra=extra)
+    # A run that raised comes back as an error row instead of stopping the grid. run_grid does not count it as
+    # done, so running the same bench again flies it again.
     errors = [r for r in rows if "error" in r]
     print(f"{len(rows)} rows in {args.out}, {len(errors)} errors")
     return 1 if errors else 0
@@ -134,9 +139,13 @@ def cmd_mission_eval(args) -> int:
                     if exc.fatal:  # no key, key rejected or budget spent: every later call would fail too
                         print(f"stopping: {exc.reason}", file=sys.stderr)
                         return 3
+                    # A failed call counts as wrong on every field the gold answer states, so a failure lowers
+                    # the model's score instead of dropping out of it.
                     row["nemotron"] = {"error": exc.reason, "correct": 0, "total": len(it["gold"]), "exact": False}
                 row["nemotron"]["wall_s"] = round(_time.perf_counter() - t0, 2)
             rows.append(row)
+        # Field accuracy pools the stated fields over all prompts; "exact" counts prompts with every field right,
+        # and refusals_correct the requests the gold answer refuses that were refused too.
         summary = {}
         for who in ("baseline", "nemotron"):
             got = [r[who] for r in rows if who in r]
@@ -161,6 +170,8 @@ def cmd_valley_eval(args) -> int:
     from .ai.client import NebiusClient, NebiusError
     from .ai.valley import compile_with_model, flatten, gold_spec, load_set, plan, regex_baseline, score
     from .eval.scenarios import valley_strikes
+    # With --replay no client is made and every answer comes from --cache, so a recorded evaluation can be scored
+    # again with no key and no network; a request the cache never recorded is a fatal error and stops the run.
     cache = CallCache(args.cache, mode="replay" if args.replay else "record") if args.cache else None
     client = None
     if args.model and not args.replay:
@@ -173,6 +184,8 @@ def cmd_valley_eval(args) -> int:
     for name in args.sets.split(","):
         rows = []
         for it in load_set(name):
+            # Each request is about one seed's valley, so the gold answer, the baseline and the model are all
+            # read against that seed's list of lightning strikes.
             strikes = valley_strikes(it["seed"])
             gold = gold_spec(it)
             row = {"id": it["id"], "seed": it["seed"], "text": it["text"], "gold": flatten(gold, strikes),

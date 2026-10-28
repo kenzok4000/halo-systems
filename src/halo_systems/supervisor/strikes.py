@@ -41,6 +41,8 @@ class NearestPicker:
 class RulePicker:
     name = source = "rule"
 
+    # Lower groups go first: 0 unexplained smoke seen by two or more drones, 1 last night's, 2 the night
+    # before's, 3 near a located fire. WHY gives the reason for a pick from each group.
     @staticmethod
     def group(r: dict) -> int:
         if explained(r):
@@ -57,6 +59,8 @@ class RulePicker:
         return {"strike": r["id"], "why": self.WHY[self.group(r)], "latency_s": 0.0, "how": "rule"}
 
 
+# The system prompt and the user message below are hashed into the cache key, so their wording is frozen
+# like the supervisor's: a change turns every recorded pick into a miss.
 SYSTEM = """\
 You direct a small check team of drones over a mountain valley the morning after dry lightning. Other drone squads \
 patrol the valley's areas. This team flies to one reported lightning strike at a time, patrols a 120 m square \
@@ -120,9 +124,12 @@ class NemotronPicker:
         from ..ai.cache import request_key
         from ..ai.client import NebiusError, reasoning
         messages = [{"role": "system", "content": SYSTEM}, {"role": "user", "content": user_message(table, ctx)}]
+        # Reasoning counts against max_tokens (see ai/client.reasoning), hence the larger limit with it on.
         max_tokens = 6000 if self.think else 400
         extra = reasoning(self.think)
         key = request_key(self.model, messages, 0.0, {"extra_body": extra, "max_tokens": max_tokens})
+        # A recorded reply, or a recorded failure, replays as it went live. In replay mode a request with no
+        # record stops the flight rather than make a live call.
         hit = self.cache.get(key) if self.cache is not None and self.cache.mode != "off" else None
         if hit is not None and (hit.get("content") is not None or hit.get("error")):
             content, record, how = hit.get("content"), dict(hit["record"]), "replayed"
@@ -135,6 +142,8 @@ class NemotronPicker:
                 result = self._client().chat(self.model, messages, role="strike-picker", temperature=0.0,
                                              max_tokens=max_tokens, extra_body=extra)
             except NebiusError as exc:
+                # A fatal error stops the flight. Any other failure is recorded, so a replay fails at the same
+                # point, and becomes an unusable reply: no rule picks in its place.
                 if exc.fatal or exc.record is None:
                     raise
                 record = exc.record.to_dict()
@@ -142,6 +151,7 @@ class NemotronPicker:
                     self.cache.put(key, None, record, error=str(exc)[:300])
                 return self._unusable(f"call failed: {exc}", record, "live")
             content, record, how = result.content, result.record.to_dict(), "live"
+            # Stored before it is parsed, so an unusable reply replays as unusable too.
             if self.cache is not None:
                 self.cache.put(key, content, record)
         return parse_reply(content, {r["id"] for r in table}, record, how)
@@ -164,13 +174,16 @@ def parse_reply(content: str | None, offered: set, record: dict, how: str) -> di
     if not isinstance(obj, dict):
         return NemotronPicker._unusable("the reply is not a JSON object", record, how)
     sid, why = obj.get("strike"), str(obj.get("why", ""))[:200]
+    # An explicit "strike": null stops the checks; a reply with no "strike" key at all is unusable.
     if sid is None and "strike" in obj:
         return {"strike": None, "valid": True, "why": why or "stopped", "latency_s": latency, "how": how,
                 "record": record}
+    # An id may also come as a string of up to six digits or as a whole float; either becomes an int.
     if isinstance(sid, str) and sid.strip().isascii() and sid.strip().isdigit() and len(sid.strip()) <= 6:
         sid = int(sid.strip())
     elif isinstance(sid, float) and sid.is_integer() and abs(sid) < 1e6:
         sid = int(sid)
+    # A bool is refused, though Python counts True as 1, and only an id the table offered is a pick.
     if not isinstance(sid, int) or isinstance(sid, bool) or sid not in offered:
         return NemotronPicker._unusable(f"named no offered strike ({repr(sid)[:60]})", record, how)
     return {"strike": sid, "valid": True, "why": why, "latency_s": latency, "how": how, "record": record}

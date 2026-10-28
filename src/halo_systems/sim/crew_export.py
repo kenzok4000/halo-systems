@@ -29,6 +29,8 @@ ANCHOR = (0.0, 0.0)
 
 def lonlat(x: float, y: float, anchor: tuple[float, float] = ANCHOR) -> tuple[float, float]:
     lat0, lon0 = anchor
+    # On a flat earth a degree of latitude is 111,320 m everywhere, and a degree of longitude is that
+    # times the cosine of the anchor's latitude.
     return (round(lon0 + x / (M_PER_DEG_LAT * math.cos(math.radians(lat0))), 7), round(lat0 + y / M_PER_DEG_LAT, 7))
 
 
@@ -38,6 +40,7 @@ def _cone(origin, bearing_deg: float, cone_deg: float, reach_m: float, k: int = 
     ox, oy = origin
     pts = [(ox, oy)]
     for j in range(k + 1):
+        # Compass bearings run clockwise from north, so x (east) takes the sine and y (north) the cosine.
         b = math.radians(bearing_deg - cone_deg + 2.0 * cone_deg * j / k)
         pts.append((ox + reach_m * math.sin(b), oy + reach_m * math.cos(b)))
     pts.append((ox, oy))

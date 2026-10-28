@@ -85,6 +85,8 @@ class ImprovedController(Controller):
             self._vf = obs.v_est.copy()
             self._a_prev = np.zeros_like(obs.p_est)
             return self._pf, self._vf
+        # Predict with the acceleration commanded last step, then pull the velocity and the position part of
+        # the way toward the new estimates.
         self._vf = self._vf + self._a_prev * dt
         self._vf += 0.3 * (obs.v_est - self._vf)
         self._pf = self._pf + self._vf * dt
@@ -116,6 +118,8 @@ class ImprovedController(Controller):
         p, v = self._filter(obs, dt)
         act = obs.active
         squad_of = self.squad_of
+        # The sensing-limited speed cap needs an obstacle search, so it is refreshed every 0.2 s of simulated
+        # time rather than every step; with squads, each squad's leader gets its own cap.
         if "cbf" in self.features and self.world is not None and self.world.obstacle_count \
                 and obs.t - self._cap_checked_t >= 0.2:
             self._cap_checked_t = obs.t
@@ -124,6 +128,8 @@ class ImprovedController(Controller):
             else:
                 for part, m in zip(plan.parts, plan.part_masks()):
                     part.speed_cap = self._sensing_limited_speed(part, p[act & m])
+        # Move the virtual leader (one per squad when there are squads) and the slots on by dt. With pace,
+        # the leader slows for the shape error in the position estimates.
         plan.advance(dt, obs.t, self.pace_errors(obs))
         ref_p, ref_v = plan.slots()
         if self._ref_v_prev is None:
@@ -159,6 +165,8 @@ class ImprovedController(Controller):
         if "consensus" not in self.features:
             consensus = 0.0
 
+        # Nominal command: PD on the slot, feedforward and consensus. The soft speed limit then brakes along
+        # the velocity, 2 m/s^2 for every m/s above speed_limit, before the clip to the acceleration budget.
         a_nom = ref_a + self.kp * (ref_p - p) + self.kd * (ref_v - v) + self.kc * consensus
         speed = np.linalg.norm(v, axis=1, keepdims=True)
         over = np.maximum(0.0, speed - self.speed_limit)
@@ -196,6 +204,8 @@ class ImprovedController(Controller):
                 side[side == 0] = 1.0
                 push = blocked.any(axis=1)
                 a_nom[push] += 0.5 * self.accel_limit * side[push, None] * tangent[push]
+        # The safety filter runs last, on the finished nominal command, so nothing added afterwards can undo
+        # its corrections.
         a, active_rows = project(a_nom, g, b, m, self.accel_limit)
         self.filter_active_steps += int(active_rows.any(axis=1)[act].sum())
         a[~act] = 0.0

@@ -98,6 +98,9 @@ def rothermel(fm: FuelModel, moist: Moisture, wind_mph: float = 0.0, slope_tan: 
     slope as vectors (phi_w per unit wind, the wind-factor constants, phi_s per unit tan^2) and the
     reaction intensity.
     """
+    # Rothermel's constants for every particle: oven-dry density 32 lb/ft^3, total mineral content 5.55% and
+    # effective (silica-free) mineral content 1%. The 10 h and 100 h dead classes always take the standard
+    # surface-area-to-volume ratios, 109 and 30 per foot.
     rho_p, s_t, s_e = 32.0, 0.0555, 0.010
     loads_dead = np.array([fm.load_1h, fm.load_10h, fm.load_100h]) * TONS_PER_ACRE_TO_LB_PER_FT2
     sav_dead = np.array([fm.sav_1h, 109.0, 30.0])
@@ -107,6 +110,8 @@ def rothermel(fm: FuelModel, moist: Moisture, wind_mph: float = 0.0, slope_tan: 
     total_load = loads_dead.sum() + load_live
     if total_load <= 0 or fm.depth_ft <= 0:
         return {"ros_ft_min": 0.0, "r0_ft_min": 0.0, "ir": 0.0}
+    # Each size class is weighted by its share of the fuel bed's surface area, which gives the characteristic
+    # surface-area-to-volume ratio sigma that most of the terms below depend on.
     a_dead = sav_dead * loads_dead / rho_p
     a_live = sav_live * load_live / rho_p
     a_d, a_l = a_dead.sum(), a_live
@@ -115,6 +120,8 @@ def rothermel(fm: FuelModel, moist: Moisture, wind_mph: float = 0.0, slope_tan: 
     f_d, f_l = a_d / a_t, a_l / a_t
     sigma_d = float(np.sum(f_dead_j * sav_dead))
     sigma = f_d * sigma_d + f_l * sav_live
+    # Packing ratio (bulk density over particle density) against its optimum for this sigma; the reaction
+    # velocity gamma is greatest at the optimum, where the ratio is 1.
     rho_b = total_load / fm.depth_ft
     beta = rho_b / rho_p
     beta_op = 3.348 * sigma ** -0.8189
@@ -138,15 +145,19 @@ def rothermel(fm: FuelModel, moist: Moisture, wind_mph: float = 0.0, slope_tan: 
         r = min(1.0, m / mx) if mx > 0 else 1.0
         return max(0.0, 1.0 - 2.59 * r + 5.11 * r * r - 3.52 * r ** 3)
 
+    # Reaction intensity (BTU/ft^2/min): the heat the flaming front releases, damped by moisture and minerals.
     eta_s = min(1.0, 0.174 * s_e ** -0.19)
     ir = gamma * (wn_dead * fm.heat * damping(mf_dead, fm.mx_dead) * eta_s
                   + wn_live * fm.heat * damping(moist.live, mx_live) * eta_s)
+    # The share of that heat carried to the fuel ahead (xi), over the heat needed to bring that fuel to ignition
+    # (the heat sink, with 250 + 1116 M BTU/lb to ignite fuel of moisture M), gives the no-wind, flat rate r0.
     xi = math.exp((0.792 + 0.681 * sigma ** 0.5) * (beta + 0.1)) / (192.0 + 0.2595 * sigma)
     q_dead = 250.0 + 1116.0 * m_dead
     q_live = 250.0 + 1116.0 * moist.live
     sink = rho_b * (f_d * float(np.sum(f_dead_j * np.exp(-138.0 / sav_dead) * q_dead))
                     + f_l * math.exp(-138.0 / sav_live) * q_live)
     r0 = ir * xi / sink if sink > 0 else 0.0
+    # The wind factor's constants C, B and E depend on sigma alone; the head rate is r0 (1 + phi_w + phi_s).
     c = 7.47 * math.exp(-0.133 * sigma ** 0.55)
     b = 0.02526 * sigma ** 0.54
     e = 0.715 * math.exp(-3.59e-4 * sigma)
@@ -162,6 +173,7 @@ def anderson_check() -> dict:
     out = {}
     for k, fm in FUEL_MODELS.items():
         r = rothermel(fm, Moisture(0.08, 0.08, 0.08, 1.0), wind_mph=5.0)
+        # A chain is 66 ft, so ft/min x 60 / 66 is chains per hour, the unit of Anderson's table.
         ch_h = r["ros_ft_min"] * 60.0 / 66.0
         out[k] = {"model_ch_per_h": round(ch_h, 1), "anderson_ch_per_h": ANDERSON_ROS_CH_PER_H[k],
                   "ratio": round(ch_h / ANDERSON_ROS_CH_PER_H[k], 3)}
@@ -204,6 +216,8 @@ def wind_slope_factors(fm: FuelModel, moist: Moisture, wind10_mps: float, slope_
     return float(phi_w), float(base["phi_s_per_tan2"] * slope_tan * slope_tan)
 
 
+# The 16 links of a cell: its eight neighbours and the eight knight moves (one cell one way, two the other), which
+# give finer directions than the neighbours alone, so fire shapes are less bent to the grid.
 STEPS = [(dx, dy) for dx in (-2, -1, 0, 1, 2) for dy in (-2, -1, 0, 1, 2)
          if (dx, dy) != (0, 0) and max(abs(dx), abs(dy)) == 1 or {abs(dx), abs(dy)} == {1, 2}]
 
@@ -222,9 +236,12 @@ class SpreadGrid:
         ys = self.y0 + np.arange(self.ny) * self.cell_m
         self.X, self.Y = np.meshgrid(xs, ys)
         self.z = terrain.height(self.X, self.Y)
+        # Each cell's Anderson fuel model from its land cover; 0 is rock or bare ground, which does not burn.
         self.fuel = np.vectorize(lambda c: COVER_FUEL.get(int(c), 0))(terrain.cover_at(self.X, self.Y))
         gx, gy = terrain.gradient(self.X, self.Y)
         self.slope_x, self.slope_y = gx, gy
+        # A spread-rate multiplier per cell: the truth's hidden patchiness (see Wildfire); none on the
+        # station's grid.
         self.mult = np.ones_like(self.z) if ros_multiplier is None else ros_multiplier
         self._cache: dict = {}
 
@@ -247,6 +264,8 @@ class SpreadGrid:
         dirx = np.zeros_like(self.z)
         diry = np.zeros_like(self.z)
         lb = np.ones_like(self.z)
+        # r0 and the wind factor depend only on the fuel model and the weather, so they are worked out once per
+        # model; the slope varies cell by cell.
         for k in np.unique(self.fuel):
             if k == 0:
                 continue
@@ -256,6 +275,8 @@ class SpreadGrid:
             r0 = base["r0_ft_min"]
             if r0 <= 0:
                 continue
+            # The 10 m wind brought to 20 ft (x 0.87) and then to midflame height for this fuel, and from m/s to
+            # ft/min by way of mi/h (1 mi/h is 0.44704 m/s).
             u_mid = w10 * 0.87 * MIDFLAME_FACTOR[int(k)] / 0.44704 * MPH_TO_FT_PER_MIN    # ft/min
             u_mid = min(u_mid, base["wind_limit_ft_min"])
             phi_w = base["c"] * u_mid ** base["b"] * base["ratio"] ** -base["e"] if u_mid > 0 else 0.0
@@ -264,6 +285,8 @@ class SpreadGrid:
             tan2 = sx * sx + sy * sy
             phi_s = base["phi_s_per_tan2"] * tan2
             snorm = np.sqrt(np.maximum(tan2, 1e-12))
+            # Wind (along the wind) and slope (up the fall line) add as vectors: the sum's length is the effective
+            # factor phi_e, and its direction is the way the head runs.
             vx = phi_w * ux + phi_s * sx / snorm
             vy = phi_w * uy + phi_s * sy / snorm
             phi_e = np.hypot(vx, vy)
@@ -275,6 +298,9 @@ class SpreadGrid:
             diry[mask] = np.where(phi_e > 0, vy / np.maximum(phi_e, 1e-12), 0.0)
             lb[mask] = length_to_breadth(u_eff / MPH_TO_FT_PER_MIN)
         head *= self.mult
+        # The ellipse's eccentricity e from its length-to-breadth ratio. With the ignition at the rear focus, the
+        # rate at angle theta off the head is head (1 - e) / (1 - e cos theta): the head rate straight ahead, and
+        # (1 - e) / (1 + e) of it straight back.
         ecc = np.sqrt(np.maximum(lb * lb - 1.0, 0.0)) / lb
         rates = []
         for dx, dy in STEPS:
@@ -321,6 +347,8 @@ class SpreadGrid:
             costs = []
             for (dx, dy), rate in zip(STEPS, rates):
                 dist = self.cell_m * math.hypot(dx, dy)
+                # np.roll moves each cell's rate one step along (dx, dy), onto the cell that step reaches;
+                # the links it wraps round the grid's edge are cut below.
                 # Rate leaving the source cell and arriving at the target, averaged as travel times.
                 src = np.roll(np.roll(rate, dy, axis=0), dx, axis=1)
                 with np.errstate(divide="ignore"):

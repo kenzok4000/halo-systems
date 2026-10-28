@@ -58,6 +58,8 @@ class AsyncSupervisor(Supervisor):
 
     def decide(self, summary, current, t):
         """Start a call if none is running. Always returns None: nothing to apply yet."""
+        # A report that comes while a call is still running is dropped, not queued, so only one request is ever
+        # in flight.
         if self.future is None:
             self.requested_t = t
             self.future = self.pool.submit(self.inner.decide, summary, current, t)
@@ -91,6 +93,7 @@ class LiveRun:
         # go through AsyncSupervisor so the 50 Hz loop never waits on the network.
         replay = getattr(getattr(sup, "cache", None), "mode", None) == "replay"
         self.async_sup = AsyncSupervisor(sup) if sup.uses_ai and not replay else None
+        # The simulation keeps no frames of its own (record_hz=0): the loop below builds each frame and streams it.
         self.sim = Simulation(scenario, make_controller(ctrl_spec, body, scenario.world), self.async_sup or sup,
                               seed=seed, body=body, record_hz=0)
         self.id = uuid.uuid4().hex[:10]
@@ -128,6 +131,7 @@ class LiveRun:
                 self.subscribers.remove(q)
 
     def publish(self, kind: str, data: dict) -> None:
+        # A subscriber 200 messages behind misses this one rather than holding up the flight.
         for q in list(self.subscribers):
             try:
                 q.put_nowait((kind, data))
@@ -150,6 +154,9 @@ class LiveRun:
     def _loop(self) -> None:
         sim = self.sim
         next_frame = 0.0
+        # Simulated time follows the wall clock times the speed: the loop steps while the simulation is behind
+        # that target and sleeps while it is ahead. A pause resets the reference, so a resumed run does not race
+        # to catch up.
         wall0, sim0 = time.perf_counter(), sim.t
         while not self.stop and not sim.ended:
             if self.paused:
@@ -283,6 +290,8 @@ class State:
                 raise ValueError("Nemotron is not available: set NEBIUS_API_KEY and HALO_SUPERVISOR_MODEL")
             # --model takes a model id (reasoning off) or a full spec such as nemotron-think:<model id>.
             spec = self.model if self.model.startswith("nemotron") else f"nemotron:{self.model}"
+            # Whatever supervisor the page named is replaced by the server's own setting, so a request cannot
+            # choose the model or its reasoning setting.
             config = f"{split_config(config)[0]}+{spec}"
         if body.get("mission"):
             person = body.get("missing_person")
@@ -302,12 +311,15 @@ class State:
                 # the incident commander's tap on the page.
                 scenario.wildfire.alerts.approval = body["approval"]
         kw = {}
+        # The client logs each live call in the evidence folder. With a cache, a session with a key answers from
+        # it where it can and records the rest; one without a key only replays.
         if "nemotron" in config:
             log = self.evidence_dir / "dashboard_calls.jsonl"
             kw = {"log_path": str(log)}
             if self.cache_path:
                 kw.update(cache_path=str(self.cache_path), cache_mode="record" if self.ai_status()["mode"] == "live" else "replay")
         with self.lock:
+            # Finished and stopped runs are cleared first; with MAX_RUNS still running, the oldest is stopped.
             for rid in [r for r, run in self.runs.items() if run.sim.ended or run.stop]:
                 del self.runs[rid]
             while len(self.runs) >= MAX_RUNS:
@@ -329,6 +341,8 @@ def _valley_options(body: dict) -> dict:
     POST /api/valley/compile gives all of these)."""
     from ..control.squads import parse_script
     opts = {}
+    # Whichever of the station's fixed alert rules (sim/wildfire.py) the page picks, alerts follow that rule;
+    # no language model takes part in deciding a public alert.
     if body.get("alert_rule") in ("forecast", "presigned", "distance"):
         opts["alert_rule"] = body["alert_rule"]
         if body["alert_rule"] == "presigned" and body.get("smoulder_alerts") is not False:
@@ -458,6 +472,8 @@ def make_handler(state: State, host: str = "127.0.0.1"):
                     return self._file(STATIC / "index.html")
                 if parts[0] == "static":
                     target = (STATIC / "/".join(parts[1:])).resolve()
+                    # resolve() follows ".." and links, so a path that leaves the folder is refused, here and
+                    # for /results below.
                     if STATIC.resolve() not in target.parents:
                         return self._error("not found", HTTPStatus.NOT_FOUND)
                     return self._file(target)
@@ -541,6 +557,7 @@ def make_handler(state: State, host: str = "127.0.0.1"):
                         return self._error("no such run", HTTPStatus.NOT_FOUND)
                     if parts[3] == "inject":
                         kind = body.pop("kind", "")
+                        # The flight's thread steps under the same lock, so an injection lands between two steps.
                         with run.lock:
                             info = run.sim.inject(kind, **body)
                         return self._json(info)
@@ -607,6 +624,8 @@ def make_handler(state: State, host: str = "127.0.0.1"):
                     try:
                         kind, data = q.get(timeout=15)
                     except queue.Empty:
+                        # A comment line after 15 s of quiet keeps an idle stream open, and finds out when the
+                        # page has gone: writing to a closed connection raises, which ends the stream.
                         self.wfile.write(b": keep-alive\n\n")
                         self.wfile.flush()
                         continue
@@ -647,6 +666,7 @@ def _compile(state: State, text: str) -> dict:
         try:
             kind, _, model_id = state.model.partition(":") if state.model.startswith("nemotron") else ("", "", state.model)
             spec, problems, rec = compile_with_model(text, client, model_id, think=kind == "nemotron-think")
+            # No call record means the guard refused the request and the model was never called.
             return {"source": "nemotron" if rec else "guard", "model": model_id, "spec": spec, "problems": problems,
                     "call": rec}
         except NebiusError as exc:
@@ -753,6 +773,7 @@ def serve(host: str = "127.0.0.1", port: int = 8765, results_dir: str = "results
     state = State(Path(results_dir), Path(evidence_dir), model, Path(cache) if cache else None)
     Path(evidence_dir).mkdir(parents=True, exist_ok=True)
     httpd = ThreadingHTTPServer((host, port), make_handler(state, host))
+    # Request threads are daemons, so an open event stream cannot hold up shutdown after Ctrl+C.
     httpd.daemon_threads = True
     url = f"http://{host}:{port}/"
     print(f"Halo Systems dashboard on {url} (Ctrl+C to stop)")

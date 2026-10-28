@@ -33,6 +33,7 @@ def formation_offsets(shape: str, n: int, spacing: float) -> np.ndarray:
     elif shape == "column":
         xy = np.stack([-(np.arange(n) - (n - 1) / 2) * s, np.zeros(n)], axis=1)
     elif shape == "v":
+        # One drone at the apex, the rest alternately left and right on two arms swept back 45 degrees.
         pts = [(0.0, 0.0)]
         k = 1
         while len(pts) < n:
@@ -60,6 +61,7 @@ def extent(offsets: np.ndarray) -> tuple[float, float]:
 
 
 def rotate(offsets: np.ndarray, heading: float) -> np.ndarray:
+    # Anticlockwise by ``heading`` radians about z: from the formation frame into the world frame.
     c, s = math.cos(heading), math.sin(heading)
     out = offsets.copy()
     out[:, 0] = c * offsets[:, 0] - s * offsets[:, 1]
@@ -147,6 +149,7 @@ class Path:
         t = t0 + t1
         if np.linalg.norm(t) < 1e-9:
             _, t = self.at(s)
+        # Radians anticlockwise from +x (east), the convention for every heading in the plan.
         return math.atan2(t[1], t[0])
 
 

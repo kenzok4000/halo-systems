@@ -76,6 +76,8 @@ class FirePower:
     """Fire radiative power of one true fire over time, from the fuel its front consumes."""
 
     def __init__(self, arrival: np.ndarray, load: np.ndarray, cell_m2: float, window_s: float):
+        # Each cell's whole fuel load is taken to burn as the front reaches it, so the fuel consumed by
+        # any time is a running sum over the cells in order of arrival.
         a = arrival.ravel()
         burn = np.isfinite(a)
         order = np.argsort(a[burn])
@@ -85,6 +87,7 @@ class FirePower:
 
     def frp_mw(self, t) -> np.ndarray:
         t = np.asarray(t, dtype=float)
+        # Mean burn rate (kg/s) over the window before each t, turned into MW with COMBUSTION_KG_PER_MJ.
         hi = np.searchsorted(self.t, t, side="right")
         lo = np.searchsorted(self.t, t - self.window_s, side="right")
         return (self.kg[hi] - self.kg[lo]) / self.window_s / COMBUSTION_KG_PER_MJ
@@ -120,6 +123,7 @@ def today_methods(wf, seed: int, cfg: TodayConfig | None = None) -> list[dict]:
         hit = np.nonzero(power.frp_mw(scans) >= cfg.geo_frp_mw)[0]
         found["geostationary"] = (float(scans[hit[0]]) + cfg.geo_latency_s, "GOES ABI") if len(hit) else None
         found["polar"] = None
+        # Passes are in time order: the first after the fire starts to spread that sees enough power reports it.
         for t, name, frp in passes:
             if t >= f.t_active_s and float(power.frp_mw(t)) >= frp:
                 found["polar"] = (t + cfg.polar_latency_s, name)

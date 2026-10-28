@@ -71,13 +71,19 @@ def build_constraints(p, v, nbr_pos, nbr_vel, nbr_age, active, *, d_safe, a_brak
         sel_d, sel_ok = dist[r, idx], np.isfinite(ranked[r, idx])
         age = np.where(np.isfinite(nbr_age[r, idx]), nbr_age[r, idx], 0.0)
         ds = d_safe + stale_growth * np.minimum(age, max_age)
+        # h_ij from the docstring, both drones braking at a_brake, so 2 (a_i + a_j) = 4 a_brake.
+        # ``closing`` is the rate at which their distance grows (negative while they close in).
         unit = sel_dp / np.maximum(sel_d, 1e-9)[..., None]
         closing = _rows_dot(sel_dp, sel_dv) / np.maximum(sel_d, 1e-9)
         gap = sel_d - ds
         root = np.sqrt(4.0 * a_brake * np.maximum(gap, 1e-6))
         h = root + closing
         vv = _rows_dot(sel_dv, sel_dv)
+        # dh/dt >= -gamma h written out: everything without an acceleration goes to the right, the left is
+        # -unit . (a_i - a_j), and each drone takes half of the bound.
         rhs = gamma * h + 2 * a_brake * closing / root + vv / np.maximum(sel_d, 1e-9) - closing ** 2 / np.maximum(sel_d, 1e-9)
+        # Inside the safety distance the square root is undefined; the row instead asks for at least a_brake
+        # straight away from the neighbour (the obstacle and ground rows below do the same).
         b = np.where(gap > 1e-3, 0.5 * rhs, -a_brake)
         rows_g.append(-unit)
         rows_b.append(b)
@@ -90,6 +96,8 @@ def build_constraints(p, v, nbr_pos, nbr_vel, nbr_age, active, *, d_safe, a_brak
         root = np.sqrt(2.0 * a_brake * np.maximum(gap, 1e-6))
         closing = _rows_dot(away, v[:, None, :])
         h = root + closing
+        # Unlike the neighbour rows, dh/dt leaves out the turning of ``away`` as a drone passes. For these
+        # convex obstacles that term is never negative, so leaving it out only makes the row stricter.
         rhs = gamma * h + a_brake * closing / root
         rows_g.append(-away)
         rows_b.append(np.where(gap > 1e-3, rhs, -a_brake))
@@ -135,6 +143,8 @@ def project(a_nom, g, b, mask, a_max, iterations=12):
     x = a_nom.copy()
     incr = np.zeros((n, k + 1, 3))
     gg = np.maximum(_rows_dot(g, g), 1e-12)
+    # Each sweep projects onto every half-space in turn and then onto the ball. ``incr`` keeps each set's
+    # correction (Dykstra's step), so the sweeps head for the closest point, not just any feasible one.
     for _ in range(iterations):
         for j in range(k):
             z = x + incr[:, j]

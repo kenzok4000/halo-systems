@@ -43,6 +43,8 @@ class Sensing:
         self.rng = rng
         self.bias = rng.standard_normal((count, 3)) * config.gps_bias_sigma_m
         self.bias[:, 2] *= 0.6
+        # Every drone's broadcasts of the last few steps, in a ring buffer long enough for the longest delay
+        # (latency plus jitter, in whole steps).
         lat_steps = int(round(config.latency_s / dt))
         jit_steps = int(round(config.jitter_s / dt))
         self.min_delay = max(lat_steps, 0)
@@ -90,6 +92,7 @@ class Sensing:
         talk = alive & ~dark
         link = talk[:, None] & talk[None, :]
         np.fill_diagonal(link, False)
+        # Radio range depends on the true distance between drones: physics, not anything a drone knows.
         if self.c.range_m < np.inf:
             dist = np.linalg.norm(p_true[:, None, :] - p_true[None, :, :], axis=2)
             link &= dist <= self.c.range_m
@@ -104,6 +107,8 @@ class Sensing:
         senders = np.broadcast_to(np.arange(n)[None, :], (n, n))
         msg = self.hist[src_slot, senders]                 # (n, n, 6)
         msg_t = self.hist_t[src_slot]                      # (n, n)
+        # A message no newer than the last one received on that link is dropped, so a late packet never
+        # replaces fresher news.
         newer = ok & (msg_t > self.recv_t)
         self.recv[newer] = msg[newer]
         self.recv_t[newer] = msg_t[newer]

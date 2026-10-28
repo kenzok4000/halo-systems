@@ -31,6 +31,8 @@ def hungarian(cost: np.ndarray) -> np.ndarray:
     p = np.zeros(m + 1, dtype=int)      # p[j] = row matched to column j (1-based), 0 = free
     way = np.zeros(m + 1, dtype=int)
     for i in range(1, n + 1):
+        # Add row i: from the dummy column 0, which holds it, grow shortest alternating paths over the reduced
+        # costs cost - u - v, shifting the potentials as each column joins, until a free column is reached.
         p[0] = i
         j0 = 0
         minv = np.full(m + 1, INF)
@@ -53,6 +55,8 @@ def hungarian(cost: np.ndarray) -> np.ndarray:
             j0 = j1
             if p[j0] == 0:
                 break
+        # Augment: walk back along ``way`` from that free column; each column on the path takes the row of the
+        # column before it, so row i gets a column and every other row keeps one.
         while True:
             j1 = way[j0]
             p[j0] = p[j1]

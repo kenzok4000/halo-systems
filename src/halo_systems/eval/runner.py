@@ -88,16 +88,22 @@ def run_one(scenario: str, seed: int, config: str, n: int | None = None, record_
     sup_kw = dict(supervisor_kw or {})
     if sup_spec.startswith("nemotron"):
         sup_kw.setdefault("strict", True)   # a dead key or spent budget fails the run instead of mislabelling it
+    # Nothing about the configuration reaches the scenario above, and the simulation splits its own random
+    # streams (wind, sensing, starting positions and charge) from the same seed. So every configuration flown on
+    # a seed meets the same layout, gusts, sensor noise and radio losses: the paired comparison in eval/stats.
     sim = Simulation(sc, make_controller(ctrl_spec, body, sc.world), make_supervisor(sup_spec, **sup_kw),
                      seed=seed, body=body, record_hz=record_hz)
     t0 = time.perf_counter()
     result = sim.run()
+    # wall_s is the wall-clock time this machine took to compute the flight, not simulated time.
     row = {
         "scenario": scenario, "seed": seed, "config": config, "controller": ctrl_spec, "supervisor": sup_spec,
         "n": sc.n, "wall_s": round(time.perf_counter() - t0, 2), **result.metrics,
     }
     if gps_scale is not None:
         row["gps_scale"] = gps_scale
+    # Options and overrides that are not plain values (a parsed squad script, say) are kept as their repr, so
+    # the row stays one line of plain JSON.
     if options:
         row["options"] = {k: (v if isinstance(v, (int, float, str, bool, type(None))) else repr(v)) for k, v in options.items()}
     if overrides:

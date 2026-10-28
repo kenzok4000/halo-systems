@@ -33,10 +33,14 @@ from ..sim.world import Box, Cylinder, World
 
 def _rng(seed: int, salt: int) -> np.random.Generator:
     """Scenario-layout randomness, separate from the run's physics streams."""
+    # Each builder has its own salt, so one seed gives unrelated layouts in two scenarios, and adding a draw to
+    # one builder never shifts another's.
     return np.random.default_rng(np.random.SeedSequence([seed, salt]))
 
 
 def _wind_from(rng, speed, sigma=0.8, local=0.3, direction_deg=None):
+    # direction_deg is where the air moves to, in degrees anticlockwise from +x (east). A direction is
+    # drawn only when none is given, so passing one where a builder passed none would shift every later draw.
     ang = math.radians(direction_deg if direction_deg is not None else rng.uniform(0, 360))
     return WindConfig(mean_mps=(speed * math.cos(ang), speed * math.sin(ang), 0.0),
                       gust_sigma_mps=sigma, local_sigma_mps=local)
@@ -84,6 +88,7 @@ def forest_trail(seed: int = 0, n: int = 16) -> Scenario:
     for _ in range(rng.poisson(area / 45.0)):
         x, y = rng.uniform(x0, x1), rng.uniform(-60.0, 60.0)
         r = rng.uniform(0.25, 0.6)
+        # A tree is skipped when its trunk, not just its centre, would stand in the trail.
         if abs(y - centre_y) < trail / 2 + r:
             continue
         trees.append(Cylinder(float(x), float(y), float(r), float(rng.uniform(26.0, 36.0))))
@@ -96,6 +101,8 @@ def forest_trail(seed: int = 0, n: int = 16) -> Scenario:
         if abs(y) < 14.0:
             continue
         trees.append(Cylinder(float(x), float(y), float(rng.uniform(0.3, 0.8)), float(rng.uniform(15.0, 30.0))))
+    # Every forest tree (26 to 36 m) is taller than the 22 m ceiling, which the validator holds every plan
+    # under, so the swarm cannot climb over the forest and has to pass between the trunks.
     return Scenario(
         name="forest_trail",
         title="Forest trail under the canopy",
@@ -112,6 +119,8 @@ def forest_trail(seed: int = 0, n: int = 16) -> Scenario:
 def gusty_day(seed: int = 0, n: int = 16) -> Scenario:
     rng = _rng(seed, 4)
     base = rng.uniform(0, 360)
+    # base is also the mean wind's direction (below), so each front blows 60 to 120 degrees across it, mostly
+    # with a downdraught. Each starts 8 to 14 s after the last one ends; none starts after 70 s.
     fronts = []
     t = rng.uniform(10.0, 16.0)
     while t < 70.0:
@@ -172,6 +181,7 @@ def low_battery(seed: int = 0, n: int = 16) -> Scenario:
     # headwind, stay the same.
     heading = rng.uniform(0, 360)
     head = rng.uniform(3.0, 5.0)
+    # The leg runs along +x and the wind blows towards 180 degrees, give or take 20: a headwind all the way.
     return Scenario(
         name="low_battery",
         title="Low battery, into the wind",
@@ -186,6 +196,7 @@ def low_battery(seed: int = 0, n: int = 16) -> Scenario:
 
 def field_survey(seed: int = 0, n: int = 12) -> Scenario:
     rng = _rng(seed, 8)
+    # Lanes 70 m apart, a little wider than the 66 m that the default line of twelve drones at 6 m spans.
     lane = 70.0
     path = lawnmower(0.0, 0.0, 280.0, 3 * lane, lane, heading_deg=float(rng.uniform(-10, 10)))
     return Scenario(
@@ -245,6 +256,8 @@ def wildfire_scout(seed: int = 0, n: int = 16, block_m: tuple = (300.0, 200.0), 
     w, h = float(block_m[0]), float(block_m[1])
     sensor = SensorConfig(fov_deg=SCOUT_FOV_DEG, dwell_s=0.5, cell_m=5.0, area=(0.0, 0.0, w, h))
     swath = 2.0 * float(sensor.footprint_radius(SCOUT_ALTITUDE_M))
+    # One pass of the line sweeps n - 1 spacings plus one footprint. lawnmower rounds the number of lanes up,
+    # so neighbouring passes are at most that far apart and, flown as planned, leave no gap.
     lane = (max(n, 1) - 1) * SCOUT_SPACING_M + swath
     path = lawnmower(0.0, 0.0, w, h, lane)
     margin = 10.0
@@ -257,6 +270,7 @@ def wildfire_scout(seed: int = 0, n: int = 16, block_m: tuple = (300.0, 200.0), 
         title="Wildfire scout",
         description=f"Thermal sweep of a {w:.0f} x {h:.0f} m block of dry scrub for smouldering hotspots the morning "
                     f"after a lightning storm, line abreast at {SCOUT_ALTITUDE_M:.0f} m so the camera footprints overlap.",
+        # Time allowed: the path at the planned speed with 60% to spare, plus a minute, and at most 30 minutes.
         n=n, duration_s=float(min(1800.0, 60.0 + 1.6 * length / SCOUT_SPEED_MPS)), waypoints=path,
         directive=Directive("line", SCOUT_SPACING_M, SCOUT_SPEED_MPS, SCOUT_ALTITUDE_M, 1.0, source="mission"),
         wind=_wind_from(rng, rng.uniform(3.0, 6.0), sigma=1.0, local=0.4),
@@ -317,12 +331,16 @@ def missing_person(text: str) -> bool:
         return False
     text = text[:2000]                   # as the compiler reads it; also bounds the work
     low = text.lower()
+    # Each match is read within its own clause (looking at most 300 characters either way); the first match
+    # that survives every check below makes the request a search.
     for m in _MISSING.finditer(low):
         lo, hi = max(0, m.start() - 300), min(len(low), m.end() + 300)
         clause_start = max([lo] + [i + 1 for i in (low.rfind(c, lo, m.start()) for c in ".;:!?,\n") if i >= 0])
         clause_end = min([hi] + [i for i in (low.find(c, m.end(), hi) for c in ".;:!?\n") if i >= 0])
         before = low[clause_start:m.start()].split()[-3:]
         neg = [i for i, w in enumerate(before) if _NEGATION.fullmatch(w) or w in ("no-one", "nobody", "none")]
+        # "has not returned" and the like are part of the pattern itself, so they are blanked out before the
+        # match is searched for a negation.
         said = re.sub(_NOT_BACK, " ", m.group(0))
         if _NEGATION.search(said):
             continue
@@ -506,6 +524,9 @@ def wildfire_valley(seed: int = 0, n: int = 16, alert_rule: str = "forecast", ap
     calm = float(rng.uniform(1.5, 3.0))
     freshen = float(rng.uniform(0.4, 0.9))                  # m/s per hour after the flight starts
     veer = math.radians(rng.uniform(-8.0, 8.0))             # per hour
+    # Hourly periods from six hours before take-off to four after (start_s in seconds from take-off). The wind
+    # stays calm through the hour that begins at take-off, then freshens hour by hour to at most 9 m/s. The
+    # finest dead fuel dries 0.6 points an hour down to 5%, and the heavier fuels stay 1 and 2 points wetter.
     weather = []
     for h in range(-6, 5):
         speed = calm if h <= 0 else min(calm + freshen * h, 9.0)
@@ -514,6 +535,8 @@ def wildfire_valley(seed: int = 0, n: int = 16, alert_rule: str = "forecast", ap
         weather.append(Period(h * 3600.0, (speed * math.cos(ang), speed * math.sin(ang)),
                               Moisture(d1, d1 + 0.01, d1 + 0.02, 1.0)))
     # The forecast the station is given: right in shape, wrong in detail.
+    # One speed factor and one turn apply to the whole forecast, with smaller errors on top hour by hour; the
+    # fires themselves spread under the true ``weather``.
     bias_speed = float(np.exp(rng.normal(0.0, 0.2)))
     bias_dir = math.radians(rng.normal(0.0, 12.0))
     told = []
@@ -527,6 +550,8 @@ def wildfire_valley(seed: int = 0, n: int = 16, alert_rule: str = "forecast", ap
                            Moisture(max(0.03, m.d1 + dm), max(0.03, m.d10 + dm), max(0.03, m.d100 + dm), m.live)))
     # -- fires ----------------------------------------------------------------------------------------------
     inner = (bx0 + 20.0, by0 + 20.0, bx1 - 20.0, by1 - 20.0)
+    # FireSpec's third argument is when the fire starts to spread, in seconds from take-off (negative: already
+    # spreading); until then it smoulders. The five fires follow the order of the docstring.
     fires, boxes, overhangs = [], [], []
     x, y = _pick(rng, terrain, inner, lambda x, y: cover(x, y) in (SCRUB, GRASS))
     fires.append(FireSpec(x, y, float(rng.uniform(-35.0, -10.0)) * 60.0, smoulder_area_m2=4.0, shelter="open"))
@@ -536,6 +561,8 @@ def wildfire_valley(seed: int = 0, n: int = 16, alert_rule: str = "forecast", ap
                           cover=float(rng.uniform(0.6, 0.8)), occluder_m=0.6 * canopy))
     x, y = _pick(rng, terrain, inner, lambda x, y: slope(x, y) > 0.2 and cover(x, y) != FOREST)
     g = ground(x, y)
+    # A rock shelf 2.5 to 4.5 m above the ground over the third fire: an obstacle box in the world, full cover
+    # from cameras looking down, and it hides the plume's lowest 4.5 m.
     shelf = (round(x - 7.0, 1), round(y - 5.0, 1), round(g + 2.5, 1)), (round(x + 7.0, 1), round(y + 5.0, 1), round(g + 4.5, 1))
     boxes.append(Box(*shelf))
     overhangs.append({"x": round(x, 1), "y": round(y, 1), "lo": list(shelf[0]), "hi": list(shelf[1])})
@@ -549,6 +576,7 @@ def wildfire_valley(seed: int = 0, n: int = 16, alert_rule: str = "forecast", ap
     fires.append(FireSpec(x, y, float(rng.uniform(-20.0, 30.0)) * 60.0, smoulder_area_m2=6.0, shelter="open"))
     # -- obstacles: a radio mast on the knoll and dead snags standing above the crowns ---------------------------
     cyls = []
+    # The mast stands on the highest of 200 random points in the block (the knoll) and rises 45 m above it.
     hx, hy = max(((ground(x, y), (x, y)) for x, y in zip(rng.uniform(bx0 + 60, bx1 - 60, 200), rng.uniform(by0 + 40, by1 - 40, 200))))[1]
     cyls.append(Cylinder(float(hx), float(hy), 1.5, ground(hx, hy) + 45.0))
     for _ in range(3):
@@ -571,6 +599,7 @@ def wildfire_valley(seed: int = 0, n: int = 16, alert_rule: str = "forecast", ap
             for r, a in zip(rng.uniform(0, 45, 14), rng.uniform(0, 2 * math.pi, 14))]
     add("campground", camp)
     places.append({"name": "Pine Hollow campground", "x": round(cx0, 1), "y": round(floor_y(cx0), 1), "kind": "campground"})
+    # The ridge trail and the ranch lie on the side of the valley away from the far fire.
     tside = -side
     t_y0 = (by1 + 40.0) if tside > 0 else (by0 - 40.0)
     trail = [(float(tx), t_y0 + tside * float(rng.uniform(0.0, 80.0))) for tx in rng.uniform(bx0 - 50, bx1 + 50, 8)]
@@ -593,6 +622,8 @@ def wildfire_valley(seed: int = 0, n: int = 16, alert_rule: str = "forecast", ap
     x0, y0, x1, y1 = VALLEY_EXTENT
     world = World(cylinders=cyls, boxes=boxes, geofence_lo=(x0, y0, 0.0),
                   geofence_hi=(x1, y1, float(terrain.heights.max()) + 150.0), terrain=terrain)
+    # weather[6] is the hour that starts at take-off (h = 0); its true wind, with turbulence added, is the wind
+    # the drones fly in.
     w0 = weather[6].wind_mps
     from ..sim.strike_check import CHECK_K
     if isinstance(checks, str):
@@ -636,6 +667,8 @@ def wildfire_valley(seed: int = 0, n: int = 16, alert_rule: str = "forecast", ap
         tags=("survey", "scouting", "wildfire", "terrain"), strikes=strike_list,
         strike_check=dict(checks) if checks is not None else None,
     )
+    # With squads, the patrol's fields (n, the routes, duration, sensor area and description) replace the
+    # single sweep's; the valley itself is unchanged.
     return dataclasses.replace(sc, **flight) if flight else sc
 
 
@@ -652,6 +685,8 @@ def _valley_squads(n, spec, sensor, swath, patrol_s, script, cue=(), check_k: in
         # Every drone flies: any the area split would keep in reserve joins the team.
         k = n - squads["n"]
         from ..sim.strike_check import CHECK_LIFT_M, check_box
+        # The team is the last squad, takes the highest drone numbers and flies CHECK_LIFT_M above the others,
+        # so it can cross their areas.
         bx0, by0, bx1, by1 = VALLEY_BLOCK
         stage = Area("C", "Strike check", check_box(0.5 * (bx0 + bx1), 0.5 * (by0 + by1), VALLEY_EXTENT,
                                                     k=k, spacing=SCOUT_SPACING_M, swath=swath))
@@ -739,6 +774,7 @@ def from_mission(spec: dict, seed: int = 0, text: str = "", person: bool | None 
     missions are unchanged.
     """
     from ..ai.mission import DEFAULTS
+    # A request the compiler refused, such as one asking to harm people or property, never becomes a flight.
     if spec.get("refused"):
         raise ValueError("this mission was refused: " + (spec.get("refusal_reason") or "outside civilian use"))
     d = {k: (v if v is not None else DEFAULTS[k]) for k, v in (spec.get("directive") or {}).items()}
@@ -747,6 +783,8 @@ def from_mission(spec: dict, seed: int = 0, text: str = "", person: bool | None 
     kind = route.get("type") or "transit"
     rng = _rng(seed, 10)
     from ..control.formations import formation_offsets
+    # The formation's width across the route. An unstated survey lane is that width plus one spacing (20 m at
+    # least), so neighbouring passes of the formation sit side by side.
     width = float(np.ptp(formation_offsets(d["formation"], n, d["spacing_m"])[:, 1]))
     if kind == "survey":
         w = float(route.get("width_m") or 300.0)
@@ -763,6 +801,8 @@ def from_mission(spec: dict, seed: int = 0, text: str = "", person: bool | None 
         waypoints = [(0.0, 0.0), (min(length, 3000.0), 0.0)]
         loop = False
     ceiling = (spec.get("constraints") or {}).get("altitude_max_m") or 120.0
+    # A stated altitude is kept as asked, and the validator clamps it at take-off if it is out of bounds. An
+    # unstated one takes the default, or 2 m under the ceiling if that is lower.
     altitude = d["altitude_m"] if (spec.get("directive") or {}).get("altitude_m") is not None else min(DEFAULTS["altitude_m"], ceiling - 2.0)
     path_len = sum(math.dist(a, b) for a, b in zip(waypoints, waypoints[1:]))
     search = {}
@@ -775,6 +815,8 @@ def from_mission(spec: dict, seed: int = 0, text: str = "", person: bool | None 
     wind = _wind_from(rng, rng.uniform(1.0, 3.0))
     return Scenario(
         name="custom_mission", title="Operator mission", description=text or "Mission compiled from the operator's request.",
+        # Time allowed: the route at the planned speed with 60% to spare, plus a minute, and at most 15 minutes.
+        # A loop has no end, so it flies for 180 s.
         n=n, duration_s=float(min(900.0, 60.0 + 1.6 * path_len / max(d["speed_mps"], 0.5))) if not loop else 180.0,
         waypoints=waypoints, loop=loop,
         directive=Directive(d["formation"], d["spacing_m"], d["speed_mps"], altitude, d["safety_margin_m"], source="mission"),

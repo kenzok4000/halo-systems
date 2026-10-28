@@ -111,6 +111,8 @@ def _filter(v, problems: list[str]) -> dict | None:
         problems.append(f"strikes is not an object: {v!r}")
         return {"when": "all", "where": "any"}
     when = str(v.get("when") or "all").strip().lower().replace(" ", "_") if v.get("when") is not None else "all"
+    # Spaces became underscores so that "last night" reads as "last_night"; the two forms that carry a value
+    # get their space back.
     if when.startswith("since_"):
         when = "since " + when[6:]
     elif when.startswith("within_"):
@@ -218,6 +220,7 @@ def select_strikes(spec: dict, strikes: list[dict]) -> list[int] | None:
     elif when.startswith("since "):
         hh, mm = (int(v) for v in when[6:].split(":"))
         start = hh * 60 + mm
+        # A clock time after 08:00 has not come yet today, so it means yesterday's (1440 min earlier).
         start = start if start <= NOW_MIN else start - 1440
         keep = [k for k in keep if NOW_MIN - round(k["hours_ago"] * 60) >= start and k["hours_ago"] < 24]
     elif when.startswith("within "):
@@ -252,6 +255,8 @@ def compile_with_model(text: str, client, model: str, *, temperature: float = 0.
     max_tokens = 6000 if think else 800
     extra = reasoning(think)
     key = request_key(model, messages, temperature, {"extra_body": extra, "max_tokens": max_tokens})
+    # Only a recorded reply is served. A failed call is not stored here: the client's NebiusError reaches
+    # the caller.
     hit = cache.get(key) if cache is not None and cache.mode != "off" else None
     if hit is not None and hit.get("content") is not None:
         content, record, how = hit["content"], dict(hit["record"]), "replayed"
@@ -263,6 +268,7 @@ def compile_with_model(text: str, client, model: str, *, temperature: float = 0.
         result = client.chat(model, messages, role="valley-compiler", temperature=temperature,
                              max_tokens=max_tokens, extra_body=extra)
         content, record, how = result.content, result.record.to_dict(), "live"
+        # Stored before it is parsed, so an unparsable reply replays the same way.
         if cache is not None:
             cache.put(key, content, record)
     try:
@@ -297,6 +303,8 @@ def plan(spec: dict, strikes: list[dict], *, default_drones: int = DEFAULT_DRONE
         problems.append("no strike on the list matches the request")
     per = {c: int(v) for c, v in (spec.get("per_area") or {}).items() if c in AREAS and v is not None}
     named = list(spec.get("areas") or [])
+    # The areas that fly: those named (with any given a number), else those given a number, else those
+    # holding the chosen strikes, else all three.
     if named:
         fly = [c for c in AREAS if c in named or c in per]
     elif per:
@@ -324,6 +332,8 @@ def plan(spec: dict, strikes: list[dict], *, default_drones: int = DEFAULT_DRONE
         problems.append(f"a {patrol:g}-minute patrol is outside one battery ({lo:g} to {hi:g} min): "
                         f"{min(max(patrol, lo), hi):g} min")
         patrol = min(max(patrol, lo), hi)
+    # A one-drone valley, built only to read the camera's footprint at the scouting height: the swath is the
+    # width of ground one drone sees. Any seed would do.
     sc = wildfire_valley(0, n=1)
     swath = 2.0 * float(sc.sensor.footprint_radius(SCOUT_ALTITUDE_M))
     directive = Directive("line", SCOUT_SPACING_M, SCOUT_SPEED_MPS, SCOUT_ALTITUDE_M, 1.0, source="mission")
@@ -339,6 +349,8 @@ def plan(spec: dict, strikes: list[dict], *, default_drones: int = DEFAULT_DRONE
         problems.append(f"the numbers per area add up to {sum(counts.values())}, more than the {n} asked for: "
                         "flying the numbers per area")
         n = sum(counts.values())
+    # The operator's numbers per area, capped above, stand. The drones left go to the other flying areas by
+    # the default split, and whatever it does not place stays in reserve ("R").
     rest = [areas[c] for c in fly if c not in per]
     left = n - sum(counts.values())
     if rest and left > 0:
@@ -368,6 +380,8 @@ def scenario_options(p: dict) -> dict:
 
 
 # ----------------------------------------------------------------------------- baseline
+# Frozen with the prompt before the held-out set was written (see load_set), rough edges included, so its
+# scores stay a fair comparison for the model.
 _NUMWORDS = {"one": 1, "two": 2, "three": 3, "four": 4, "five": 5, "six": 6, "seven": 7, "eight": 8, "nine": 9,
              "ten": 10, "eleven": 11, "twelve": 12, "thirteen": 13, "fourteen": 14, "fifteen": 15, "sixteen": 16,
              "seventeen": 17, "eighteen": 18, "nineteen": 19, "twenty": 20, "twenty-four": 24, "thirty": 30,
@@ -427,6 +441,7 @@ def regex_baseline(text: str) -> dict:
     spec["per_area"] = per or None
     areas = _areas_in(low)
     spec["areas"] = areas or None
+    # A duration straight after "last" or "past" is a strike filter ("in the last 5 hours"), not the patrol.
     m = re.search(r"(?<!last )(?<!past )(\d+(?:\.\d+)?)\s*(?:-\s*)?(min|mins|minutes|minute|hours?|hrs?)\b", low)
     if m:
         v = float(m.group(1))
@@ -446,6 +461,7 @@ def regex_baseline(text: str) -> dict:
         elif (m := re.search(r"(?:after|since|from)\s+(\d{1,2})(?::(\d\d))?\s*(am|pm|a\.m\.|p\.m\.)?"
                              r"(?!\s*(?:drones|min|minutes|m\b|hours))", low)):
             h, mer = int(m.group(1)), (m.group(3) or "").replace(".", "") or None
+            # A bare hour is read as the night's: 7 to 11 in the evening, up to 6 in the morning.
             if mer is None and h < 12:
                 mer = "pm" if h >= 7 else "am"
             if mer == "pm" and h < 12:

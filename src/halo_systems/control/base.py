@@ -27,6 +27,8 @@ class Observation:
     t: float
     p_est: np.ndarray        # (n, 3) own navigation estimates
     v_est: np.ndarray        # (n, 3)
+    # Row i is drone i's picture of the swarm: its own estimate on the diagonal, every other drone
+    # dead-reckoned forward from the last message it heard.
     nbr_pos: np.ndarray      # (n, n, 3) drone i's view of drone j
     nbr_vel: np.ndarray      # (n, n, 3)
     nbr_age: np.ndarray      # (n, n) seconds since last message (inf = never)

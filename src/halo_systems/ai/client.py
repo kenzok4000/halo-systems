@@ -39,6 +39,7 @@ from .. import jsonl
 from .budget import Budget, BudgetExceeded, Pricing, estimate_prompt_tokens
 
 DEFAULT_BASE_URL = "https://api.tokenfactory.nebius.com/v1"
+# HTTP statuses worth another attempt: request timeout, conflict, too early, rate limit and server errors.
 RETRY_STATUS = {408, 409, 425, 429, 500, 502, 503, 504}
 # Any long token, with "Bearer " in front if there is one. redact() replaces only the tokens that follow
 # "Bearer "; the others (request ids, cache keys) are left as they are so the logs stay readable.
@@ -217,6 +218,8 @@ class NebiusClient:
             if not self.log_path:
                 return
             entry = {"type": "call", **record.to_dict()}
+            # The key travels only in the Authorization header, which is never logged. The request body and
+            # the reply are redacted as well, as a second guard.
             if request is not None:
                 entry["request"] = json.loads(redact(json.dumps(request), self.api_key))
             if response_text is not None:
@@ -224,6 +227,8 @@ class NebiusClient:
             jsonl.append(self.log_path, entry)
 
     def _backoff(self, attempt: int, retry_after: str | None) -> float:
+        # A Retry-After in seconds from the server wins. Otherwise the wait doubles with each attempt and is
+        # scaled by a random 0.5 to 1, so parallel clients spread out. Both are capped at backoff_max_s.
         if retry_after:
             try:
                 return min(self.backoff_max_s, max(0.0, float(retry_after)))
@@ -291,6 +296,8 @@ class NebiusClient:
                 break
             attempt += 1
             record.attempts = attempt
+            # The ledger is checked before every attempt, retries included, so a retry is refused too once it
+            # could cross the cap.
             try:
                 self.budget.check(worst_case)
             except BudgetExceeded as exc:
@@ -388,12 +395,15 @@ class NebiusClient:
                     and wait(self._backoff(attempt, headers.get("retry-after"))):
                 continue
             break
+        # No usable answer: out of attempts or time, or an error not worth retrying. The record travels with
+        # the error, so the caller can still account for the call's latency and cost.
         record.status, record.http_status, record.error = "error", last_status, last_error
         record.latency_s = round(self.clock() - t0, 3)
         self._log(record, payload, text or None)
         raise NebiusError(last_error, last_status, record, fatal=last_status in (401, 403))
 
     def usage_summary(self) -> dict:
+        # Tokens are summed over answered calls only, cost over every call: a failed call can still be billed.
         ok = [r for r in self.records if r.status == "ok"]
         lat = sorted(r.latency_s for r in ok)
         return {
@@ -427,6 +437,8 @@ def extract_json(text: str) -> dict:
     try:
         obj = json.loads(t)
     except ValueError:
+        # Text around the object: take it from the first brace to its matching closing brace, skipping any
+        # braces inside strings.
         start = t.find("{")
         if start < 0:
             raise ValueError("no JSON object in reply")

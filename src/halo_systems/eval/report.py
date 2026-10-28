@@ -31,6 +31,8 @@ COLORS = ["#8c8c8c", "#4c78a8", "#f58518", "#54a24b", "#b279a2", "#e45756", "#72
 def label(config: str) -> str:
     if config in CONFIG_LABELS:
         return CONFIG_LABELS[config]
+    # Any other configuration is named from its parts: the controller, or the features an ablation leaves out,
+    # then the supervisor, with the model's short name and reasoning setting for Nemotron.
     ctrl, _, sup = config.partition("+")
     if ctrl.startswith("improved-no-"):
         ctrl_label = "Improved without " + ", ".join(ctrl[len("improved-no-"):].split("-"))
@@ -149,6 +151,7 @@ _ORDER = ["open_transit", "formation_changes", "forest_trail", "urban_canyon", "
 
 
 def _scenario_order(name):
+    # A variant such as "gusty_day, 8 drones" sorts under its base scenario, then by the numbers in its name.
     base, _, rest = name.partition(", ")
     nums = [float(x) for x in "".join(c if (c.isdigit() or c == ".") else " " for c in rest).split()]
     return (_ORDER.index(base) if base in _ORDER else len(_ORDER), base, nums)
@@ -261,6 +264,9 @@ def build(rows_path, out_dir, pairs=None) -> Path:
     rows = split_variants(load_rows(rows_path))
     good = [r for r in rows if "error" not in r]
     summary = summarise(good)
+    # With no pairs named, improved is compared with original on a fixed plan, then the rule supervisor with the
+    # fixed plan. Every Nemotron or ablation configuration in the file is also compared with improved+rule, and
+    # a pair naming a configuration the file lacks is dropped.
     pairs = pairs or [("original+fixed", "improved+fixed"), ("improved+fixed", "improved+rule")]
     configs = {r["config"] for r in good}
     if "improved+fixed" not in configs and ("original+fixed", "improved+rule") not in pairs:
@@ -296,6 +302,8 @@ def build(rows_path, out_dir, pairs=None) -> Path:
         md.append("\n## Failed runs\n")
         md.extend(f"* {r['scenario']}, seed {r['seed']}, {label(r['config'])}: {r['error'][:200]}" for r in errors)
     (out / "REPORT.md").write_text("\n".join(md) + "\n")
+    # JSON keys must be strings, so each (scenario, config) key is written as "scenario|config"; the dashboard
+    # server splits it back apart in _results.
     serial = {f"{k[0]}|{k[1]}": v for k, v in summary.items()}
     (out / "summary.json").write_text(json.dumps(serial, indent=1, default=lambda x: None if isinstance(x, float) and math.isnan(x) else x))
     return out / "REPORT.md"

@@ -38,6 +38,8 @@ MODEL_PREFERENCE = ("nemotron-3-nano", "nemotron-nano", "nano", "super", "nemotr
 
 
 def pick_model(models: list[str], preference=MODEL_PREFERENCE) -> str | None:
+    # The first preference that matches a Nemotron model wins, passing over the omni, embedding, safety and
+    # reward variants; if none matches, the first Nemotron model listed is used.
     nemotron = [m for m in models if "nemotron" in m.lower()]
     for p in preference:
         for m in nemotron:
@@ -50,6 +52,7 @@ def pick_model(models: list[str], preference=MODEL_PREFERENCE) -> str | None:
 def state_before_forest(seed: int = 0) -> tuple[dict, object]:
     sc = make("forest_trail", seed)
     body = DroneBody()
+    # No supervisor is passed, so the mission plan flies unchanged and the report does not depend on any model.
     sim = Simulation(sc, ImprovedController(body, sc.world), seed=seed, body=body, record_hz=0)
     while sim.t < 22.0:
         sim.step()
@@ -153,6 +156,8 @@ def run(evidence_dir: str = "evidence", model: str | None = None, flight: bool =
     except ValueError as exc:
         step("reply is a valid directive", False, note=str(exc), reply=result.content[:1500])
         return finish(6)
+    # A fresh validator with the default limits and navigation error, not the flight's. It has seen no earlier
+    # change, so the rate limit cannot refuse the reply; the schema, the bounds and the spacing floor are checked.
     validator = SafetyValidator(DroneBody().radius_m)
     checked = validator.check(proposal, sim.directive, 100.0, "nemotron")
     step("reply is a valid directive", checked.ok, note=f"{checked.action}: {proposal}", reply=result.content[:1500],

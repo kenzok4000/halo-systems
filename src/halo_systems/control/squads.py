@@ -148,6 +148,8 @@ def circuit(rect: tuple, k: int, spacing: float, swath: float, start_lane: int =
     return seq[j:] + seq[:j], lanes, lw
 
 
+# pass_time flies a whole plan step by step, and the same question comes back (build_squads after allocate,
+# each replan), so each answer is kept for the life of the process.
 _PASS_CACHE: dict = {}
 
 
@@ -432,6 +434,8 @@ class SquadPlan:
 
     def set_members(self, members: np.ndarray, positions: np.ndarray | None, t: float) -> None:
         members = np.asarray(members, dtype=int)
+        # Each squad keeps the counted drones that belong to it; a drone lost on its way between squads is
+        # dropped from transit.
         for i, p in enumerate(self.parts):
             sub = np.sort(members[self.squad_of[members] == i]) if len(members) else members
             p.set_members(sub, positions, t)
@@ -481,6 +485,8 @@ class SquadPlan:
             self.transit[d] = {"to": to, "pos": positions[d].copy(), "vel": np.zeros(3)}
         if self.holding:
             self._hold_from(positions)          # the validator refuses moves during a hold; this is a safeguard
+        # The squads that gave drones close up and get circuits for their new size at once; the receiving
+        # squad is replanned when the drones arrive (join_arrivals).
         for i in froms:
             p = self.parts[i]
             p.set_members(np.sort(np.array([m for m in p.members if self.squad_of[m] == i], dtype=int)), positions, t)
@@ -552,6 +558,8 @@ class SquadPlan:
                     tr["held_s"] = tr.get("held_s", 0.0) + dt
                     tr["ready"] = tr["held_s"] >= TEAM_SETTLE_S
             else:
+                # A moved drone flies straight for the receiving squad's centre (which moves on) at
+                # TRANSIT_SPEED_MPS and is handed over once within JOIN_RADIUS_M of it.
                 gap = target[:2] - tr["pos"][:2]
                 dist = float(np.linalg.norm(gap))
                 if dist <= JOIN_RADIUS_M:
@@ -561,6 +569,8 @@ class SquadPlan:
                 u = gap / max(dist, 1e-9)
                 xy = tr["pos"][:2] + u * step
                 v = np.array([u[0] * TRANSIT_SPEED_MPS, u[1] * TRANSIT_SPEED_MPS, 0.0])
+            # Team drones and moved drones alike fly at the transit layer over the followed surface, rising and
+            # falling with the slope.
             z = self._layer(tr)
             if self._surface is not None:
                 h, hx, hy = self._surface.follow(np.array([xy[0]]), np.array([xy[1]]))

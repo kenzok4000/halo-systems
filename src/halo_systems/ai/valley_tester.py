@@ -102,6 +102,7 @@ def stress_level(params: dict) -> float:
 
 
 def _turn(w: tuple, deg: float, scale: float = 1.0) -> tuple:
+    # Turns a horizontal wind vector by deg degrees, anticlockwise for positive deg, and scales it.
     a = math.radians(deg)
     return (scale * (w[0] * math.cos(a) - w[1] * math.sin(a)), scale * (w[0] * math.sin(a) + w[1] * math.cos(a)))
 
@@ -134,6 +135,8 @@ def build(params: dict, seed: int):
                                    Moisture(max(0.03, m2.d1 + e * (mt.d1 - m.d1)), max(0.03, m2.d10 + e * (mt.d10 - m.d10)),
                                             max(0.03, m2.d100 + e * (mt.d100 - m.d100)), mt.live)))
         truth, told = new_truth, new_told
+    # Only the true weather turns, in the periods that start at WIND_SHIFT_FROM_S or later; the forecast
+    # keeps the old direction.
     if shift != 0.0:
         truth = [Period(t0.start_s, _turn(t0.wind_mps, shift), t0.moisture) if t0.start_s >= WIND_SHIFT_FROM_S else t0
                  for t0 in truth]
@@ -147,6 +150,7 @@ def build(params: dict, seed: int):
                                     r50_ref_m=smoke.r50_ref_m * p["smoke_range_scale"])
     wf = dataclasses.replace(wf, weather=truth, weather_forecast=told, fires=fires, smoke=smoke,
                              heterogeneity_sigma=float(p["patchiness"]))
+    # The wind the drones fly in is scaled like the fire weather's; the shift above turns only the fire weather.
     wind = sc.wind
     if s != 1.0:
         wind = dataclasses.replace(wind, mean_mps=tuple(s * c for c in wind.mean_mps),
@@ -453,6 +457,8 @@ class NemotronSearch:
                 if not isinstance(t, dict) or not _readable(t.get("params")):
                     continue                      # unreadable: its slot is topped up below and counted
                 p = t["params"]
+                # Conditions the model left out or gave as non-numbers take the committed valley's value. They
+                # are listed, so the results show which conditions the model actually chose.
                 out.append({"params": clip_params(p), "why": " ".join(str(t.get("why", "")).split())[:200],
                             "defaulted": sorted(k2 for k2 in SPACE if _number(p.get(k2)) is None)})
         except (NebiusError, ValueError, OverflowError) as exc:
@@ -481,6 +487,8 @@ def run_search(searcher, budget: int = 20, batch: int = 4, search: int = 0, base
     with ProcessPoolExecutor(workers) as ex:
         while len(history) < budget:
             k = min(batch, budget - len(history))
+            # Each batch is proposed only after the previous one has flown, so the model sees every outcome so
+            # far. Test i flies on valley_seed(search, i), the same valley whichever searcher proposed it.
             props = searcher.propose(history, k)
             seeds = [valley_seed(search, len(history) + i, base) for i in range(k)]
             outcomes = list(ex.map(evaluate, [p["params"] for p in props], seeds))

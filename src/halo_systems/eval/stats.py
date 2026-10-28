@@ -64,6 +64,8 @@ def value(row: dict, metric: str):
 
 
 def bootstrap_ci(x, stat=np.mean, n=10000, alpha=0.05, seed=0):
+    # (statistic, low, high) over the values that are not None or NaN, with a 1 - alpha percentile-bootstrap
+    # interval. A single value has nothing to resample, so its interval is the value itself.
     x = np.asarray([v for v in x if v is not None and not (isinstance(v, float) and math.isnan(v))], dtype=float)
     if len(x) == 0:
         return None, None, None
@@ -105,6 +107,8 @@ def paired(rows, scenario: str, a: str, b: str, metric: str) -> dict | None:
     seeds = sorted(s for s in set(ra) & set(rb) if ra[s] is not None and rb[s] is not None)
     if not seeds:
         return None
+    # Both configurations met the same conditions on each of these seeds, so the seed-by-seed difference leaves
+    # out how hard a seed was, and the bootstrap runs over those differences.
     d = np.array([rb[s] - ra[s] for s in seeds])
     mean, lo, hi = bootstrap_ci(d)
     # Metrics with no better direction (0) count as lower-is-better for win/tie/loss.

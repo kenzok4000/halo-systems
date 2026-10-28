@@ -52,6 +52,7 @@ class CallCache:
         self.entries: dict[str, dict] = {}
         self._lock = threading.Lock()
         self.skipped: list[str] = []      # broken lines; their calls count as misses
+        # The whole file is loaded once, here. If a key appears twice, the later entry is the one served.
         if self.path.exists():
             for e in jsonl.read(self.path, self.skipped):
                 if "key" in e:
@@ -61,6 +62,8 @@ class CallCache:
         return self.entries.get(key)
 
     def put(self, key: str, content: str | None, record: dict, error: str | None = None) -> None:
+        # Only record mode writes, so a replay leaves the file as it was. Each entry is appended as one line
+        # the moment it is made, so a run that stops halfway keeps every call it made before.
         if self.mode != "record":
             return
         entry = {"key": key, "content": content, "record": record}

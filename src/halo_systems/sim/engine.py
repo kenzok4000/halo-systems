@@ -104,6 +104,7 @@ def energy_table(body: DroneBody, headwind: float, speed_limits=(0.5, 12.0)) -> 
         if v < lo or v > hi:
             continue
         air = max(v + headwind, 0.0)
+        # v is the ground speed. Power in watts over 3.6 v is watt-hours per ground kilometre.
         out[str(v)] = round(float(body.level_power_w(air)) / (3.6 * v), 2)
     return out
 
@@ -128,6 +129,8 @@ class Simulation:
         self.seed = seed
         self.dt = scenario.dt
         self.n = n = scenario.n
+        # Separate streams, so draws whose number depends on how the drones fly (smoke sightings in the
+        # wildfire valley draw from r_misc) can never shift the wind, the sensor noise or the radio losses.
         ss = np.random.SeedSequence(seed)
         r_wind, r_sense, r_init, r_misc = (np.random.default_rng(s) for s in ss.spawn(4))
         self.rng_misc = r_misc
@@ -154,6 +157,7 @@ class Simulation:
             self._squad_orders = sorted(scenario.squad_script, key=lambda o: o["t"])
         else:
             self.ctrl.reset(self.path, self.directive, n)
+        # Each drone starts near its slot (one sigma of 0.3 m per axis), moving with it, on hover thrust.
         pos, vel = self.ctrl.plan.slots()
         self.p = pos + r_init.normal(0.0, 0.3, size=(n, 3))
         self.v = vel.copy()
@@ -172,6 +176,7 @@ class Simulation:
         self.directives: list[dict] = [{"t": 0.0, "action": "accepted", **self.directive.to_dict()}]
         self.ai_calls: list[dict] = []
         self.pending: list[tuple[float, float, Decision]] = []
+        # The fixed supervisor is never asked; any other gets its first report one period into the flight.
         self.next_supervise = scenario.supervisor_period_s if self.sup.name != "fixed" else math.inf
         self.failed_at: dict[int, float] = {}
         self.members_known = np.ones(n, dtype=bool)
@@ -263,6 +268,8 @@ class Simulation:
     # ------------------------------------------------------------------------
     def step(self) -> None:
         dt = self.dt
+        # Simulated seconds, rounded so that adding dt step after step does not drift off the times that
+        # scripts, failures and blackouts are scheduled for.
         self.t = round(self.t + dt, 10)
         self.k += 1
         t = self.t
@@ -277,6 +284,7 @@ class Simulation:
                 self.status[f.drone] = FAILED
                 self.failed_at[f.drone] = t
                 self.event("motor_failure", f.drone)
+        # Blackouts and gust fronts act inside Sensing and WindField; here their start is only logged.
         for b in self.sc.sensing.blackouts:
             if abs(b.start_s - t) < dt / 2:
                 self.event("comms_blackout", None, drones=list(b.drones), until_s=b.end_s)
@@ -286,6 +294,8 @@ class Simulation:
 
         # Sensing and radio.
         active = self.active_mask()
+        # The controller gets only these estimates and radio messages, never self.p or self.v. The true
+        # positions go to the radio only to decide which links are in range.
         p_est, v_est = self.sensing.estimate(self.p, self.v)
         nbr_pos, nbr_vel, nbr_age = self.sensing.exchange(t, p_est, v_est, active, self.p)
         # The swarm learns of a failure once its heartbeat has been missing for a second.
@@ -296,6 +306,8 @@ class Simulation:
         obs = Observation(t, p_est, v_est, nbr_pos, nbr_vel, nbr_age, known & active)
         obs.active = active  # drones fly only if they are actually flying
         self.obs = obs
+        # When the drones the swarm counts change (a crash or retirement at once, a motor failure once
+        # noticed), the plan is rebuilt for those left, from their estimates.
         if not np.array_equal(known, self.members_known):
             self.members_known = known
             self.ctrl.update_members(Observation(t, p_est, v_est, nbr_pos, nbr_vel, nbr_age, known))
@@ -307,6 +319,8 @@ class Simulation:
             proposal = {**self.directive.to_dict(), **s.changes}
             self._apply(proposal, "operator", obs)
 
+        # Orders that are not directives: scripted squad moves, the strike-check team's next pick and airspace
+        # orders. Each has its own check in the safety validator before anything moves.
         if self.squads:
             while self._squad_orders and self._squad_orders[0]["t"] <= t:
                 self.squad_order(self._squad_orders.pop(0), obs)
@@ -316,13 +330,17 @@ class Simulation:
             self.airspace_order(self._airspace_orders.pop(0), obs=obs)
 
         # Control (fast loop).
+        # One acceleration demand per drone (m/s^2, world frame), from the Observation and the obstacle map.
         a_cmd = self.ctrl.command(obs, dt)
         if self.squads:
+            # Drones in transit that reached their new squad during this step's plan update join it now.
             for d, to in self.ctrl.plan.join_arrivals(p_est, t):
                 sq = self.ctrl.plan.squads[to]
                 self.event("squad_joined", d, squad=sq.code, squad_now=sq.to_dict())
 
         # Physics.
+        # Only active drones have thrust, so a failed one falls. The autopilot works from the velocity
+        # estimate; the integration then uses the true state and the true wind.
         powered = active.copy()
         thrust_cmd = autopilot_thrust(a_cmd, v_est, self.body)
         p0 = self.p.copy()
@@ -333,6 +351,8 @@ class Simulation:
         self.thrust = thrust
         self.distance_m += np.where(active, np.linalg.norm(self.p - p0, axis=1), 0.0)
 
+        # Bookkeeping: collisions and strikes, energy and retirement, the airspace hold's record, the wildfire
+        # valley and the ground sensor (every SENSE_EVERY steps), the recorded series and the end check.
         self._collisions(p0, airborne)
         self._energy(thrust, powered, np.linalg.norm(self.v - wind, axis=1))
         if self._hold is not None:
@@ -368,6 +388,8 @@ class Simulation:
                 vis = self.target_visible
                 gain = seen & pending & (vis >= MIN_VISIBLE)
                 self.target_seen_s[gain] += elapsed * vis[gain]
+            # Something on the ground counts as found once its dwell, summed over every pass, reaches the
+            # sensor's dwell_s; the nearest drone that has it in view gets the credit.
             found = pending & (self.target_seen_s >= self.sc.sensor.dwell_s - 1e-9)
             drones = np.nonzero(act)[0]
             for j in np.nonzero(found)[0]:
@@ -376,6 +398,8 @@ class Simulation:
                 self.target_found_by[j] = by
                 self.event("target_found", by, target=int(j), what=self.sc.targets[j].kind,
                            x=round(float(self.targets[j, 0]), 1), y=round(float(self.targets[j, 1]), 1))
+        # Coverage: mark each grid cell whose centre lies inside some drone's footprint, testing only the
+        # cells in the footprint's bounding box.
         if self.coverage is not None:
             cell = self.sc.sensor.cell_m
             x0, y0 = self._cover_x[0] - 0.5 * cell, self._cover_y[0] - 0.5 * cell
@@ -409,9 +433,14 @@ class Simulation:
             summary = self.summary(obs)
             decision = self.sup.decide(summary, self.directive, t)
             if decision is not None:
+                # Held until its latency has passed in simulated time: none for the rules, and for a model
+                # call the time the live call took (or took when it was recorded). Meanwhile the drones fly
+                # on under the directive in force.
                 self.pending.append((t + max(decision.latency_s, 0.0), t, decision))
                 if decision.meta:
                     self.ai_calls.append({"t_request": round(t, 2), "latency_s": round(decision.latency_s, 3), **decision.meta})
+        # An answer whose time has come is still only a proposal: _apply puts it through the safety validator.
+        # A fallback (the rules standing in for a failed model call) goes in under its own source, "fallback".
         ready = [x for x in self.pending if x[0] <= t]
         self.pending = [x for x in self.pending if x[0] > t]
         for _, t_req, decision in ready:
@@ -422,6 +451,9 @@ class Simulation:
             self._apply(proposal, source, obs, requested_t=t_req)
 
     def _apply(self, proposal: dict, source: str, obs: Observation, requested_t: float | None = None) -> None:
+        # Every directive change after the start comes through here. The validator accepts, clamps or rejects
+        # the proposal (a plan change too soon after the last is rejected); only what it returns reaches the
+        # controller.
         result = self.validator.check(proposal, self.directive, self.t, source)
         entry = {"t": round(self.t, 2), "action": result.action, "violations": result.violations, **result.directive.to_dict()}
         if requested_t is not None:
@@ -462,6 +494,7 @@ class Simulation:
             pairs = np.argwhere(np.triu(hit, 1))
             for i, j in pairs:
                 if self.status[i] in (ACTIVE, FAILED) or self.status[j] in (ACTIVE, FAILED):
+                    # One collision, two drones lost: the report counts each collision as two crashed drones.
                     self.collisions += 1
                     self.event("collision", int(i), other=int(j), distance_m=round(float(cd[i, j]), 3))
                     for d in (i, j):
@@ -524,6 +557,9 @@ class Simulation:
         s = self.series
         s["t"].append(self.t)
         s["speed_over_plan"].append(self.directive.speed_mps - self.mission_directive.speed_mps)
+        # Formation errors from the true positions, for the metrics: the raw distance to each slot, the shape
+        # with the common offset removed, and the integrity error (a Hungarian match to the ideal shape, so it
+        # is refreshed only every INTEGRITY_EVERY steps). With squads the last two are pooled over the squads.
         if active.any() and self.squads:
             err = np.linalg.norm(self.p[active] - slots[active], axis=1)
             s["rms_error"].append(float(np.sqrt(np.mean(err ** 2))))
@@ -564,6 +600,8 @@ class Simulation:
         # Rolling windows for the supervisor summary (estimates only).
         est_sep = self._estimated_min_sep(obs)
         self._sep_window.append((self.t, est_sep))
+        # The supervisor's wind reading: the true swarm-wide wind with 0.3 m/s of noise per axis. Its running
+        # average is the reported mean wind; the gust peak is the largest departure from it in the 5 s window.
         amb = self.wind.ambient(self.t) + self.rng_misc.normal(0.0, 0.3, 3)
         self._ambient_est = 0.98 * self._ambient_est + 0.02 * amb
         self._wind_window.append((self.t, amb))
@@ -586,6 +624,8 @@ class Simulation:
         if k == 0:
             return float("nan")
         pa = self.p[act]
+        # Over terrain, heights are taken above the followed surface, so a formation on a slope is compared
+        # with a flat ideal.
         if self.ctrl.plan.surface is not None:
             pa = pa.copy()
             pa[:, 2] -= self.ctrl.plan.surface.follow(pa[:, 0], pa[:, 1])[0]
@@ -750,6 +790,7 @@ class Simulation:
         act = obs.active
         if act.sum() < 2:
             return float("inf")
+        # The closest pair as the drones themselves see it: own estimates against neighbours heard within 1 s.
         d = np.linalg.norm(obs.p_est[:, None, :] - obs.nbr_pos, axis=2)
         ok = np.isfinite(obs.nbr_age) & (obs.nbr_age < 1.0) & act[:, None] & act[None, :]
         np.fill_diagonal(ok, False)
@@ -798,6 +839,9 @@ class Simulation:
         from .scenario import MotorFailure, ScriptedDirective
         from .sensing import Blackout
         from .wind import GustFront
+        # Unseeded, since a live injection is not part of any seed's conditions; what it drew is returned
+        # and logged. Each takes effect from the next step at the earliest, through the same lists as the
+        # scenario's own scheduled events.
         rng = np.random.default_rng()
         start = round(self.t + self.dt, 10)
         active = np.nonzero(self.active_mask())[0]
@@ -936,6 +980,7 @@ class Simulation:
             stale, isolated = 0.0, 0
         batt = 100 * self.battery_wh[act] / self.capacity_wh if act.any() else np.array([0.0])
         power = self._power[act] if act.any() else np.array([1.0])
+        # Minutes until the first drone reaches the battery reserve at its present power draw.
         endurance_min = float(np.min((self.battery_wh[act] - self.sc.battery_reserve * self.capacity_wh)
                                      / np.maximum(power, 1.0) * 60.0)) if act.any() else 0.0
         if self.squads:
@@ -943,6 +988,7 @@ class Simulation:
             remaining = max(0.0, (self.sc.patrol_s or 0.0) - self.t) * self.mission_directive.speed_mps
         else:
             remaining = max(0.0, plan.path.length - plan.s) if not plan.path.loop else None
+        # Losses the swarm would know of: crashes, and a failed drone once FAILURE_DETECTION_S has passed.
         lost = sorted(int(d) for d in self.failed_at if self.t - self.failed_at[d] >= FAILURE_DETECTION_S)
         lost += [int(d) for d in np.nonzero(self.status == CRASHED)[0] if int(d) not in lost]
         width_now = plan.width()
@@ -976,6 +1022,8 @@ class Simulation:
             },
             "environment": {
                 "wind_mps": round(float(np.linalg.norm(mean_wind[:2])), 1),
+                # Degrees anticlockwise from +x (east) to where the wind comes from, as headings are measured;
+                # not a compass bearing.
                 "wind_from_deg": round(float((math.degrees(math.atan2(-mean_wind[1], -mean_wind[0])) + 360) % 360), 0),
                 "headwind_mps": round(float(-mean_wind[:2] @ heading[:2]), 1),
                 "gust_peak_mps_last_5s": round(gust, 1),

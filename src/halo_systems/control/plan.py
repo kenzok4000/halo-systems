@@ -149,6 +149,8 @@ class FormationPlan:
                 fresh = ~np.isin(members, self.members)
                 self.blend_from[members[fresh]] = rel_all[members[fresh]]
             disp = np.linalg.norm(new_target[members] - self.blend_from[members], axis=1) if k else np.zeros(1)
+            # One duration for every drone, set by the farthest moving at blend_speed on average (at least
+            # 1 s), so all arrive together, as the CAPT scheme needs.
             self.blend_T = float(max(1.0, disp.max() / self.blend_speed)) if k else 0.0
             self.blend_t0 = t
         self.target = new_target
@@ -247,6 +249,7 @@ class FormationPlan:
     # -- time evolution ------------------------------------------------------
     def centre(self) -> np.ndarray:
         xy, _ = self.path.at(self.s)
+        # z is height above the followed surface, not world height; slots() adds the terrain under each slot.
         return np.array([xy[0], xy[1], self.directive.altitude_m if self.alt_now is None else self.alt_now])
 
     def advance(self, dt: float, t: float, formation_error: float = 0.0) -> None:
@@ -281,6 +284,8 @@ class FormationPlan:
             # TURN_SLOT_SPEED extra, and slow the leader before bends to match.
             half_width = self.half_span()
             yaw_rate = min(yaw_rate, TURN_SLOT_SPEED / max(half_width, 1.0))
+            # Slow before a bend so the next BEND_LOOKAHEAD_M take at least bend / yaw_rate seconds, the time
+            # the formation needs to turn, but never below PACE_FLOOR x the directive's speed.
             bend = abs(self._heading_change(self.s, self.s + BEND_LOOKAHEAD_M))
             if bend > 1e-3:
                 speed = min(speed, max(PACE_FLOOR * d.speed_mps, yaw_rate * BEND_LOOKAHEAD_M / bend))
@@ -296,6 +301,7 @@ class FormationPlan:
         self.speed_now = speed
         self.s += speed * dt
         target_heading = self.path.heading_at(self.s)
+        # The signed turn to the path's heading, wrapped to [-pi, pi) so the formation turns the short way.
         diff = (target_heading - self.heading + math.pi) % (2 * math.pi) - math.pi
         if self.pace:
             # Second-order heading: the turn rate itself changes at most YAW_ACCEL rad/s^2,
@@ -344,6 +350,8 @@ class FormationPlan:
         _, tangent = self.path.at(self.s)
         world_off = rotate(self.offset, self.heading)
         pos = centre[None, :] + world_off
+        # Slot velocity: the leader's, plus the frame's rotation (omega cross the offset), plus the blend's
+        # own rate; over terrain the slot also climbs and sinks with the slope beneath it.
         vel_c = np.array([tangent[0] * self.speed_now, tangent[1] * self.speed_now, 0.0])
         if self.alt_now is not None:
             vel_c[2] = self.alt_rate

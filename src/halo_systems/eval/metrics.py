@@ -79,6 +79,8 @@ def _nanmean(x):
 
 
 def compute_metrics(sim) -> dict:
+    # The series hold one value per engine step. A step with no drone flying records NaN for the formation
+    # errors (it is the last step, since the run then ends), and that NaN counts as zero here.
     s = {k: np.asarray(v, dtype=float) for k, v in sim.series.items()}
     t = s["t"]
     shape = np.nan_to_num(s["shape_error"], nan=0.0)
@@ -133,6 +135,8 @@ def compute_metrics(sim) -> dict:
         "completed": None if sim.sc.loop else sim.done_t is not None,
         "completion_time_s": round(sim.done_t, 2) if sim.done_t is not None else None,
         "progress_m": round(float(sim.ctrl.plan.s), 1),
+        # collisions counts touching pairs, while obstacle and ground crashes count drones. The report's crashes
+        # are drones destroyed, so each collision counts twice there (eval/stats.value).
         "collisions": int(sim.collisions),
         "obstacle_crashes": int(sim.obstacle_crashes),
         "ground_crashes": int(sim.ground_crashes),
@@ -154,6 +158,7 @@ def compute_metrics(sim) -> dict:
         "energy_wh": round(energy, 3),
         "energy_wh_per_drone": round(energy / sim.n, 3),
         "energy_wh_per_km": round(energy / distance_km, 3) if distance_km > 0.01 else None,
+        # Energy in joules (Wh x 3600) over the drone-seconds flown: the mean power of one flying drone.
         "mean_power_w_per_drone": round(energy * 3600.0 / flying_drone_s, 2) if flying_drone_s > 0 else None,
         "drones_lost": int(np.sum((statuses == CRASHED) | (statuses == DOWN))),
         "drones_retired": int(np.sum(statuses == RETIRED)),
@@ -170,6 +175,8 @@ def compute_metrics(sim) -> dict:
         "ai_calls": len(ai),
         "ai_latency_mean_s": round(float(np.mean(lat)), 3) if lat else None,
         "ai_latency_p95_s": round(float(np.percentile(lat, 95)), 3) if lat else None,
+        # A fallback is a supervisor call that failed or gave an unusable reply. The rule supervisor's answer
+        # took its place or, with no answer from the rules, the directive in force stayed.
         "ai_fallbacks": sum(1 for c in ai if c.get("fallback")),
         "ai_tokens": int(sum(c.get("total_tokens", 0) for c in ai)),
         "ai_cost_usd": round(float(sum(c.get("cost_usd", 0.0) for c in ai)), 5),

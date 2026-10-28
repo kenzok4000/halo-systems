@@ -50,6 +50,8 @@ class OriginalController(Controller):
         plan.advance(dt, obs.t)
         ref_p, ref_v = plan.slots()
         p, v, act = obs.p_est, obs.v_est, obs.active
+        # A neighbour inside sep pushes away along the line between them, rising linearly from 0 at sep to 1
+        # at zero distance. Capping sep at 90% of the spacing keeps drones on their slots from repelling.
         sep = min(ORIGINAL_SEPARATION, 0.9 * plan.directive.spacing_m)
         diff = p[:, None, :] - obs.nbr_pos
         dist = np.linalg.norm(diff, axis=2)
@@ -65,6 +67,8 @@ class OriginalController(Controller):
         target = clip_rows(target, self.body.max_speed_mps)
         floor = self.floor_under(p)
         guarded = floor_guard(target, p, v, self.accel_limit, floor)
+        # Near the floor (the guard changed the target, or the drone is within 1 m plus its braking distance
+        # at 7 m/s^2), the vertical demand is served first.
         near_floor = (guarded[:, 2] != target[:, 2]) | (p[:, 2] < floor + 1 + np.maximum(0.0, -v[:, 2]) ** 2 / 14)
         demand = 2.5 * (guarded - v)
         a = prioritized_clip(demand, self.accel_limit, np.array([0.0, 0.0, 1.0]), near_floor & act)

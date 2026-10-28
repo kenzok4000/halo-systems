@@ -82,6 +82,7 @@ class RuleSupervisor(Supervisor):
             elif planned * remaining_km < ENERGY_RELEASE * usable:
                 self.saving = False      # hysteresis: only relax once there is clear headroom
             if self.saving:
+                # The table's keys are speeds written as strings; on a tie the slower speed wins.
                 best = min(table, key=lambda k: (table[k], float(k)))
                 want["speed_mps"] = float(best)
                 reasons.append(f"charge tight: {float(best):g} m/s is cheapest per km into this wind")
@@ -90,11 +91,15 @@ class RuleSupervisor(Supervisor):
         free = env.get("free_corridor_width_m")
         if free is not None:
             widths = summary["formation_widths_at_current_spacing_m"]
+            # Widths scale with spacing, so a shape's width per metre of spacing gives its width at any spacing.
+            # The corridor must also leave the safety margin plus CORRIDOR_BUFFER_M free on each side.
             per_m = {k: (w / cur["spacing_m"] if cur["spacing_m"] > 0 else 0.0) for k, w in widths.items()}
             need = 2 * (want["safety_margin_m"] + CORRIDOR_BUFFER_M)
             shape = want["formation"]
             fits = per_m[shape] * want["spacing_m"] + need <= free
             if not fits:
+                # Squeeze only while the spacing stays at least half a metre above the validator's floor and at
+                # or above MIN_SPACING_FRACTION of the plan's; below that the swarm flies a column instead.
                 floor = max(summary["limits"]["spacing_floor_m"] + 0.5, MIN_SPACING_FRACTION * mission["spacing_m"])
                 squeezed = (free - need) / per_m[shape] if per_m[shape] > 0 else want["spacing_m"]
                 if squeezed >= floor:
@@ -104,6 +109,7 @@ class RuleSupervisor(Supervisor):
                     want["formation"] = "column"
                     reasons.append(f"corridor {free:.0f} m: too narrow for {shape}, flying a column")
 
+        # Answer only with a real change. None leaves the directive in force and the engine queues nothing.
         changed = any(_differs(want[k], cur[k]) for k in want)
         if not changed:
             return None
@@ -118,6 +124,7 @@ def _differs(a, b) -> bool:
 
 
 def interp_table(table: dict, speed: float) -> float:
+    # Linear interpolation between the table's speeds, held at the end values outside them.
     pts = sorted((float(k), v) for k, v in table.items())
     if speed <= pts[0][0]:
         return pts[0][1]

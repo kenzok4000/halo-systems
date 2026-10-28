@@ -130,6 +130,8 @@ class Terrain:
         x = np.asarray(x, dtype=float)
         y = np.asarray(y, dtype=float)
         ny, nx = grid.shape
+        # Grid coordinates are clamped just inside the last node, so ix + 1 is always a valid index and a point
+        # outside the grid takes the edge value.
         gx = np.clip((x - self.x0) / self.cell_m, 0.0, nx - 1.000001)
         gy = np.clip((y - self.y0) / self.cell_m, 0.0, ny - 1.000001)
         ix = gx.astype(int)
@@ -217,6 +219,8 @@ def valley(rng: np.random.Generator, extent: tuple[float, float, float, float], 
     floor, the lower slopes and a knoll); the ridges outside it climb to about ``ridge_m``, the
     mountain backdrop. The valley runs along x with a gentle down-valley slope.
     """
+    # In the wildfire valley the same stream goes on to draw the weather and the fires, so adding, removing or
+    # reordering a draw here changes every seed's valley and everything drawn after it.
     x0, y0, x1, y1 = extent
     nx = int(round((x1 - x0) / cell_m)) + 1
     ny = int(round((y1 - y0) / cell_m)) + 1
@@ -229,12 +233,15 @@ def valley(rng: np.random.Generator, extent: tuple[float, float, float, float], 
     # Valley axis wanders a little; distance across it in units of the block's half-height.
     wander = 0.25 * half * smooth_noise(rng, (1, nx), 200.0 / cell_m, octaves=2)[0]
     across = (Y - (cy + wander[None, :])) / half
+    # Each side of the valley gets its own ridge height scale.
     side = np.where(across > 0, rng.uniform(0.85, 1.15), rng.uniform(0.85, 1.15))
     # Gentle within the block, steep beyond it: a smooth floor plus ridges that rise outside |across| > 1.
     floor = relief_m * 0.35 * np.minimum(across ** 2, 1.44)
     rise = np.clip((np.abs(across) - 0.95) / 1.5, 0.0, 1.0)
     crest = 1.0 + 0.25 * smooth_noise(rng, (ny, nx), 160.0 / cell_m, octaves=2)
+    # The rise is eased by a smoothstep (3r^2 - 2r^3), so the ridges leave the valley floor without a crease.
     ridges = ridge_m * side * crest * rise * rise * (3.0 - 2.0 * rise)
+    # The ground rises 3 m in every 100 m eastward (+x), so the valley falls gently to the west.
     down_valley = 0.03 * (X - bx0)
     # A knoll somewhere inside the block.
     kx = rng.uniform(bx0 + 0.25 * (bx1 - bx0), bx0 + 0.75 * (bx1 - bx0))
@@ -254,6 +261,7 @@ def valley(rng: np.random.Generator, extent: tuple[float, float, float, float], 
     threshold = np.quantile(forest_score[inside], 1.0 - forest_share)
     grass_threshold = np.quantile(grass_score[inside], 0.85)
     cover = np.full((ny, nx), SCRUB, dtype=int)
+    # Later classes win where they overlap: forest over grass, and rock over both.
     cover[grass_score >= grass_threshold] = GRASS
     cover[forest_score >= threshold] = FOREST
     cover[(slope > 0.7) | (heights > 0.85 * heights.max())] = ROCK
