@@ -90,7 +90,7 @@ bootstrap intervals over seeds. Full tables: [REPORT.md](../results/wildfire_val
 | Fires | Five per flight: one already spreading in open scrub (lit 10 to 35 minutes before take-off), one under tree crowns (60 to 80% hidden from above), one under a rock overhang (fully hidden), one smouldering in the open, and one across the valley outside the survey block. Smouldering fires cover 3 to 6 m2 until they take off, at seeded times from 20 minutes before take-off to 4 hours after | `eval/scenarios.py` |
 | Smoke | A bent-over plume: smoke rises at 1.5 m/s while the wind carries it, to a top that grows with the burning area (12 m for 10 m2, up to 150 m). Crowns hide the plume below 60% of their height; the overhang hides it below 4.5 m. A particulate (PM2.5) plume spreads by the Gaussian plume equation | `sim/smoke.py` |
 | Obstacles | A 45 m radio mast on the knoll, three dead snags standing 18 to 26 m above the crowns, and the rock overhang | `eval/scenarios.py` |
-| People | 63 phones: 26 homes down the valley, 14 at a campground up it, 8 hikers on a ridge trail, 10 drivers on the valley road and 5 at a ranch. 5% have no signal | `eval/scenarios.py` |
+| People | 63 phones: 26 homes up the valley, 14 at a campground down it, 8 hikers on a ridge trail, 10 drivers on the valley road and 5 at a ranch. 5% have no signal | `eval/scenarios.py` |
 
 ## What the drones sense
 
